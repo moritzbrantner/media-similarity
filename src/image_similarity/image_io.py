@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from io import BytesIO
 import uuid
 from pathlib import Path
 from typing import Iterable
@@ -32,8 +33,17 @@ def load_image(path: Path) -> Image.Image:
         return ImageOps.exif_transpose(image).convert("RGB")
 
 
+def load_image_bytes(raw: bytes) -> Image.Image:
+    with Image.open(BytesIO(raw)) as image:
+        return ImageOps.exif_transpose(image).convert("RGB")
+
+
 def image_id_for_path(path: Path) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, str(path.resolve())))
+
+
+def image_id_for_uri(uri: str) -> str:
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, uri))
 
 
 def relative_path(path: Path, root: Path) -> str:

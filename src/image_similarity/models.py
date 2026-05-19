@@ -12,6 +12,8 @@ class ImagePayload(BaseModel):
     modified_at: float
     phash: str
     thumbnail_url: str | None = None
+    source_type: str = "local"
+    source_uri: str | None = None
 
 
 class SearchResult(BaseModel):
@@ -33,11 +35,12 @@ class IndexResponse(BaseModel):
     failed: int
     collection: str
     source_dir: str
-    errors: list[str] = []
+    sources: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
 
 
 class HealthResponse(BaseModel):
     status: str
     collection: str
     source_dir: str
-
+    sources: list[str] = Field(default_factory=list)

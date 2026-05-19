@@ -16,7 +16,7 @@ class FakeIndexer:
     def __init__(self) -> None:
         self.calls = 0
 
-    def index_source_dir(self) -> IndexResponse:
+    def index_sources(self) -> IndexResponse:
         self.calls += 1
         return IndexResponse(
             indexed=2,
@@ -24,6 +24,7 @@ class FakeIndexer:
             failed=0,
             collection="test_collection",
             source_dir="/tmp/source",
+            sources=["/tmp/source"],
         )
 
 
@@ -58,6 +59,7 @@ def test_health_returns_settings(api_client) -> None:
         "status": "ok",
         "collection": "test_collection",
         "source_dir": str(settings.source_image_dir),
+        "sources": [str(settings.source_image_dir)],
     }
 
 

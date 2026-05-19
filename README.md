@@ -2,17 +2,18 @@
 
 Dockerized local image similarity search using FastAPI, Qdrant, SentenceTransformers CLIP embeddings, and perceptual hashes.
 
-The service indexes a mounted source image folder, then lets you upload a query image through the web UI or HTTP API to find visually similar images and near duplicates.
+The service indexes configured image sources, then lets you upload a query image through the web UI or HTTP API to find visually similar images and near duplicates.
 
 ## Features
 
 - FastAPI backend with upload, indexing, search, and health endpoints.
+- Pluggable indexing sources for local folders, MinIO buckets, video frames, and camera streams.
 - Qdrant vector database for CLIP image embeddings.
 - `sentence-transformers/clip-ViT-B-32` by default.
 - `imagehash` pHash distance for duplicate and near-duplicate detection.
 - Rust-backed PNG/JPEG/WebP image loading, thumbnail encoding, and hash distance via the sibling Rust crates, with Pillow fallback for full format compatibility and EXIF orientation handling.
 - Plain static HTML/CSS/JS UI served by FastAPI.
-- Docker Compose setup with a single source-folder mount to edit.
+- Docker Compose setup with a source-folder mount to edit.
 
 ## Quick Start
 
@@ -43,7 +44,7 @@ The service indexes a mounted source image folder, then lets you upload a query 
    http://localhost:8000
    ```
 
-5. Click **Index source folder**, then upload a query image and search.
+5. Click **Index configured sources**, then upload a query image and search.
 
 The first indexing or search request can take longer because the CLIP model may need to download and load.
 
@@ -55,7 +56,7 @@ The first indexing or search request can take longer because the CLIP model may 
 curl http://localhost:8000/api/health
 ```
 
-### Index Mounted Source Folder
+### Index Configured Sources
 
 ```bash
 curl -X POST http://localhost:8000/api/index
@@ -83,6 +84,15 @@ Set these values in `.env`:
 | --- | --- | --- |
 | `HOST_SOURCE_IMAGE_DIR` | `./sample-images` | Host folder mounted into the app container. |
 | `SOURCE_IMAGE_DIR` | `/images` | Container path scanned by the indexer. |
+| `IMAGE_SOURCES` | empty | Optional source list. When empty, the indexer scans `SOURCE_IMAGE_DIR`. Use a JSON array, comma-separated list, semicolon-separated list, or newline-separated list. |
+| `MINIO_ENDPOINT` | empty | Default MinIO endpoint for `minio://...` sources. |
+| `MINIO_ACCESS_KEY` | empty | Default MinIO access key for `minio://...` sources. |
+| `MINIO_SECRET_KEY` | empty | Default MinIO secret key for `minio://...` sources. |
+| `MINIO_SECURE` | `true` | Whether MinIO sources use TLS by default. |
+| `VIDEO_FRAME_STRIDE` | `30` | Default video sampling interval; `30` indexes every 30th frame. |
+| `VIDEO_MAX_FRAMES` | empty | Optional cap on indexed frames per video source. |
+| `CAMERA_FRAME_STRIDE` | `30` | Default camera stream sampling interval. |
+| `CAMERA_MAX_FRAMES` | `100` | Default cap on indexed frames per camera stream. |
 | `QDRANT_URL` | `http://qdrant:6333` | Qdrant URL from inside the app container. |
 | `QDRANT_COLLECTION` | `image_similarity` | Qdrant collection name. |
 | `CLIP_MODEL_NAME` | `sentence-transformers/clip-ViT-B-32` | SentenceTransformers image model. |
@@ -93,6 +103,42 @@ Set these values in `.env`:
 | `DEFAULT_SEARCH_LIMIT` | `12` | Default result count. |
 | `DUPLICATE_HASH_DISTANCE` | `8` | Max pHash distance for near-duplicate flag. |
 | `MAX_UPLOAD_MB` | `20` | Maximum uploaded query image size. |
+
+### Source Examples
+
+`IMAGE_SOURCES` accepts multiple source URIs. Local folder support is backward compatible with `SOURCE_IMAGE_DIR`.
+
+```env
+IMAGE_SOURCES='["local:///images", "video:///videos/demo.mp4?every_n_frames=24&max_frames=250"]'
+```
+
+MinIO sources can use global MinIO settings:
+
+```env
+IMAGE_SOURCES=minio://catalog/products
+MINIO_ENDPOINT=minio:9000
+MINIO_ACCESS_KEY=minioadmin
+MINIO_SECRET_KEY=minioadmin
+MINIO_SECURE=false
+```
+
+Or they can include source-specific settings:
+
+```env
+IMAGE_SOURCES='["minio://catalog/products?endpoint=minio:9000&access_key=minioadmin&secret_key=minioadmin&secure=false"]'
+```
+
+Camera sources use OpenCV capture targets. A local webcam can be configured as:
+
+```env
+IMAGE_SOURCES=camera://0?every_n_frames=10&max_frames=50
+```
+
+For RTSP or HTTP camera streams, URL-encode the stream URL in the `url` query parameter:
+
+```env
+IMAGE_SOURCES='["camera://?url=rtsp%3A%2F%2Fuser%3Apass%40camera.local%2Fstream&every_n_frames=30&max_frames=100"]'
+```
 
 ## Local Development
 
@@ -169,6 +215,6 @@ The real profile initializes the configured SentenceTransformers CLIP model and 
 
 ## Notes
 
-- Re-running indexing upserts images by deterministic ID based on absolute image path.
-- If an image file changes at the same path, run indexing again to refresh its vector, pHash, metadata, and thumbnail.
+- Re-running indexing upserts local images by deterministic ID based on absolute image path. MinIO objects and video frames use deterministic IDs based on their source URI. Camera stream frames use the configured capture target and sampled frame number.
+- If an image file or object changes at the same path, run indexing again to refresh its vector, pHash, metadata, and thumbnail.
 - This first version intentionally omits auth, users, async queues, and a separate frontend build pipeline.

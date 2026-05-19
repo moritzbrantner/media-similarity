@@ -12,7 +12,8 @@ async function loadHealth() {
   try {
     const response = await fetch("/api/health");
     const health = await response.json();
-    healthEl.textContent = `${health.status.toUpperCase()} | Source: ${health.source_dir} | Collection: ${health.collection}`;
+    const sources = health.sources?.length ? health.sources.join(", ") : health.source_dir;
+    healthEl.textContent = `${health.status.toUpperCase()} | Sources: ${sources} | Collection: ${health.collection}`;
   } catch {
     healthEl.textContent = "Service is not responding";
   }
@@ -39,7 +40,7 @@ imageInput.addEventListener("change", () => {
 
 indexButton.addEventListener("click", async () => {
   indexButton.disabled = true;
-  setStatus("Indexing source folder. The first run can take a while while the model loads.", "");
+  setStatus("Indexing configured sources. The first run can take a while while the model loads.", "");
   try {
     const response = await fetch("/api/index", { method: "POST" });
     const payload = await response.json();
@@ -134,4 +135,3 @@ function escapeHtml(value) {
 }
 
 loadHealth();
-

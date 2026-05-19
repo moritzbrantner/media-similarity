@@ -12,6 +12,7 @@ from image_similarity.indexer import ImageIndexer
 from image_similarity.models import HealthResponse, IndexResponse, SearchResponse
 from image_similarity.qdrant_store import QdrantImageStore
 from image_similarity.search import ImageSearchService
+from image_similarity.sources import build_image_sources
 
 router = APIRouter(prefix="/api")
 
@@ -52,15 +53,19 @@ def get_search_service(
 
 @router.get("/health", response_model=HealthResponse)
 def health(settings: Settings = Depends(get_settings)) -> HealthResponse:
+    sources = build_image_sources(settings)
     return HealthResponse(
         status="ok",
         collection=settings.qdrant_collection,
         source_dir=str(settings.source_image_dir),
+        sources=[source.uri for source in sources],
     )
 
 
 @router.post("/index", response_model=IndexResponse)
 def index_images(indexer: ImageIndexer = Depends(get_indexer)) -> IndexResponse:
+    if hasattr(indexer, "index_sources"):
+        return indexer.index_sources()
     return indexer.index_source_dir()
 
 

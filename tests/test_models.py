@@ -23,6 +23,8 @@ def test_image_payload_defaults_and_serialization() -> None:
     payload = sample_payload()
 
     assert payload.thumbnail_url is None
+    assert payload.source_type == "local"
+    assert payload.source_uri is None
     assert payload.model_dump()["relative_path"] == "cat.jpg"
 
 
@@ -39,9 +41,15 @@ def test_index_response_errors_default_to_empty_list() -> None:
     response = IndexResponse(indexed=1, skipped=0, failed=0, collection="images", source_dir="/images")
 
     assert response.errors == []
+    assert response.sources == []
 
 
 def test_health_response_shape() -> None:
     response = HealthResponse(status="ok", collection="images", source_dir="/images")
 
-    assert response.model_dump() == {"status": "ok", "collection": "images", "source_dir": "/images"}
+    assert response.model_dump() == {
+        "status": "ok",
+        "collection": "images",
+        "source_dir": "/images",
+        "sources": [],
+    }

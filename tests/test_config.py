@@ -28,6 +28,14 @@ def test_extensions_accept_iterables() -> None:
     assert from_set.image_extensions == {".jpeg", ".webp"}
 
 
+def test_image_sources_accept_delimited_strings_and_json() -> None:
+    delimited = Settings(IMAGE_SOURCES="local:///images;minio://bucket/prefix")
+    json_sources = Settings(IMAGE_SOURCES='["/images", "video:///clips/demo.mp4"]')
+
+    assert delimited.image_sources == ["local:///images", "minio://bucket/prefix"]
+    assert json_sources.image_sources == ["/images", "video:///clips/demo.mp4"]
+
+
 def test_empty_extensions_are_rejected() -> None:
     with pytest.raises(ValidationError, match="At least one image extension"):
         Settings(IMAGE_EXTENSIONS=" , ")

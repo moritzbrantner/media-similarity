@@ -6,7 +6,7 @@ from typing import Callable
 import pytest
 from PIL import Image
 
-from image_similarity.image_io import image_id_for_path, iter_image_paths, load_image, relative_path
+from image_similarity.image_io import image_id_for_path, image_id_for_uri, iter_image_paths, load_image, load_image_bytes, relative_path
 
 pytestmark = pytest.mark.unit
 
@@ -51,6 +51,14 @@ def test_image_id_for_path_is_deterministic(tmp_path: Path) -> None:
     assert image_id_for_path(path) == image_id_for_path(path)
 
 
+def test_image_id_for_uri_is_deterministic_and_uri_specific() -> None:
+    first = image_id_for_uri("minio://bucket/a.jpg")
+    second = image_id_for_uri("minio://bucket/b.jpg")
+
+    assert first == image_id_for_uri("minio://bucket/a.jpg")
+    assert first != second
+
+
 def test_load_image_returns_rgb(tmp_path: Path) -> None:
     path = tmp_path / "palette.png"
     Image.new("P", (10, 12)).save(path)
@@ -59,3 +67,10 @@ def test_load_image_returns_rgb(tmp_path: Path) -> None:
 
     assert loaded.mode == "RGB"
     assert loaded.size == (10, 12)
+
+
+def test_load_image_bytes_returns_rgb(image_bytes: Callable[..., bytes]) -> None:
+    loaded = load_image_bytes(image_bytes(Image.new("P", (9, 11))))
+
+    assert loaded.mode == "RGB"
+    assert loaded.size == (9, 11)
