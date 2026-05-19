@@ -9,6 +9,7 @@ use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
 mod api;
+mod audio;
 mod config;
 mod embedder;
 mod hashing;

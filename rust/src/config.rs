@@ -13,6 +13,7 @@ pub struct Settings {
     pub thumbnail_dir: PathBuf,
     pub upload_dir: PathBuf,
     pub image_extensions: BTreeSet<String>,
+    pub audio_extensions: BTreeSet<String>,
     pub image_sources: Vec<String>,
     pub minio_endpoint: Option<String>,
     pub minio_access_key: Option<String>,
@@ -45,6 +46,8 @@ impl Default for Settings {
             upload_dir: PathBuf::from("data/uploads"),
             image_extensions: parse_extensions(".jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.gif")
                 .expect("default extensions are valid"),
+            audio_extensions: parse_extensions(".mp3,.wav,.flac,.m4a,.aac,.ogg,.opus")
+                .expect("default audio extensions are valid"),
             image_sources: Vec::new(),
             minio_endpoint: None,
             minio_access_key: None,
@@ -82,6 +85,10 @@ impl Settings {
             image_extensions: match env::var("IMAGE_EXTENSIONS") {
                 Ok(value) => parse_extensions(&value)?,
                 Err(_) => defaults.image_extensions,
+            },
+            audio_extensions: match env::var("AUDIO_EXTENSIONS") {
+                Ok(value) => parse_extensions(&value)?,
+                Err(_) => defaults.audio_extensions,
             },
             image_sources: env::var("IMAGE_SOURCES")
                 .ok()
@@ -341,5 +348,10 @@ mod tests {
     #[test]
     fn default_extensions_include_gif() {
         assert!(Settings::default().image_extensions.contains(".gif"));
+    }
+
+    #[test]
+    fn default_audio_extensions_include_mp3() {
+        assert!(Settings::default().audio_extensions.contains(".mp3"));
     }
 }

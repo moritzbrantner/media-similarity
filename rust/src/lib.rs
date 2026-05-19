@@ -1,6 +1,7 @@
 use std::path::Path;
 
 pub mod api;
+pub mod audio;
 pub mod config;
 pub mod embedder;
 pub mod hashing;

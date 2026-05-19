@@ -4,6 +4,7 @@ use std::time::UNIX_EPOCH;
 
 use url::Url;
 
+use crate::audio::{decode_audio, is_audio_extension};
 use crate::config::Settings;
 use crate::image_io::{iter_image_paths, load_media, relative_path};
 use crate::media::DecodedMedia;
@@ -29,9 +30,15 @@ impl SourceImage {
         matches!(self.loader, SourceLoader::LocalVideo(_))
     }
 
+    pub fn is_audio(&self) -> bool {
+        matches!(self.loader, SourceLoader::LocalAudio(_))
+    }
+
     pub fn local_path(&self) -> Option<&PathBuf> {
         match &self.loader {
-            SourceLoader::LocalImage(path) | SourceLoader::LocalVideo(path) => Some(path),
+            SourceLoader::LocalImage(path)
+            | SourceLoader::LocalVideo(path)
+            | SourceLoader::LocalAudio(path) => Some(path),
             SourceLoader::Unavailable(_) => None,
         }
     }
@@ -40,6 +47,7 @@ impl SourceImage {
         match &self.loader {
             SourceLoader::LocalImage(path) => load_media(path, settings),
             SourceLoader::LocalVideo(_) => Err("Video files expand into scene media".to_string()),
+            SourceLoader::LocalAudio(path) => decode_audio(path, settings),
             SourceLoader::Unavailable(error) => Err(error.clone()),
         }
     }
@@ -49,6 +57,7 @@ impl SourceImage {
 enum SourceLoader {
     LocalImage(PathBuf),
     LocalVideo(PathBuf),
+    LocalAudio(PathBuf),
     Unavailable(String),
 }
 
@@ -90,9 +99,14 @@ pub struct LocalFolderSource {
 }
 
 impl LocalFolderSource {
-    pub fn new(root: PathBuf, image_extensions: BTreeSet<String>) -> Self {
+    pub fn new(
+        root: PathBuf,
+        image_extensions: BTreeSet<String>,
+        audio_extensions: BTreeSet<String>,
+    ) -> Self {
         let mut extensions = image_extensions;
         extensions.extend(video_extensions());
+        extensions.extend(audio_extensions);
         Self { root, extensions }
     }
 
@@ -125,6 +139,11 @@ impl LocalFolderSource {
                 .and_then(|extension| extension.to_str())
                 .map(|extension| is_video_extension(&format!(".{extension}")))
                 .unwrap_or(false);
+            let is_audio = path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .map(|extension| is_audio_extension(&format!(".{extension}")))
+                .unwrap_or(false);
             images.push(SourceImage {
                 source_type: "local".to_string(),
                 source_uri: self.uri(),
@@ -141,6 +160,8 @@ impl LocalFolderSource {
                 modified_at,
                 loader: if is_video {
                     SourceLoader::LocalVideo(path)
+                } else if is_audio {
+                    SourceLoader::LocalAudio(path)
                 } else {
                     SourceLoader::LocalImage(path)
                 },
@@ -164,6 +185,7 @@ fn source_from_spec(spec: &str, settings: &Settings) -> ImageSource {
             "" | "file" | "local" => ImageSource::Local(LocalFolderSource::new(
                 path_from_url(&url),
                 settings.image_extensions.clone(),
+                settings.audio_extensions.clone(),
             )),
             "minio" => ImageSource::Unavailable(UnavailableSource {
                 uri: minio_uri(&url),
@@ -188,6 +210,7 @@ fn source_from_spec(spec: &str, settings: &Settings) -> ImageSource {
         Err(_) => ImageSource::Local(LocalFolderSource::new(
             PathBuf::from(spec),
             settings.image_extensions.clone(),
+            settings.audio_extensions.clone(),
         )),
     }
 }
@@ -279,6 +302,21 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert!(items[0].is_video());
         assert_eq!(items[0].relative_path, "clip.mp4");
+    }
+
+    #[test]
+    fn local_folder_source_yields_audio_files() {
+        let dir = tempfile_dir();
+        fs::write(dir.join("song.mp3"), b"not real audio").unwrap();
+        let settings = Settings {
+            source_image_dir: dir.clone(),
+            ..Settings::default()
+        };
+        let source = build_image_sources(&settings).remove(0);
+        let items = source.iter_images().unwrap();
+        assert_eq!(items.len(), 1);
+        assert!(items[0].is_audio());
+        assert_eq!(items[0].relative_path, "song.mp3");
     }
 
     #[test]

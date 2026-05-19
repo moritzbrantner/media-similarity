@@ -27,10 +27,11 @@ export type ImagePayload = {
   phash: string;
   thumbnail_url: string | null;
   animated_thumbnail_url: string | null;
-  media_kind: "static_image" | "animated_gif" | "video_scene";
+  media_kind: "static_image" | "animated_gif" | "video_scene" | "audio";
   frame_count: number | null;
   duration_ms: number | null;
   full_video_url: string | null;
+  full_audio_url: string | null;
   scene_clip_url: string | null;
   scene_index: number | null;
   scene_start_frame: number | null;
@@ -65,6 +66,6 @@ export type SearchResponse = {
   query_phash: string;
   count: number;
   results: SearchResult[];
-  query_media_kind: "static_image" | "animated_gif" | "video";
+  query_media_kind: "static_image" | "animated_gif" | "video" | "audio";
   scenes: SearchSceneResponse[];
 };

@@ -5,6 +5,7 @@ pub enum MediaKind {
     StaticImage,
     AnimatedGif,
     VideoScene,
+    Audio,
 }
 
 impl MediaKind {
@@ -13,6 +14,7 @@ impl MediaKind {
             Self::StaticImage => "static_image",
             Self::AnimatedGif => "animated_gif",
             Self::VideoScene => "video_scene",
+            Self::Audio => "audio",
         }
     }
 }

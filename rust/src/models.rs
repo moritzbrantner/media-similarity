@@ -23,6 +23,8 @@ pub struct ImagePayload {
     #[serde(default)]
     pub full_video_url: Option<String>,
     #[serde(default)]
+    pub full_audio_url: Option<String>,
+    #[serde(default)]
     pub scene_clip_url: Option<String>,
     #[serde(default)]
     pub scene_index: Option<usize>,
@@ -135,6 +137,7 @@ mod tests {
         assert_eq!(payload.frame_count, None);
         assert_eq!(payload.duration_ms, None);
         assert_eq!(payload.full_video_url, None);
+        assert_eq!(payload.full_audio_url, None);
         assert_eq!(payload.scene_clip_url, None);
         assert_eq!(payload.scene_index, None);
     }
@@ -185,6 +188,7 @@ mod tests {
             frame_count: Some(6),
             duration_ms: Some(600),
             full_video_url: None,
+            full_audio_url: None,
             scene_clip_url: None,
             scene_index: None,
             scene_start_frame: None,
@@ -219,6 +223,7 @@ mod tests {
             frame_count: Some(2),
             duration_ms: Some(1200),
             full_video_url: Some("/uploads/source-videos/id.mp4".to_string()),
+            full_audio_url: None,
             scene_clip_url: Some("/uploads/source-scenes/id/scene-001.mp4".to_string()),
             scene_index: Some(0),
             scene_start_frame: Some(10),
@@ -235,6 +240,40 @@ mod tests {
             "/uploads/source-videos/id.mp4"
         );
         assert_eq!(serialized["scene_start_seconds"], 1.0);
+    }
+
+    #[test]
+    fn audio_payload_serializes_audio_link() {
+        let payload = ImagePayload {
+            id: "id".to_string(),
+            path: "/images/song.mp3".to_string(),
+            relative_path: "song.mp3".to_string(),
+            filename: "song.mp3".to_string(),
+            width: 512,
+            height: 256,
+            size_bytes: 30,
+            modified_at: 40.5,
+            phash: "0000000000000000".to_string(),
+            thumbnail_url: Some("/thumbnails/id.jpg".to_string()),
+            animated_thumbnail_url: None,
+            media_kind: "audio".to_string(),
+            frame_count: None,
+            duration_ms: Some(4200),
+            full_video_url: None,
+            full_audio_url: Some("/uploads/source-audio/id.mp3".to_string()),
+            scene_clip_url: None,
+            scene_index: None,
+            scene_start_frame: None,
+            scene_end_frame: None,
+            scene_start_seconds: None,
+            scene_end_seconds: None,
+            source_type: "local".to_string(),
+            source_uri: Some("/images".to_string()),
+        };
+        let serialized = serde_json::to_value(payload).unwrap();
+        assert_eq!(serialized["media_kind"], "audio");
+        assert_eq!(serialized["full_audio_url"], "/uploads/source-audio/id.mp3");
+        assert_eq!(serialized["duration_ms"], 4200);
     }
 
     #[test]

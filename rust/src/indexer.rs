@@ -1,3 +1,4 @@
+use crate::audio::expose_source_audio;
 use crate::config::Settings;
 use crate::embedder::ImageEmbedder;
 use crate::hashing::phash_image;
@@ -121,6 +122,14 @@ impl ImageIndexer {
             .map(|scene| format!("{}#scene={}", source_image.id_base, scene.scene_index + 1))
             .unwrap_or_else(|| source_image.id_base.clone());
         let image_id = image_id_for_uri(&id_base);
+        let full_audio_url = if media.kind == MediaKind::Audio {
+            source_image
+                .local_path()
+                .and_then(|path| expose_source_audio(path, &image_id, &self.settings).ok())
+                .flatten()
+        } else {
+            None
+        };
         let thumbnail_url = ensure_thumbnail(
             &media.poster,
             &self.settings.thumbnail_dir,
@@ -182,6 +191,7 @@ impl ImageIndexer {
             frame_count: media.frame_count,
             duration_ms: media.duration_ms,
             full_video_url: video_scene.and_then(|scene| scene.full_video_url.clone()),
+            full_audio_url,
             scene_clip_url: video_scene.and_then(|scene| scene.clip_url.clone()),
             scene_index: video_scene.map(|scene| scene.scene_index),
             scene_start_frame: video_scene.map(|scene| scene.start.frame_index),

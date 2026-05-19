@@ -3,6 +3,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Database,
+  FileAudio,
   FileImage,
   FileVideo,
   History,
@@ -21,6 +22,7 @@ import type { IndexResponse, SearchResponse, SearchResult, SearchSceneResponse }
 const DEFAULT_LIMIT = 12;
 const MAX_SEARCH_HISTORY = 8;
 const SEARCH_HISTORY_STORAGE_KEY = "image-similarity-search-history";
+const AUDIO_EXTENSIONS = [".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wma"];
 
 const DEFAULT_METADATA_FILTERS = {
   dateFrom: "",
@@ -44,7 +46,7 @@ type MetadataFilters = {
   maxHeight: string;
   maxSizeMb: string;
   maxWidth: string;
-  mediaKind: "all" | "static_image" | "animated_gif" | "video_scene";
+  mediaKind: "all" | "static_image" | "animated_gif" | "video_scene" | "audio";
   minHeight: string;
   minSizeMb: string;
   minWidth: string;
@@ -148,9 +150,10 @@ export function App() {
     }
 
     setActiveSearchId(null);
-    const queryImageUrl = file.type.startsWith("video/")
-      ? previewUrl
-      : await createQueryPreview(file);
+    const queryImageUrl =
+      file.type.startsWith("video/") || isAudioFile(file)
+        ? previewUrl
+        : await createQueryPreview(file);
     searchMutation.mutate({
       filters: metadataFilters,
       queryFile: file,
@@ -172,6 +175,9 @@ export function App() {
   const previewIsVideo = activeSearch
     ? activeSearch.queryMediaKind === "video"
     : Boolean(file?.type.startsWith("video/"));
+  const previewIsAudio = activeSearch
+    ? activeSearch.queryMediaKind === "audio"
+    : Boolean(file && isAudioFile(file));
   const sourceTypeOptions = sourceTypesFor(
     activeResponse?.results ?? [],
     metadataFilters.sourceType,
@@ -239,14 +245,15 @@ export function App() {
               >
                 <Upload className="size-6 text-neutral-600" aria-hidden="true" />
                 <span className="max-w-full truncate text-sm font-medium text-neutral-800">
-                  {file?.name ?? "Choose an image or video"}
+                  {file?.name ?? "Choose an image, video, or audio"}
                 </span>
                 <span className="text-xs text-neutral-500">
-                  PNG, JPEG, GIF, WebP, BMP, TIFF, MP4, MOV, WebM, MKV, or AVI
+                  PNG, JPEG, GIF, WebP, BMP, TIFF, MP4, MOV, WebM, MKV, AVI, MP3, WAV, FLAC, M4A,
+                  AAC, OGG, or Opus
                 </span>
               </label>
               <input
-                accept="image/*,video/*"
+                accept="image/*,video/*,audio/*"
                 className="sr-only"
                 id="query-image"
                 onChange={(event) => handleFileChange(event.target.files?.[0] ?? null)}
@@ -290,10 +297,10 @@ export function App() {
               </button>
               {file ? (
                 <button
-                  aria-label="Clear selected image"
+                  aria-label="Clear selected media"
                   className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-neutral-300 bg-white text-neutral-700 transition hover:border-neutral-500 hover:bg-neutral-50"
                   onClick={() => handleFileChange(null)}
-                  title="Clear selected image"
+                  title="Clear selected media"
                   type="button"
                 >
                   <X className="size-4" aria-hidden="true" />
@@ -317,6 +324,11 @@ export function App() {
                   controls
                   src={displayedPreviewUrl}
                 />
+              ) : previewIsAudio ? (
+                <div className="flex h-full min-h-72 flex-col items-center justify-center gap-4 bg-neutral-50 p-8">
+                  <FileAudio className="size-12 text-neutral-500" aria-hidden="true" />
+                  <audio className="w-full max-w-xl" controls src={displayedPreviewUrl} />
+                </div>
               ) : (
                 <img
                   alt="Query preview"
@@ -350,7 +362,7 @@ export function App() {
                     : activeResponse
                       ? `${results.length} of ${activeResponse.count} result(s), query pHash ${activeResponse.query_phash}`
                       : searchMutation.isPending
-                        ? "Searching indexed images."
+                        ? "Searching indexed media."
                         : "Search results will appear here."}
                 </p>
               </div>
@@ -476,6 +488,7 @@ function MetadataFiltersPanel({
             <option value="static_image">Images only</option>
             <option value="animated_gif">GIFs only</option>
             <option value="video_scene">Video scenes only</option>
+            <option value="audio">Audio only</option>
           </select>
         </div>
 
@@ -778,6 +791,15 @@ function imageOrientation(width: number, height: number): MetadataFilters["orien
   return width > height ? "landscape" : "portrait";
 }
 
+function isAudioFile(file: File) {
+  if (file.type.startsWith("audio/")) {
+    return true;
+  }
+
+  const lowerName = file.name.toLocaleLowerCase();
+  return AUDIO_EXTENSIONS.some((extension) => lowerName.endsWith(extension));
+}
+
 async function createQueryPreview(file: File) {
   if (file.type === "image/gif" || file.name.toLowerCase().endsWith(".gif")) {
     return null;
@@ -859,7 +881,8 @@ function isSearchHistoryItem(value: unknown): value is SearchHistoryItem {
     (item.queryMediaKind === undefined ||
       item.queryMediaKind === "static_image" ||
       item.queryMediaKind === "animated_gif" ||
-      item.queryMediaKind === "video") &&
+      item.queryMediaKind === "video" ||
+      item.queryMediaKind === "audio") &&
     typeof item.searchedAt === "string" &&
     Boolean(response) &&
     Array.isArray(response?.results) &&
@@ -919,7 +942,8 @@ function isMediaKindFilter(value: unknown): value is MetadataFilters["mediaKind"
     value === "all" ||
     value === "static_image" ||
     value === "animated_gif" ||
-    value === "video_scene"
+    value === "video_scene" ||
+    value === "audio"
   );
 }
 
@@ -1008,7 +1032,7 @@ function StatusMessage({
     return (
       <Message
         icon={<Loader2 className="size-4 animate-spin" />}
-        text="Searching indexed images."
+        text="Searching indexed media."
         tone="info"
       />
     );
@@ -1028,7 +1052,7 @@ function StatusMessage({
 
   if (lastIndex) {
     const tone = lastIndex.failed > 0 ? "warn" : "ok";
-    const text = `Indexed ${lastIndex.indexed} image(s), skipped ${lastIndex.skipped}, failed ${lastIndex.failed}.`;
+    const text = `Indexed ${lastIndex.indexed} media item(s), skipped ${lastIndex.skipped}, failed ${lastIndex.failed}.`;
     return <Message icon={<CheckCircle2 className="size-4" />} text={text} tone={tone} />;
   }
 
@@ -1087,11 +1111,11 @@ function ResultsGrid({
   }
 
   if (!searched) {
-    return <EmptyResults text="Choose a query image or video and run a search." />;
+    return <EmptyResults text="Choose a query image, video, or audio and run a search." />;
   }
 
   if (results.length === 0) {
-    return <EmptyResults text="No indexed images matched this query." />;
+    return <EmptyResults text="No indexed media matched this query." />;
   }
 
   return (
@@ -1224,6 +1248,27 @@ function VideoSceneLinks({ image }: { image: SearchResult["image"] }) {
   );
 }
 
+function AudioLinks({ image }: { image: SearchResult["image"] }) {
+  if (image.media_kind !== "audio" || !image.full_audio_url) {
+    return null;
+  }
+
+  return (
+    <div className="grid gap-2">
+      <audio className="w-full" controls src={image.full_audio_url} />
+      <a
+        className="inline-flex h-8 w-fit items-center justify-center gap-2 rounded-md border border-neutral-300 bg-white px-2 text-xs font-semibold text-neutral-800 transition hover:border-neutral-500 hover:bg-neutral-50"
+        href={image.full_audio_url}
+        rel="noreferrer"
+        target="_blank"
+      >
+        <FileAudio className="size-3.5" aria-hidden="true" />
+        <span>Open audio</span>
+      </a>
+    </div>
+  );
+}
+
 function EmptyResults({ text }: { text: string }) {
   return (
     <div className="grid min-h-44 place-items-center rounded-lg border border-neutral-300 bg-white p-8 text-center text-sm text-neutral-500">
@@ -1271,6 +1316,7 @@ function ResultCard({ result }: { result: SearchResult }) {
         </dl>
 
         <VideoSceneLinks image={image} />
+        <AudioLinks image={image} />
 
         <div className="flex flex-wrap gap-2">
           {image.media_kind === "animated_gif" ? (
@@ -1281,6 +1327,11 @@ function ResultCard({ result }: { result: SearchResult }) {
           {image.media_kind === "video_scene" ? (
             <span className="inline-flex w-fit rounded-md border border-violet-300 bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-900">
               Video scene
+            </span>
+          ) : null}
+          {image.media_kind === "audio" ? (
+            <span className="inline-flex w-fit rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-900">
+              Audio
             </span>
           ) : null}
           {result.query_scene_index !== null && result.query_scene_index !== undefined ? (

@@ -8,6 +8,9 @@ use axum::Json;
 use serde::Deserialize;
 use serde_json::json;
 
+use crate::audio::{
+    audio_upload_path, decode_audio, is_audio_content_type, is_audio_extension, write_audio_upload,
+};
 use crate::config::Settings;
 use crate::embedder::ImageEmbedder;
 use crate::image_io::load_media_bytes;
@@ -105,9 +108,14 @@ pub async fn search_upload(
                 .as_deref()
                 .map(is_video_extension)
                 .unwrap_or(false);
-        if !is_image && !is_video {
+        let is_audio = is_audio_content_type(&content_type)
+            || filename_extension
+                .as_deref()
+                .map(is_audio_extension)
+                .unwrap_or(false);
+        if !is_image && !is_video && !is_audio {
             return Err(ApiError::bad_request(
-                "Upload must be an image or video file",
+                "Upload must be an image, video, or audio file",
             ));
         }
         let raw = field
@@ -115,14 +123,18 @@ pub async fn search_upload(
             .await
             .map_err(|error| ApiError::bad_request(error.to_string()))?;
         uploaded = Some(raw);
-        upload_kind = Some(UploadedFileKind { is_video, filename });
+        upload_kind = Some(UploadedFileKind {
+            is_video,
+            is_audio,
+            filename,
+        });
         break;
     }
 
-    let raw =
-        uploaded.ok_or_else(|| ApiError::bad_request("Upload must be an image or video file"))?;
+    let raw = uploaded
+        .ok_or_else(|| ApiError::bad_request("Upload must be an image, video, or audio file"))?;
     let upload_kind = upload_kind
-        .ok_or_else(|| ApiError::bad_request("Upload must be an image or video file"))?;
+        .ok_or_else(|| ApiError::bad_request("Upload must be an image, video, or audio file"))?;
     let max_bytes = state.settings.max_upload_mb as usize * 1024 * 1024;
     if raw.len() > max_bytes {
         return Err(ApiError::payload_too_large(format!(
@@ -133,6 +145,12 @@ pub async fn search_upload(
 
     if upload_kind.is_video {
         return search_video_upload(state, query.limit, &raw, upload_kind.filename.as_deref())
+            .await
+            .map(Json);
+    }
+
+    if upload_kind.is_audio {
+        return search_audio_upload(state, query.limit, &raw, upload_kind.filename.as_deref())
             .await
             .map(Json);
     }
@@ -153,7 +171,37 @@ pub async fn search_upload(
 
 struct UploadedFileKind {
     is_video: bool,
+    is_audio: bool,
     filename: Option<String>,
+}
+
+async fn search_audio_upload(
+    state: Arc<AppState>,
+    limit: Option<u32>,
+    raw: &[u8],
+    filename: Option<&str>,
+) -> Result<SearchResponse, ApiError> {
+    let upload_path = audio_upload_path(&state.settings.upload_dir, filename);
+    write_audio_upload(&upload_path, raw).map_err(ApiError::internal)?;
+    let media = match decode_audio(&upload_path, &state.settings) {
+        Ok(media) => media,
+        Err(error) => {
+            let _ = std::fs::remove_file(&upload_path);
+            return Err(ApiError::bad_request(format!(
+                "Could not process audio: {error}"
+            )));
+        }
+    };
+    let _ = std::fs::remove_file(&upload_path);
+    let service = ImageSearchService::new(
+        state.settings.clone(),
+        state.store.clone(),
+        state.embedder.clone(),
+    );
+    service
+        .search_media(&media, limit)
+        .await
+        .map_err(ApiError::internal)
 }
 
 async fn search_video_upload(
