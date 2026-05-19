@@ -10,12 +10,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        env:
+          CHECKOUT_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          auth_header="$(printf 'x-access-token:%s' "$CHECKOUT_TOKEN" | base64 -w 0)"
+
+          git init .
+          git config --global --add safe.directory "$PWD"
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin "$GITHUB_REF"
+          git checkout --force FETCH_HEAD
 
       - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.3.14"
+        env:
+          BUN_VERSION: "1.3.14"
+        run: |
+          set -euo pipefail
+          curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -30,15 +43,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
-        with:
-          path: image-similarity-service
+        env:
+          CHECKOUT_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          auth_header="$(printf 'x-access-token:%s' "$CHECKOUT_TOKEN" | base64 -w 0)"
+
+          mkdir -p image-similarity-service
+          cd image-similarity-service
+          git init .
+          git config --global --add safe.directory "$PWD"
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin "$GITHUB_REF"
+          git checkout --force FETCH_HEAD
 
       - name: Check out sibling Rust packages
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ github.repository_owner }}/rust-packages
-          path: rust-packages
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RUST_PACKAGES_TOKEN: ${{ secrets.RUST_PACKAGES_TOKEN }}
+        run: |
+          set -euo pipefail
+          token="${RUST_PACKAGES_TOKEN:-$GITHUB_TOKEN}"
+          auth_header="$(printf 'x-access-token:%s' "$token" | base64 -w 0)"
+
+          mkdir -p rust-packages
+          cd rust-packages
+          git init .
+          git config --global --add safe.directory "$PWD"
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY_OWNER/rust-packages"
+          if ! git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin; then
+            echo "::error::Could not fetch $GITHUB_REPOSITORY_OWNER/rust-packages. If it is private, add a RUST_PACKAGES_TOKEN secret with read access to that repository."
+            exit 1
+          fi
+          git checkout --force FETCH_HEAD
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
