@@ -34,12 +34,14 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          path: image-similarity-service
 
       - name: Check out sibling Rust packages
         uses: actions/checkout@v4
         with:
           repository: ${{ github.repository_owner }}/rust-packages
-          path: ../rust-packages
+          path: rust-packages
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -47,10 +49,13 @@ jobs:
           components: rustfmt, clippy
 
       - name: Check formatting
+        working-directory: image-similarity-service
         run: cargo fmt --manifest-path rust/Cargo.toml -- --check
 
       - name: Run Clippy
+        working-directory: image-similarity-service
         run: cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings
 
       - name: Run Rust tests
+        working-directory: image-similarity-service
         run: cargo test --manifest-path rust/Cargo.toml
