@@ -22,6 +22,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from image_similarity.config import Settings
+from image_similarity._rust_backend import is_available as rust_backend_available
 from image_similarity.hashing import phash_image
 from image_similarity.image_io import load_image
 from image_similarity.indexer import ImageIndexer
@@ -269,6 +270,7 @@ def build_report(args: argparse.Namespace) -> dict[str, object]:
         "python_version": sys.version,
         "platform": platform.platform(),
         "cpu_count": os.cpu_count(),
+        "rust_backend_available": rust_backend_available(),
         "settings": settings_payload,
         "metrics": metrics,
         "notes": notes,

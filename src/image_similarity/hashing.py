@@ -1,6 +1,8 @@
 from PIL import Image
 import imagehash
 
+from image_similarity._rust_backend import BACKEND
+
 
 def phash_image(image: Image.Image) -> str:
     """Return an image pHash as a compact hexadecimal string."""
@@ -9,9 +11,10 @@ def phash_image(image: Image.Image) -> str:
 
 def hash_distance(left: str, right: str) -> int:
     """Return the Hamming distance between two imagehash hex strings."""
+    if BACKEND is not None:
+        return int(BACKEND.hash_distance(left, right))
     return imagehash.hex_to_hash(left) - imagehash.hex_to_hash(right)
 
 
 def is_near_duplicate(left: str, right: str, max_distance: int) -> bool:
     return hash_distance(left, right) <= max_distance
-

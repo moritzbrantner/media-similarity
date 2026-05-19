@@ -1,0 +1,17 @@
+[package]
+name = "image-similarity-rust"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "_rust"
+crate-type = ["cdylib"]
+
+[dependencies]
+image-analysis-core = { path = "../../rust-packages/crates/image/image-analysis-core" }
+image-analysis-io = { path = "../../rust-packages/crates/image/image-analysis-io" }
+image-analysis-processing = { path = "../../rust-packages/crates/image/image-analysis-processing" }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+pyo3 = { version = "0.27.1", features = ["abi3-py311", "extension-module"] }
+vector-analysis-core = { path = "../../rust-packages/crates/vector/vector-analysis-core" }

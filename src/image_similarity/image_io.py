@@ -6,6 +6,10 @@ from typing import Iterable
 
 from PIL import Image, ImageOps
 
+from image_similarity._rust_backend import BACKEND
+
+RUST_LOAD_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+
 
 def iter_image_paths(source_dir: Path, extensions: Iterable[str]) -> Iterable[Path]:
     normalized = {extension.lower() for extension in extensions}
@@ -17,6 +21,13 @@ def iter_image_paths(source_dir: Path, extensions: Iterable[str]) -> Iterable[Pa
 
 
 def load_image(path: Path) -> Image.Image:
+    if BACKEND is not None and path.suffix.lower() in RUST_LOAD_EXTENSIONS:
+        try:
+            width, height, data = BACKEND.load_image_rgb(str(path))
+            return Image.frombytes("RGB", (width, height), data)
+        except Exception:
+            pass
+
     with Image.open(path) as image:
         return ImageOps.exif_transpose(image).convert("RGB")
 
@@ -30,4 +41,3 @@ def relative_path(path: Path, root: Path) -> str:
         return path.relative_to(root).as_posix()
     except ValueError:
         return path.name
-

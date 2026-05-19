@@ -8,3 +8,5 @@ data/
 uploads/
 thumbnails/
 benchmarks/results/
+rust/target/
+src/image_similarity/_rust*.so
