@@ -1,33 +1,53 @@
+x-app-environment: &app-environment
+  SOURCE_IMAGE_DIR: ${SOURCE_IMAGE_DIR:-/images}
+  QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+  QDRANT_COLLECTION: ${QDRANT_COLLECTION:-image_similarity}
+  CLIP_MODEL_NAME: ${CLIP_MODEL_NAME:-sentence-transformers/clip-ViT-B-32}
+  VECTOR_SIZE: ${VECTOR_SIZE:-512}
+  THUMBNAIL_DIR: ${THUMBNAIL_DIR:-/app/data/thumbnails}
+  UPLOAD_DIR: ${UPLOAD_DIR:-/app/data/uploads}
+  IMAGE_EXTENSIONS: ${IMAGE_EXTENSIONS:-.jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff}
+  IMAGE_SOURCES: ${IMAGE_SOURCES:-}
+  MINIO_ENDPOINT: ${MINIO_ENDPOINT:-}
+  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-}
+  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-}
+  MINIO_SECURE: ${MINIO_SECURE:-true}
+  VIDEO_FRAME_STRIDE: ${VIDEO_FRAME_STRIDE:-30}
+  VIDEO_MAX_FRAMES: ${VIDEO_MAX_FRAMES:-}
+  CAMERA_FRAME_STRIDE: ${CAMERA_FRAME_STRIDE:-30}
+  CAMERA_MAX_FRAMES: ${CAMERA_MAX_FRAMES:-100}
+  DEFAULT_SEARCH_LIMIT: ${DEFAULT_SEARCH_LIMIT:-12}
+  DUPLICATE_HASH_DISTANCE: ${DUPLICATE_HASH_DISTANCE:-8}
+  MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-20}
+
 services:
   app:
     build: .
-    environment:
-      SOURCE_IMAGE_DIR: ${SOURCE_IMAGE_DIR:-/images}
-      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
-      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-image_similarity}
-      CLIP_MODEL_NAME: ${CLIP_MODEL_NAME:-sentence-transformers/clip-ViT-B-32}
-      VECTOR_SIZE: ${VECTOR_SIZE:-512}
-      THUMBNAIL_DIR: ${THUMBNAIL_DIR:-/app/data/thumbnails}
-      UPLOAD_DIR: ${UPLOAD_DIR:-/app/data/uploads}
-      IMAGE_EXTENSIONS: ${IMAGE_EXTENSIONS:-.jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff}
-      IMAGE_SOURCES: ${IMAGE_SOURCES:-}
-      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-}
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-}
-      MINIO_SECURE: ${MINIO_SECURE:-true}
-      VIDEO_FRAME_STRIDE: ${VIDEO_FRAME_STRIDE:-30}
-      VIDEO_MAX_FRAMES: ${VIDEO_MAX_FRAMES:-}
-      CAMERA_FRAME_STRIDE: ${CAMERA_FRAME_STRIDE:-30}
-      CAMERA_MAX_FRAMES: ${CAMERA_MAX_FRAMES:-100}
-      DEFAULT_SEARCH_LIMIT: ${DEFAULT_SEARCH_LIMIT:-12}
-      DUPLICATE_HASH_DISTANCE: ${DUPLICATE_HASH_DISTANCE:-8}
-      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-20}
+    environment: *app-environment
     ports:
       - "8000:8000"
     volumes:
       # Change the host path on the left, or set HOST_SOURCE_IMAGE_DIR in .env.
       - ${HOST_SOURCE_IMAGE_DIR:-./sample-images}:/images:ro
       - app-data:/app/data
+    depends_on:
+      - qdrant
+
+  app-rust:
+    build:
+      context: .
+      dockerfile: Dockerfile.rust
+      additional_contexts:
+        rust-packages: ../rust-packages
+    environment:
+      <<: *app-environment
+      QDRANT_COLLECTION: ${RUST_QDRANT_COLLECTION:-image_similarity_rust}
+    ports:
+      - "8001:8000"
+    volumes:
+      # Change the host path on the left, or set HOST_SOURCE_IMAGE_DIR in .env.
+      - ${HOST_SOURCE_IMAGE_DIR:-./sample-images}:/images:ro
+      - app-rust-data:/app/data
     depends_on:
       - qdrant
 
@@ -40,4 +60,5 @@ services:
 
 volumes:
   app-data:
+  app-rust-data:
   qdrant-data:

@@ -28,6 +28,7 @@ from image_similarity.image_io import load_image
 from image_similarity.indexer import ImageIndexer
 from image_similarity.models import ImagePayload
 from image_similarity.search import ImageSearchService
+from image_similarity.sources import LocalFolderSource
 from image_similarity.thumbnails import ensure_thumbnail
 
 
@@ -121,6 +122,7 @@ def benchmark_synthetic(args: argparse.Namespace) -> tuple[dict[str, dict[str, f
             VECTOR_SIZE=args.vector_size,
         )
         embedder = SyntheticEmbedder(args.vector_size)
+        source_images = list(LocalFolderSource(source_dir, settings.image_extensions).iter_images())
         payloads = [
             ImagePayload(
                 id=f"00000000-0000-0000-0000-{index:012d}",
@@ -162,8 +164,8 @@ def benchmark_synthetic(args: argparse.Namespace) -> tuple[dict[str, dict[str, f
                 VECTOR_SIZE=args.vector_size,
             )
             indexer = ImageIndexer(local_settings, MemoryStore(), embedder)
-            for path in image_paths:
-                indexer._build_payload(path)
+            for source_image, image in zip(source_images, loaded_images, strict=True):
+                indexer._build_payload(source_image, image)
 
         def synthetic_index() -> None:
             local_settings = Settings(

@@ -1,0 +1,13 @@
+.git/
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+benchmarks/results/
+data/
+rust/target/
+src/image_similarity/_rust*.so
+thumbnails/
+uploads/

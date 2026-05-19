@@ -204,6 +204,25 @@ python benchmarks/benchmark_baseline.py --profile synthetic --output benchmarks/
 
 The synthetic benchmark generates deterministic images and measures image loading, pHash throughput, thumbnail generation, payload building, search response assembly, and synthetic indexing without CLIP or Qdrant.
 
+Build and benchmark the Python fallback image against the Rust-backed image:
+
+```bash
+docker build -t image-similarity-service:python .
+docker build --build-context rust-packages=../rust-packages -f Dockerfile.rust -t image-similarity-service:rust .
+
+docker run --rm \
+  -v "$PWD/benchmarks:/benchmarks" \
+  image-similarity-service:python \
+  python /benchmarks/benchmark_baseline.py --profile synthetic --output /benchmarks/results/python.json
+
+docker run --rm \
+  -v "$PWD/benchmarks:/benchmarks" \
+  image-similarity-service:rust \
+  python /benchmarks/benchmark_baseline.py --profile synthetic --output /benchmarks/results/rust.json
+```
+
+`Dockerfile.rust` uses Docker BuildKit's named `rust-packages` context for the sibling workspace required by the Cargo path dependencies. Docker Compose also exposes the Rust-backed service as `app-rust` on port `8001`, while the original `app` service remains on port `8000`.
+
 Run the optional real-stack benchmark after starting Qdrant and installing the full project dependencies:
 
 ```bash

@@ -19,6 +19,25 @@ python benchmarks/benchmark_baseline.py --profile real --output benchmarks/resul
 
 The real profile initializes the configured CLIP model and Qdrant collection. Its numbers depend on hardware, model cache state, and Qdrant availability.
 
+Compare the Python fallback image with the Rust-backed image:
+
+```bash
+docker build -t image-similarity-service:python .
+docker build --build-context rust-packages=../rust-packages -f Dockerfile.rust -t image-similarity-service:rust .
+
+docker run --rm \
+  -v "$PWD/benchmarks:/benchmarks" \
+  image-similarity-service:python \
+  python /benchmarks/benchmark_baseline.py --profile synthetic --output /benchmarks/results/python.json
+
+docker run --rm \
+  -v "$PWD/benchmarks:/benchmarks" \
+  image-similarity-service:rust \
+  python /benchmarks/benchmark_baseline.py --profile synthetic --output /benchmarks/results/rust.json
+```
+
+The Rust Dockerfile uses Docker BuildKit's named `rust-packages` context so Docker can include the sibling workspace required by the Cargo path dependencies without using the whole parent directory as the service context.
+
 `benchmarks/results/` is ignored by git. To keep a dated baseline, write a named output such as:
 
 ```bash
