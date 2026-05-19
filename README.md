@@ -11,7 +11,7 @@ The service indexes configured image sources, then lets you upload a query image
 - Qdrant vector database for CLIP image embeddings.
 - `sentence-transformers/clip-ViT-B-32` by default.
 - `imagehash` pHash distance for duplicate and near-duplicate detection.
-- Rust-backed PNG/JPEG/WebP image loading, thumbnail encoding, and hash distance via the sibling Rust crates, with Pillow fallback for full format compatibility and EXIF orientation handling.
+- Rust-backed PNG/JPEG/WebP image loading, thumbnail encoding, pHash DCT/hash assembly, and hash distance via the sibling Rust crates, with Python/Pillow fallback for full format compatibility and EXIF orientation handling.
 - Plain static HTML/CSS/JS UI served by FastAPI.
 - Docker Compose setup with a source-folder mount to edit.
 
@@ -156,7 +156,7 @@ Build the optional Rust extension after dependency installation:
 python scripts/build_rust_extension.py
 ```
 
-The extension uses the sibling `../rust-packages` crates for image I/O, image processing, and vector math. If it is not built, the service keeps the same behavior through the Python fallback paths.
+The extension uses the sibling `../rust-packages` crates for image I/O, image processing, pHash computation, and vector math. If it is not built, the service keeps the same behavior through the Python fallback paths.
 Rebuild it while the service and tests are stopped, because the script replaces the local extension file in place.
 
 Run the deterministic test suite:
