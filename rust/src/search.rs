@@ -1,8 +1,7 @@
-use image::RgbImage;
-
 use crate::config::Settings;
 use crate::embedder::ImageEmbedder;
 use crate::hashing::{hash_distance, phash_image};
+use crate::media::DecodedMedia;
 use crate::models::{ImagePayload, SearchResponse, SearchResult};
 use crate::qdrant::QdrantImageStore;
 
@@ -22,14 +21,16 @@ impl ImageSearchService {
         }
     }
 
-    pub async fn search_image(
+    pub async fn search_media(
         &self,
-        image: &RgbImage,
+        media: &DecodedMedia,
         limit: Option<u32>,
     ) -> Result<SearchResponse, String> {
         self.store.ensure_collection().await?;
-        let query_phash = phash_image(image);
-        let query_vector = self.embedder.encode(image);
+        let query_phash = phash_image(&media.poster);
+        let query_vector = self
+            .embedder
+            .encode_media(&media.sampled_frames, self.settings.gif_motion_weight);
         let points = self
             .store
             .search(

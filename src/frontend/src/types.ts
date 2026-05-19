@@ -26,6 +26,10 @@ export type ImagePayload = {
   modified_at: number;
   phash: string;
   thumbnail_url: string | null;
+  animated_thumbnail_url: string | null;
+  media_kind: "static_image" | "animated_gif";
+  frame_count: number | null;
+  duration_ms: number | null;
   source_type: string;
   source_uri: string | null;
 };

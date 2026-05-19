@@ -213,7 +213,7 @@ export function App() {
                 <span className="max-w-full truncate text-sm font-medium text-neutral-800">
                   {file?.name ?? "Choose an image"}
                 </span>
-                <span className="text-xs text-neutral-500">PNG, JPEG, WebP, BMP, or TIFF</span>
+                <span className="text-xs text-neutral-500">PNG, JPEG, GIF, WebP, BMP, or TIFF</span>
               </label>
               <input
                 accept="image/*"
@@ -523,6 +523,10 @@ function imageOrientation(width: number, height: number): MetadataFilters["orien
 }
 
 async function createQueryPreview(file: File) {
+  if (file.type === "image/gif" || file.name.toLowerCase().endsWith(".gif")) {
+    return null;
+  }
+
   try {
     const image = await createImageBitmap(file);
     const maxSize = 640;
@@ -815,17 +819,13 @@ function EmptyResults({ text }: { text: string }) {
 
 function ResultCard({ result }: { result: SearchResult }) {
   const image = result.image;
+  const previewUrl = image.animated_thumbnail_url ?? image.thumbnail_url;
 
   return (
     <article className="overflow-hidden rounded-lg border border-neutral-300 bg-white shadow-sm">
       <div className="grid aspect-[4/3] place-items-center bg-neutral-200">
-        {image.thumbnail_url ? (
-          <img
-            alt=""
-            className="h-full w-full object-contain"
-            loading="lazy"
-            src={image.thumbnail_url}
-          />
+        {previewUrl ? (
+          <img alt="" className="h-full w-full object-contain" loading="lazy" src={previewUrl} />
         ) : (
           <ImageIcon className="size-9 text-neutral-500" aria-hidden="true" />
         )}
@@ -844,16 +844,31 @@ function ResultCard({ result }: { result: SearchResult }) {
           <Metric label="CLIP score" value={result.vector_score.toFixed(4)} />
           <Metric label="pHash distance" value={result.hash_distance ?? "n/a"} />
           <Metric label="Size" value={`${image.width} x ${image.height}`} />
+          {image.frame_count ? <Metric label="Frames" value={image.frame_count} /> : null}
+          {image.duration_ms ? (
+            <Metric label="Duration" value={formatDuration(image.duration_ms)} />
+          ) : null}
         </dl>
 
-        {result.near_duplicate ? (
-          <span className="inline-flex w-fit rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-900">
-            Near duplicate
-          </span>
-        ) : null}
+        <div className="flex flex-wrap gap-2">
+          {image.media_kind === "animated_gif" ? (
+            <span className="inline-flex w-fit rounded-md border border-sky-300 bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-900">
+              GIF
+            </span>
+          ) : null}
+          {result.near_duplicate ? (
+            <span className="inline-flex w-fit rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-900">
+              Near duplicate
+            </span>
+          ) : null}
+        </div>
       </div>
     </article>
   );
+}
+
+function formatDuration(durationMs: number) {
+  return `${(durationMs / 1000).toFixed(1)}s`;
 }
 
 function Metric({ label, value }: { label: string; value: number | string }) {

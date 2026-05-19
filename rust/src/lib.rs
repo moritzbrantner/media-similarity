@@ -6,6 +6,7 @@ pub mod embedder;
 pub mod hashing;
 pub mod image_io;
 pub mod indexer;
+pub mod media;
 pub mod models;
 pub mod qdrant;
 pub mod search;

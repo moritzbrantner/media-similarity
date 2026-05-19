@@ -1,10 +1,11 @@
 use std::env;
 use std::path::{Path, PathBuf};
 
+use image::codecs::gif::{GifEncoder, Repeat};
 use image::codecs::jpeg::JpegEncoder;
 use image::codecs::png::PngEncoder;
 use image::codecs::webp::WebPEncoder;
-use image::{ColorType, ImageEncoder, ImageFormat, Rgb, RgbImage};
+use image::{ColorType, Delay, Frame, ImageEncoder, ImageFormat, Rgb, RgbImage};
 
 const DEFAULT_COLORS: [[u8; 3]; 8] = [
     [220, 68, 55],
@@ -31,7 +32,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for index in 1..=count {
         let path = output_dir.join(format!("dummy-{index:02}.{extension}"));
         let image = make_image(index, width, height);
-        save_image(&image, &path, format)?;
+        if format == ImageFormat::Gif {
+            let frames = positive_int(env::var("DUMMY_GIF_FRAMES").ok().as_deref(), Some(6))?;
+            let delay_ms = positive_int(
+                env::var("DUMMY_GIF_FRAME_DELAY_MS").ok().as_deref(),
+                Some(100),
+            )?;
+            save_gif(index, width, height, frames, delay_ms, &path)?;
+        } else {
+            save_image(&image, &path, format)?;
+        }
     }
 
     println!("Generated {count} dummy images in {}", output_dir.display());
@@ -182,8 +192,35 @@ fn save_image(
             image.height(),
             ColorType::Rgb8.into(),
         )?,
+        ImageFormat::Gif => unreachable!("GIF dummy images are saved through save_gif"),
         _ => unreachable!("unsupported dummy image format"),
     }
+    Ok(())
+}
+
+fn save_gif(
+    index: u32,
+    width: u32,
+    height: u32,
+    frame_count: u32,
+    delay_ms: u32,
+    path: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let file = std::fs::File::create(path)?;
+    let mut encoder = GifEncoder::new(file);
+    encoder.set_repeat(Repeat::Infinite)?;
+    let frames = (0..frame_count)
+        .map(|frame_index| {
+            let image = make_image(index + frame_index, width, height);
+            Frame::from_parts(
+                image::DynamicImage::ImageRgb8(image).to_rgba8(),
+                0,
+                0,
+                Delay::from_numer_denom_ms(delay_ms.max(1), 1),
+            )
+        })
+        .collect::<Vec<_>>();
+    encoder.encode_frames(frames)?;
     Ok(())
 }
 
@@ -219,7 +256,8 @@ fn image_format(value: &str) -> Result<ImageFormat, String> {
         "JPEG" | "JPG" => Ok(ImageFormat::Jpeg),
         "PNG" => Ok(ImageFormat::Png),
         "WEBP" => Ok(ImageFormat::WebP),
-        _ => Err("DUMMY_IMAGE_FORMAT must be JPEG, PNG, or WEBP".to_string()),
+        "GIF" => Ok(ImageFormat::Gif),
+        _ => Err("DUMMY_IMAGE_FORMAT must be JPEG, PNG, WEBP, or GIF".to_string()),
     }
 }
 
@@ -228,6 +266,7 @@ fn extension(format: ImageFormat) -> &'static str {
         ImageFormat::Jpeg => "jpg",
         ImageFormat::Png => "png",
         ImageFormat::WebP => "webp",
+        ImageFormat::Gif => "gif",
         _ => unreachable!("unsupported dummy image format"),
     }
 }

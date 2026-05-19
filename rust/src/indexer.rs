@@ -2,10 +2,11 @@ use crate::config::Settings;
 use crate::embedder::ImageEmbedder;
 use crate::hashing::phash_image;
 use crate::image_io::{dimensions, image_id_for_uri};
+use crate::media::{DecodedMedia, MediaKind};
 use crate::models::{ImagePayload, IndexResponse};
 use crate::qdrant::QdrantImageStore;
 use crate::sources::{build_image_sources, SourceImage, SourceUnavailable};
-use crate::thumbnails::ensure_thumbnail;
+use crate::thumbnails::{ensure_animated_thumbnail, ensure_thumbnail};
 
 #[derive(Clone)]
 pub struct ImageIndexer {
@@ -79,21 +80,37 @@ impl ImageIndexer {
     }
 
     async fn index_one(&self, source_image: &SourceImage) -> Result<(), String> {
-        let image = source_image.load_image()?;
-        let payload = self.build_payload(source_image, &image)?;
-        let vector = self.embedder.encode(&image);
+        let media = source_image.load_media(&self.settings)?;
+        let payload = self.build_payload(source_image, &media)?;
+        let vector = self
+            .embedder
+            .encode_media(&media.sampled_frames, self.settings.gif_motion_weight);
         self.store.upsert_image(&payload, vector).await
     }
 
     fn build_payload(
         &self,
         source_image: &SourceImage,
-        image: &image::RgbImage,
+        media: &DecodedMedia,
     ) -> Result<ImagePayload, String> {
         let image_id = image_id_for_uri(&source_image.id_base);
-        let thumbnail_url =
-            ensure_thumbnail(image, &self.settings.thumbnail_dir, &image_id, (320, 320))?;
-        let (width, height) = dimensions(image);
+        let thumbnail_url = ensure_thumbnail(
+            &media.poster,
+            &self.settings.thumbnail_dir,
+            &image_id,
+            (320, 320),
+        )?;
+        let animated_thumbnail_url = if media.kind == MediaKind::AnimatedGif {
+            Some(ensure_animated_thumbnail(
+                &media.preview_frames,
+                &self.settings.thumbnail_dir,
+                &image_id,
+                (320, 320),
+            )?)
+        } else {
+            None
+        };
+        let (width, height) = dimensions(&media.poster);
         Ok(ImagePayload {
             id: image_id,
             path: source_image.display_path.clone(),
@@ -103,8 +120,12 @@ impl ImageIndexer {
             height,
             size_bytes: source_image.size_bytes,
             modified_at: source_image.modified_at,
-            phash: phash_image(image),
+            phash: phash_image(&media.poster),
             thumbnail_url: Some(thumbnail_url),
+            animated_thumbnail_url,
+            media_kind: media.kind.as_str().to_string(),
+            frame_count: media.frame_count,
+            duration_ms: media.duration_ms,
             source_type: source_image.source_type.clone(),
             source_uri: Some(source_image.source_uri.clone()),
         })

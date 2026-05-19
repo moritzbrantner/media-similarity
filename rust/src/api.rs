@@ -9,7 +9,7 @@ use serde_json::json;
 
 use crate::config::Settings;
 use crate::embedder::ImageEmbedder;
-use crate::image_io::load_image_bytes;
+use crate::image_io::load_media_bytes;
 use crate::indexer::ImageIndexer;
 use crate::models::{HealthResponse, IndexResponse, SearchResponse};
 use crate::qdrant::QdrantImageStore;
@@ -101,15 +101,15 @@ pub async fn search_upload(
             state.settings.max_upload_mb
         )));
     }
-    let image =
-        load_image_bytes(&raw).map_err(|_| ApiError::bad_request("Could not decode image"))?;
+    let media = load_media_bytes(&raw, &state.settings)
+        .map_err(|_| ApiError::bad_request("Could not decode image"))?;
     let service = ImageSearchService::new(
         state.settings.clone(),
         state.store.clone(),
         state.embedder.clone(),
     );
     service
-        .search_image(&image, query.limit)
+        .search_media(&media, query.limit)
         .await
         .map(Json)
         .map_err(ApiError::internal)

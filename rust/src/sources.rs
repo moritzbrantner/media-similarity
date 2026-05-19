@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 use std::time::UNIX_EPOCH;
 
-use image::RgbImage;
 use url::Url;
 
 use crate::config::Settings;
-use crate::image_io::{iter_image_paths, load_image, relative_path};
+use crate::image_io::{iter_image_paths, load_media, relative_path};
+use crate::media::DecodedMedia;
 
 #[derive(Clone, Debug)]
 pub struct SourceImage {
@@ -23,9 +23,9 @@ pub struct SourceImage {
 }
 
 impl SourceImage {
-    pub fn load_image(&self) -> Result<RgbImage, String> {
+    pub fn load_media(&self, settings: &Settings) -> Result<DecodedMedia, String> {
         match &self.loader {
-            SourceLoader::Local(path) => load_image(path).map_err(|error| error.to_string()),
+            SourceLoader::Local(path) => load_media(path, settings),
             SourceLoader::Unavailable(error) => Err(error.clone()),
         }
     }
@@ -229,7 +229,8 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].source_type, "local");
         assert_eq!(items[0].relative_path, "sample.jpg");
-        assert_eq!(items[0].load_image().unwrap().dimensions(), (64, 48));
+        let media = items[0].load_media(&settings).unwrap();
+        assert_eq!((media.width, media.height), (64, 48));
     }
 
     #[test]

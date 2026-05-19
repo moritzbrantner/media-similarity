@@ -14,6 +14,7 @@ mod embedder;
 mod hashing;
 mod image_io;
 mod indexer;
+mod media;
 mod models;
 mod qdrant;
 mod search;

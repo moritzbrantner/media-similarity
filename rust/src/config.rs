@@ -26,6 +26,11 @@ pub struct Settings {
     pub duplicate_hash_distance: u32,
     pub max_upload_mb: u32,
     pub vector_size: usize,
+    pub gif_sample_frames: usize,
+    pub gif_max_decode_frames: usize,
+    pub gif_preview_frames: usize,
+    pub gif_default_frame_delay_ms: u32,
+    pub gif_motion_weight: f32,
     pub bind_addr: String,
 }
 
@@ -38,7 +43,7 @@ impl Default for Settings {
             clip_model_name: "sentence-transformers/clip-ViT-B-32".to_string(),
             thumbnail_dir: PathBuf::from("data/thumbnails"),
             upload_dir: PathBuf::from("data/uploads"),
-            image_extensions: parse_extensions(".jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff")
+            image_extensions: parse_extensions(".jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.gif")
                 .expect("default extensions are valid"),
             image_sources: Vec::new(),
             minio_endpoint: None,
@@ -53,6 +58,11 @@ impl Default for Settings {
             duplicate_hash_distance: 8,
             max_upload_mb: 20,
             vector_size: 512,
+            gif_sample_frames: 16,
+            gif_max_decode_frames: 512,
+            gif_preview_frames: 16,
+            gif_default_frame_delay_ms: 100,
+            gif_motion_weight: 0.2,
             bind_addr: "0.0.0.0:8000".to_string(),
         }
     }
@@ -115,6 +125,36 @@ impl Settings {
             )?,
             max_upload_mb: bounded_u32_var("MAX_UPLOAD_MB", defaults.max_upload_mb, 1, 200)?,
             vector_size: bounded_usize_var("VECTOR_SIZE", defaults.vector_size, 1, usize::MAX)?,
+            gif_sample_frames: bounded_usize_var(
+                "GIF_SAMPLE_FRAMES",
+                defaults.gif_sample_frames,
+                1,
+                usize::MAX,
+            )?,
+            gif_max_decode_frames: bounded_usize_var(
+                "GIF_MAX_DECODE_FRAMES",
+                defaults.gif_max_decode_frames,
+                1,
+                usize::MAX,
+            )?,
+            gif_preview_frames: bounded_usize_var(
+                "GIF_PREVIEW_FRAMES",
+                defaults.gif_preview_frames,
+                1,
+                usize::MAX,
+            )?,
+            gif_default_frame_delay_ms: bounded_u32_var(
+                "GIF_DEFAULT_FRAME_DELAY_MS",
+                defaults.gif_default_frame_delay_ms,
+                1,
+                u32::MAX,
+            )?,
+            gif_motion_weight: bounded_f32_var(
+                "GIF_MOTION_WEIGHT",
+                defaults.gif_motion_weight,
+                0.0,
+                1.0,
+            )?,
             bind_addr: string_var("BIND_ADDR", defaults.bind_addr),
         })
     }
@@ -252,9 +292,25 @@ fn bounded_usize_var(name: &str, default: usize, min: usize, max: usize) -> Resu
     }
 }
 
+fn bounded_f32_var(name: &str, default: f32, min: f32, max: f32) -> Result<f32, String> {
+    match optional_string_var(name) {
+        Some(value) => {
+            let parsed = value
+                .parse::<f32>()
+                .map_err(|_| format!("{name} must be a number"))?;
+            if !parsed.is_finite() || parsed < min || parsed > max {
+                Err(format!("{name} must be between {min} and {max}"))
+            } else {
+                Ok(parsed)
+            }
+        }
+        None => Ok(default),
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{parse_extensions, parse_image_sources};
+    use super::{parse_extensions, parse_image_sources, Settings};
 
     #[test]
     fn extensions_are_normalized() {
@@ -280,5 +336,10 @@ mod tests {
     #[test]
     fn empty_extensions_are_rejected() {
         assert!(parse_extensions(" , ").is_err());
+    }
+
+    #[test]
+    fn default_extensions_include_gif() {
+        assert!(Settings::default().image_extensions.contains(".gif"));
     }
 }
