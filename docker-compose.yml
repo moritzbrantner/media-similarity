@@ -1,3 +1,6 @@
+x-app-build: &app-build
+  context: .
+
 x-app-environment: &app-environment
   SOURCE_IMAGE_DIR: ${SOURCE_IMAGE_DIR:-/images}
   QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
@@ -8,10 +11,10 @@ x-app-environment: &app-environment
   UPLOAD_DIR: ${UPLOAD_DIR:-/app/data/uploads}
   IMAGE_EXTENSIONS: ${IMAGE_EXTENSIONS:-.jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff}
   IMAGE_SOURCES: ${IMAGE_SOURCES:-}
-  MINIO_ENDPOINT: ${MINIO_ENDPOINT:-}
-  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-}
-  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-}
-  MINIO_SECURE: ${MINIO_SECURE:-true}
+  MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+  MINIO_SECURE: ${MINIO_SECURE:-false}
   VIDEO_FRAME_STRIDE: ${VIDEO_FRAME_STRIDE:-30}
   VIDEO_MAX_FRAMES: ${VIDEO_MAX_FRAMES:-}
   CAMERA_FRAME_STRIDE: ${CAMERA_FRAME_STRIDE:-30}
@@ -22,7 +25,7 @@ x-app-environment: &app-environment
 
 services:
   app:
-    build: .
+    build: *app-build
     environment: *app-environment
     ports:
       - "8000:8000"
@@ -31,7 +34,10 @@ services:
       - ${HOST_SOURCE_IMAGE_DIR:-./sample-images}:/images:ro
       - app-data:/app/data
     depends_on:
-      - qdrant
+      qdrant:
+        condition: service_started
+      seed-data:
+        condition: service_completed_successfully
 
   app-rust:
     build:
@@ -49,7 +55,52 @@ services:
       - ${HOST_SOURCE_IMAGE_DIR:-./sample-images}:/images:ro
       - app-rust-data:/app/data
     depends_on:
-      - qdrant
+      qdrant:
+        condition: service_started
+      seed-data:
+        condition: service_completed_successfully
+
+  test:
+    build: *app-build
+    profiles: ["test"]
+    environment:
+      <<: *app-environment
+      PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
+      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
+      QDRANT_COLLECTION: ${TEST_QDRANT_COLLECTION:-image_similarity_test}
+    command: ["sh", "-c", "python -m pip install pytest pytest-cov httpx && pytest -q"]
+    volumes:
+      - .:/app
+      - ${HOST_SOURCE_IMAGE_DIR:-./sample-images}:/images:ro
+      - test-data:/app/data
+    depends_on:
+      qdrant:
+        condition: service_started
+      seed-data:
+        condition: service_completed_successfully
+
+  seed-data:
+    build: *app-build
+    environment:
+      DUMMY_DATA_DIR: ${DUMMY_DATA_DIR:-/seed/local}
+      DUMMY_IMAGE_COUNT: ${DUMMY_IMAGE_COUNT:-8}
+      DUMMY_IMAGE_SIZE: ${DUMMY_IMAGE_SIZE:-640x480}
+      DUMMY_IMAGE_FORMAT: ${DUMMY_IMAGE_FORMAT:-JPEG}
+      SEED_MINIO: ${SEED_MINIO:-true}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
+      MINIO_SECURE: ${MINIO_SECURE:-false}
+      MINIO_BUCKET: ${MINIO_BUCKET:-image-similarity-dev}
+      MINIO_PREFIX: ${MINIO_PREFIX:-catalog}
+      MINIO_WAIT_SECONDS: ${MINIO_WAIT_SECONDS:-60}
+    command: ["python", "scripts/seed_dummy_data.py"]
+    volumes:
+      - ${HOST_SOURCE_IMAGE_DIR:-./sample-images}:/seed/local
+    depends_on:
+      minio:
+        condition: service_started
+    restart: "no"
 
   qdrant:
     image: qdrant/qdrant:v1.12.5
@@ -58,7 +109,21 @@ services:
     volumes:
       - qdrant-data:/qdrant/storage
 
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+
 volumes:
   app-data:
   app-rust-data:
+  test-data:
   qdrant-data:
+  minio-data:
