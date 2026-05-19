@@ -13,3 +13,5 @@ thumbnails/
 benchmarks/results/
 rust/target/
 src/image_similarity/_rust*.so
+playwright-report/
+test-results/

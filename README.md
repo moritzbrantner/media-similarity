@@ -216,6 +216,18 @@ bun run format
 bun run typecheck
 ```
 
+Run the Playwright UI end-to-end tests:
+
+```bash
+bun run test:e2e
+```
+
+If Playwright browsers are not installed on the machine yet, install Chromium first:
+
+```bash
+bunx playwright install chromium
+```
+
 ## Notes
 
 - Re-running indexing upserts local images by deterministic ID based on absolute image path.

@@ -1348,9 +1348,7 @@ function ResultCard({ result }: { result: SearchResult }) {
           {image.audio_analysis?.recognized_voices?.length ? (
             <Metric
               label="Voices"
-              value={image.audio_analysis.recognized_voices
-                .map((voice) => voice.label)
-                .join(", ")}
+              value={image.audio_analysis.recognized_voices.map((voice) => voice.label).join(", ")}
             />
           ) : null}
           {image.audio_analysis?.tempo_bpm ? (
