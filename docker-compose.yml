@@ -50,12 +50,12 @@ services:
   seed-data:
     build: *app-build
     environment:
-      DUMMY_DATA_DIR: ${DUMMY_DATA_DIR:-/seed/local}
-      DUMMY_IMAGE_COUNT: ${DUMMY_IMAGE_COUNT:-8}
-      DUMMY_IMAGE_SIZE: ${DUMMY_IMAGE_SIZE:-640x480}
-      DUMMY_IMAGE_FORMAT: ${DUMMY_IMAGE_FORMAT:-JPEG}
-      DUMMY_GIF_FRAMES: ${DUMMY_GIF_FRAMES:-6}
-      DUMMY_GIF_FRAME_DELAY_MS: ${DUMMY_GIF_FRAME_DELAY_MS:-100}
+      SAMPLE_FACE_DATA_DIR: ${SAMPLE_FACE_DATA_DIR:-/seed/local}
+      SAMPLE_FACE_COUNT: ${SAMPLE_FACE_COUNT:-150}
+      SAMPLE_FACE_URL: ${SAMPLE_FACE_URL:-https://thispersondoesnotexist.com/}
+      SAMPLE_FACE_DELAY_MS: ${SAMPLE_FACE_DELAY_MS:-1000}
+      SAMPLE_FACE_MAX_ATTEMPTS: ${SAMPLE_FACE_MAX_ATTEMPTS:-750}
+      SAMPLE_FACE_CLEAR_GENERATED: ${SAMPLE_FACE_CLEAR_GENERATED:-true}
     command: ["seed_dummy_data"]
     volumes:
       - ${HOST_SOURCE_IMAGE_DIR:-./sample-images}:/seed/local
