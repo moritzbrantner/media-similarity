@@ -20,6 +20,7 @@ async-trait = "0.1"
 axum = { version = "0.7", features = ["multipart"] }
 dotenvy = "0.15"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "tiff", "gif"] }
+num-rational = "0.4"
 pyo3 = { version = "0.27.1", features = ["abi3-py311", "extension-module"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
@@ -32,4 +33,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
 vector-analysis-core = { path = "../../rust-packages/crates/vector/vector-analysis-core" }
+video-analysis-core = { path = "../../rust-packages/crates/video/video-analysis-core" }
+video-analysis-detectors = { path = "../../rust-packages/crates/video/video-analysis-detectors" }
+video-analysis-ffmpeg = { path = "../../rust-packages/crates/video/video-analysis-ffmpeg" }
+video-analysis-split = { path = "../../rust-packages/crates/video/video-analysis-split" }
 walkdir = "2"

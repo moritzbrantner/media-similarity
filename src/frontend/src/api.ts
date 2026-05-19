@@ -59,7 +59,7 @@ export async function indexSources(): Promise<IndexResponse> {
   return parseResponse<IndexResponse>(response);
 }
 
-export async function searchImage(file: File, limit: number): Promise<SearchResponse> {
+export async function searchMedia(file: File, limit: number): Promise<SearchResponse> {
   const formData = new FormData();
   formData.append("file", file);
 

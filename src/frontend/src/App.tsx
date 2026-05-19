@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   Database,
   FileImage,
+  FileVideo,
   History,
   ImageIcon,
   Loader2,
@@ -14,8 +15,8 @@ import {
   X,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { fetchHealth, indexSources, searchImage } from "./api";
-import type { IndexResponse, SearchResponse, SearchResult } from "./types";
+import { fetchHealth, indexSources, searchMedia } from "./api";
+import type { IndexResponse, SearchResponse, SearchResult, SearchSceneResponse } from "./types";
 
 const DEFAULT_LIMIT = 12;
 const MAX_SEARCH_HISTORY = 8;
@@ -43,7 +44,7 @@ type MetadataFilters = {
   maxHeight: string;
   maxSizeMb: string;
   maxWidth: string;
-  mediaKind: "all" | "static_image" | "animated_gif";
+  mediaKind: "all" | "static_image" | "animated_gif" | "video_scene";
   minHeight: string;
   minSizeMb: string;
   minWidth: string;
@@ -59,6 +60,7 @@ type SearchHistoryItem = {
   filters: MetadataFilters;
   limit: number;
   queryImageUrl: string | null;
+  queryMediaKind: SearchResponse["query_media_kind"];
   searchedAt: string;
   response: SearchResponse;
 };
@@ -78,6 +80,7 @@ export function App() {
   const [lastIndex, setLastIndex] = useState<IndexResponse | null>(null);
   const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>(loadSearchHistory);
   const [activeSearchId, setActiveSearchId] = useState<string | null>(null);
+  const [selectedQuerySceneIndex, setSelectedQuerySceneIndex] = useState<number | null>(null);
 
   const healthQuery = useQuery({
     queryKey: ["health"],
@@ -93,7 +96,7 @@ export function App() {
 
   const searchMutation = useMutation({
     mutationFn: ({ queryFile, resultLimit }: SearchVariables) =>
-      searchImage(queryFile, resultLimit),
+      searchMedia(queryFile, resultLimit),
     onSuccess: (response, variables) => {
       const nextItem: SearchHistoryItem = {
         id: createHistoryId(),
@@ -101,12 +104,14 @@ export function App() {
         filters: variables.filters,
         limit: variables.resultLimit,
         queryImageUrl: variables.queryImageUrl,
+        queryMediaKind: response.query_media_kind,
         searchedAt: new Date().toISOString(),
         response,
       };
 
       setSearchHistory((history) => [nextItem, ...history].slice(0, MAX_SEARCH_HISTORY));
       setActiveSearchId(nextItem.id);
+      setSelectedQuerySceneIndex(response.scenes[0]?.scene_index ?? null);
     },
   });
 
@@ -143,7 +148,9 @@ export function App() {
     }
 
     setActiveSearchId(null);
-    const queryImageUrl = await createQueryPreview(file);
+    const queryImageUrl = file.type.startsWith("video/")
+      ? previewUrl
+      : await createQueryPreview(file);
     searchMutation.mutate({
       filters: metadataFilters,
       queryFile: file,
@@ -155,12 +162,16 @@ export function App() {
   function handleFileChange(nextFile: File | null) {
     setFile(nextFile);
     setActiveSearchId(null);
+    setSelectedQuerySceneIndex(null);
     searchMutation.reset();
   }
 
   const activeSearch = searchHistory.find((item) => item.id === activeSearchId) ?? null;
   const activeResponse = activeSearch?.response ?? null;
-  const displayedPreviewUrl = activeSearch?.queryImageUrl ?? previewUrl;
+  const displayedPreviewUrl = activeSearch ? activeSearch.queryImageUrl : previewUrl;
+  const previewIsVideo = activeSearch
+    ? activeSearch.queryMediaKind === "video"
+    : Boolean(file?.type.startsWith("video/"));
   const sourceTypeOptions = sourceTypesFor(
     activeResponse?.results ?? [],
     metadataFilters.sourceType,
@@ -171,6 +182,7 @@ export function App() {
     setActiveSearchId(item.id);
     setLimit(item.limit);
     setMetadataFilters(item.filters);
+    setSelectedQuerySceneIndex(item.response.scenes[0]?.scene_index ?? null);
     searchMutation.reset();
   }
 
@@ -219,7 +231,7 @@ export function App() {
           >
             <div>
               <label className="text-sm font-semibold text-neutral-900" htmlFor="query-image">
-                Query image
+                Query media
               </label>
               <label
                 className="mt-2 flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed border-neutral-400 bg-neutral-50 px-4 py-5 text-center transition hover:border-emerald-600 hover:bg-emerald-50"
@@ -227,12 +239,14 @@ export function App() {
               >
                 <Upload className="size-6 text-neutral-600" aria-hidden="true" />
                 <span className="max-w-full truncate text-sm font-medium text-neutral-800">
-                  {file?.name ?? "Choose an image"}
+                  {file?.name ?? "Choose an image or video"}
                 </span>
-                <span className="text-xs text-neutral-500">PNG, JPEG, GIF, WebP, BMP, or TIFF</span>
+                <span className="text-xs text-neutral-500">
+                  PNG, JPEG, GIF, WebP, BMP, TIFF, MP4, MOV, WebM, MKV, or AVI
+                </span>
               </label>
               <input
-                accept="image/*"
+                accept="image/*,video/*"
                 className="sr-only"
                 id="query-image"
                 onChange={(event) => handleFileChange(event.target.files?.[0] ?? null)}
@@ -297,15 +311,23 @@ export function App() {
 
           <section className="grid min-h-72 overflow-hidden rounded-lg border border-neutral-300 bg-white shadow-sm">
             {displayedPreviewUrl ? (
-              <img
-                alt="Query preview"
-                className="h-full max-h-[420px] w-full object-contain"
-                src={displayedPreviewUrl}
-              />
+              previewIsVideo ? (
+                <video
+                  className="h-full max-h-[420px] w-full bg-black object-contain"
+                  controls
+                  src={displayedPreviewUrl}
+                />
+              ) : (
+                <img
+                  alt="Query preview"
+                  className="h-full max-h-[420px] w-full object-contain"
+                  src={displayedPreviewUrl}
+                />
+              )
             ) : (
               <div className="flex flex-col items-center justify-center gap-3 bg-neutral-50 p-8 text-center text-neutral-500">
                 <ImageIcon className="size-12" aria-hidden="true" />
-                <span className="text-sm font-medium">No query image selected</span>
+                <span className="text-sm font-medium">No query media selected</span>
               </div>
             )}
           </section>
@@ -323,11 +345,13 @@ export function App() {
               <div>
                 <h2 className="text-lg font-semibold text-neutral-950">Results</h2>
                 <p className="text-sm text-neutral-600">
-                  {activeResponse
-                    ? `${results.length} of ${activeResponse.count} result(s), query pHash ${activeResponse.query_phash}`
-                    : searchMutation.isPending
-                      ? "Searching indexed images."
-                      : "Search results will appear here."}
+                  {activeResponse?.scenes.length
+                    ? `${activeResponse.scenes.length} scene(s), ${results.length} unique result(s)`
+                    : activeResponse
+                      ? `${results.length} of ${activeResponse.count} result(s), query pHash ${activeResponse.query_phash}`
+                      : searchMutation.isPending
+                        ? "Searching indexed images."
+                        : "Search results will appear here."}
                 </p>
               </div>
               {healthQuery.data ? (
@@ -340,11 +364,20 @@ export function App() {
               ) : null}
             </div>
 
-            <ResultsGrid
-              pending={searchMutation.isPending}
-              results={results}
-              searched={Boolean(activeResponse)}
-            />
+            {activeResponse?.scenes.length ? (
+              <SceneResultsList
+                filters={metadataFilters}
+                onSelectScene={setSelectedQuerySceneIndex}
+                scenes={activeResponse.scenes}
+                selectedSceneIndex={selectedQuerySceneIndex}
+              />
+            ) : (
+              <ResultsGrid
+                pending={searchMutation.isPending}
+                results={results}
+                searched={Boolean(activeResponse)}
+              />
+            )}
           </div>
         </section>
       </div>
@@ -439,9 +472,10 @@ function MetadataFiltersPanel({
             }
             value={filters.mediaKind}
           >
-            <option value="all">Images and GIFs</option>
+            <option value="all">All media</option>
             <option value="static_image">Images only</option>
             <option value="animated_gif">GIFs only</option>
+            <option value="video_scene">Video scenes only</option>
           </select>
         </div>
 
@@ -786,7 +820,8 @@ function loadSearchHistory() {
       .map((item) => ({
         ...item,
         filters: normalizeMetadataFilters(item.filters),
-        queryImageUrl: item.queryImageUrl ?? null,
+        queryImageUrl: normalizeStoredPreviewUrl(item.queryImageUrl),
+        queryMediaKind: item.queryMediaKind ?? item.response.query_media_kind ?? "static_image",
       }))
       .slice(0, MAX_SEARCH_HISTORY);
   } catch {
@@ -821,6 +856,10 @@ function isSearchHistoryItem(value: unknown): value is SearchHistoryItem {
     (typeof item.queryImageUrl === "string" ||
       item.queryImageUrl === null ||
       item.queryImageUrl === undefined) &&
+    (item.queryMediaKind === undefined ||
+      item.queryMediaKind === "static_image" ||
+      item.queryMediaKind === "animated_gif" ||
+      item.queryMediaKind === "video") &&
     typeof item.searchedAt === "string" &&
     Boolean(response) &&
     Array.isArray(response?.results) &&
@@ -867,8 +906,21 @@ function stringFilter(value: unknown) {
   return typeof value === "string" ? value : "";
 }
 
+function normalizeStoredPreviewUrl(value: unknown) {
+  if (typeof value !== "string" || value.startsWith("blob:")) {
+    return null;
+  }
+
+  return value;
+}
+
 function isMediaKindFilter(value: unknown): value is MetadataFilters["mediaKind"] {
-  return value === "all" || value === "static_image" || value === "animated_gif";
+  return (
+    value === "all" ||
+    value === "static_image" ||
+    value === "animated_gif" ||
+    value === "video_scene"
+  );
 }
 
 function isNearDuplicateFilter(value: unknown): value is MetadataFilters["nearDuplicate"] {
@@ -917,7 +969,11 @@ function SearchHistoryList({
                 <span className="truncate text-sm font-semibold">{item.fileName}</span>
                 <span className="flex items-center justify-between gap-2 text-xs text-neutral-600">
                   <span>{formatHistoryTime(item.searchedAt)}</span>
-                  <span>{item.response.count} result(s)</span>
+                  <span>
+                    {item.response.scenes?.length
+                      ? `${item.response.scenes.length} scene(s)`
+                      : `${item.response.count} result(s)`}
+                  </span>
                 </span>
                 <span className="text-xs text-neutral-500">Limit {item.limit}</span>
               </button>
@@ -1031,7 +1087,7 @@ function ResultsGrid({
   }
 
   if (!searched) {
-    return <EmptyResults text="Choose a query image and run a search." />;
+    return <EmptyResults text="Choose a query image or video and run a search." />;
   }
 
   if (results.length === 0) {
@@ -1043,6 +1099,127 @@ function ResultsGrid({
       {results.map((result) => (
         <ResultCard key={result.image.id} result={result} />
       ))}
+    </div>
+  );
+}
+
+function SceneResultsList({
+  filters,
+  onSelectScene,
+  scenes,
+  selectedSceneIndex,
+}: {
+  filters: MetadataFilters;
+  onSelectScene: (sceneIndex: number) => void;
+  scenes: SearchSceneResponse[];
+  selectedSceneIndex: number | null;
+}) {
+  const selectedScene =
+    scenes.find((scene) => scene.scene_index === selectedSceneIndex) ?? scenes[0];
+  const selectedResults = selectedScene ? filterResults(selectedScene.results, filters) : [];
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="rounded-lg border border-neutral-300 bg-white p-3 shadow-sm">
+        <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-neutral-950">
+          <FileVideo className="size-4 text-neutral-600" aria-hidden="true" />
+          <span>Query segment</span>
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {scenes.map((scene) => (
+            <button
+              aria-pressed={scene.scene_index === selectedScene?.scene_index}
+              className={`inline-flex h-10 shrink-0 items-center justify-center rounded-md border px-3 text-sm font-semibold transition ${
+                scene.scene_index === selectedScene?.scene_index
+                  ? "border-emerald-700 bg-emerald-50 text-emerald-950"
+                  : "border-neutral-300 bg-white text-neutral-800 hover:border-neutral-500 hover:bg-neutral-50"
+              }`}
+              key={scene.scene_index}
+              onClick={() => onSelectScene(scene.scene_index)}
+              type="button"
+            >
+              Scene {scene.scene_index + 1} · {formatSeconds(scene.start_seconds)}-
+              {formatSeconds(scene.end_seconds)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {selectedScene ? (
+        <section className="rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold text-neutral-950">
+                Scene {selectedScene.scene_index + 1}
+              </h3>
+              <p className="text-xs text-neutral-600">
+                {formatSeconds(selectedScene.start_seconds)}-
+                {formatSeconds(selectedScene.end_seconds)} · frames {selectedScene.start_frame}-
+                {selectedScene.end_frame}
+              </p>
+            </div>
+            {selectedScene.clip_url ? (
+              <a
+                className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-neutral-300 bg-white px-3 text-sm font-semibold text-neutral-800 transition hover:border-neutral-500 hover:bg-neutral-50"
+                href={selectedScene.clip_url}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <FileVideo className="size-4" aria-hidden="true" />
+                <span>Open query clip</span>
+              </a>
+            ) : null}
+          </div>
+          <ResultsGrid pending={false} results={selectedResults} searched />
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function VideoSceneLinks({ image }: { image: SearchResult["image"] }) {
+  if (image.media_kind !== "video_scene") {
+    return null;
+  }
+
+  const start = image.scene_start_seconds ?? 0;
+  const end = image.scene_end_seconds ?? start;
+  const fullVideoUrl = image.full_video_url
+    ? `${image.full_video_url}#t=${start.toFixed(3)},${end.toFixed(3)}`
+    : null;
+
+  return (
+    <div className="grid gap-2">
+      <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-700">
+        {formatSeconds(start)}-{formatSeconds(end)}
+        {image.scene_start_frame !== null && image.scene_end_frame !== null
+          ? ` · frames ${image.scene_start_frame}-${image.scene_end_frame}`
+          : ""}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {fullVideoUrl ? (
+          <a
+            className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-neutral-300 bg-white px-2 text-xs font-semibold text-neutral-800 transition hover:border-neutral-500 hover:bg-neutral-50"
+            href={fullVideoUrl}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <FileVideo className="size-3.5" aria-hidden="true" />
+            <span>Full video</span>
+          </a>
+        ) : null}
+        {image.scene_clip_url ? (
+          <a
+            className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-neutral-300 bg-white px-2 text-xs font-semibold text-neutral-800 transition hover:border-neutral-500 hover:bg-neutral-50"
+            href={image.scene_clip_url}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <FileVideo className="size-3.5" aria-hidden="true" />
+            <span>Scene clip</span>
+          </a>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -1093,10 +1270,22 @@ function ResultCard({ result }: { result: SearchResult }) {
           ) : null}
         </dl>
 
+        <VideoSceneLinks image={image} />
+
         <div className="flex flex-wrap gap-2">
           {image.media_kind === "animated_gif" ? (
             <span className="inline-flex w-fit rounded-md border border-sky-300 bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-900">
               GIF
+            </span>
+          ) : null}
+          {image.media_kind === "video_scene" ? (
+            <span className="inline-flex w-fit rounded-md border border-violet-300 bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-900">
+              Video scene
+            </span>
+          ) : null}
+          {result.query_scene_index !== null && result.query_scene_index !== undefined ? (
+            <span className="inline-flex w-fit rounded-md border border-neutral-300 bg-neutral-50 px-2 py-1 text-xs font-semibold text-neutral-700">
+              Query scene {result.query_scene_index + 1}
             </span>
           ) : null}
           {result.near_duplicate ? (
@@ -1119,6 +1308,10 @@ function countActiveFilters(filters: MetadataFilters) {
 
 function formatDuration(durationMs: number) {
   return `${(durationMs / 1000).toFixed(1)}s`;
+}
+
+function formatSeconds(seconds: number) {
+  return `${seconds.toFixed(1)}s`;
 }
 
 function formatFileSize(sizeBytes: number) {

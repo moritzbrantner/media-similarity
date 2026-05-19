@@ -20,6 +20,7 @@ mod qdrant;
 mod search;
 mod sources;
 mod thumbnails;
+mod video;
 
 use crate::api::{health, index_images, search_upload, AppState};
 use crate::config::Settings;
@@ -45,6 +46,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/search", post(search_upload))
         .nest_service("/static", ServeDir::new(static_dir.join("static")))
         .nest_service("/thumbnails", ServeDir::new(settings.thumbnail_dir.clone()))
+        .nest_service("/uploads", ServeDir::new(settings.upload_dir.clone()))
         .route_service(
             "/",
             ServeFile::new(static_dir.join("static").join("index.html")),

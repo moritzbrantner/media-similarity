@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::time::UNIX_EPOCH;
 
@@ -6,6 +7,7 @@ use url::Url;
 use crate::config::Settings;
 use crate::image_io::{iter_image_paths, load_media, relative_path};
 use crate::media::DecodedMedia;
+use crate::video::is_video_extension;
 
 #[derive(Clone, Debug)]
 pub struct SourceImage {
@@ -23,9 +25,21 @@ pub struct SourceImage {
 }
 
 impl SourceImage {
+    pub fn is_video(&self) -> bool {
+        matches!(self.loader, SourceLoader::LocalVideo(_))
+    }
+
+    pub fn local_path(&self) -> Option<&PathBuf> {
+        match &self.loader {
+            SourceLoader::LocalImage(path) | SourceLoader::LocalVideo(path) => Some(path),
+            SourceLoader::Unavailable(_) => None,
+        }
+    }
+
     pub fn load_media(&self, settings: &Settings) -> Result<DecodedMedia, String> {
         match &self.loader {
-            SourceLoader::Local(path) => load_media(path, settings),
+            SourceLoader::LocalImage(path) => load_media(path, settings),
+            SourceLoader::LocalVideo(_) => Err("Video files expand into scene media".to_string()),
             SourceLoader::Unavailable(error) => Err(error.clone()),
         }
     }
@@ -33,7 +47,8 @@ impl SourceImage {
 
 #[derive(Clone, Debug)]
 enum SourceLoader {
-    Local(PathBuf),
+    LocalImage(PathBuf),
+    LocalVideo(PathBuf),
     Unavailable(String),
 }
 
@@ -71,11 +86,13 @@ pub struct UnavailableSource {
 #[derive(Clone, Debug)]
 pub struct LocalFolderSource {
     root: PathBuf,
-    extensions: std::collections::BTreeSet<String>,
+    extensions: BTreeSet<String>,
 }
 
 impl LocalFolderSource {
-    pub fn new(root: PathBuf, extensions: std::collections::BTreeSet<String>) -> Self {
+    pub fn new(root: PathBuf, image_extensions: BTreeSet<String>) -> Self {
+        let mut extensions = image_extensions;
+        extensions.extend(video_extensions());
         Self { root, extensions }
     }
 
@@ -103,6 +120,11 @@ impl LocalFolderSource {
                 .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
                 .map(|duration| duration.as_secs_f64())
                 .unwrap_or(0.0);
+            let is_video = path
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .map(|extension| is_video_extension(&format!(".{extension}")))
+                .unwrap_or(false);
             images.push(SourceImage {
                 source_type: "local".to_string(),
                 source_uri: self.uri(),
@@ -117,7 +139,11 @@ impl LocalFolderSource {
                     .to_string(),
                 size_bytes: stat.len(),
                 modified_at,
-                loader: SourceLoader::Local(path),
+                loader: if is_video {
+                    SourceLoader::LocalVideo(path)
+                } else {
+                    SourceLoader::LocalImage(path)
+                },
             });
         }
         Ok(images)
@@ -191,6 +217,13 @@ fn minio_uri(url: &Url) -> String {
     }
 }
 
+fn video_extensions() -> BTreeSet<String> {
+    [".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi"]
+        .into_iter()
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
 #[allow(dead_code)]
 fn unavailable_image(error: String) -> SourceLoader {
     SourceLoader::Unavailable(error)
@@ -231,6 +264,21 @@ mod tests {
         assert_eq!(items[0].relative_path, "sample.jpg");
         let media = items[0].load_media(&settings).unwrap();
         assert_eq!((media.width, media.height), (64, 48));
+    }
+
+    #[test]
+    fn local_folder_source_yields_video_files() {
+        let dir = tempfile_dir();
+        fs::write(dir.join("clip.mp4"), b"not a real video").unwrap();
+        let settings = Settings {
+            source_image_dir: dir.clone(),
+            ..Settings::default()
+        };
+        let source = build_image_sources(&settings).remove(0);
+        let items = source.iter_images().unwrap();
+        assert_eq!(items.len(), 1);
+        assert!(items[0].is_video());
+        assert_eq!(items[0].relative_path, "clip.mp4");
     }
 
     #[test]

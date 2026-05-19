@@ -4,6 +4,7 @@ use image::RgbImage;
 pub enum MediaKind {
     StaticImage,
     AnimatedGif,
+    VideoScene,
 }
 
 impl MediaKind {
@@ -11,6 +12,7 @@ impl MediaKind {
         match self {
             Self::StaticImage => "static_image",
             Self::AnimatedGif => "animated_gif",
+            Self::VideoScene => "video_scene",
         }
     }
 }

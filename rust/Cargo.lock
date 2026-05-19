@@ -657,6 +657,7 @@ dependencies = [
  "image-analysis-core",
  "image-analysis-io",
  "image-analysis-processing",
+ "num-rational",
  "pyo3",
  "reqwest",
  "serde",
@@ -669,6 +670,10 @@ dependencies = [
  "url",
  "uuid",
  "vector-analysis-core",
+ "video-analysis-core",
+ "video-analysis-detectors",
+ "video-analysis-ffmpeg",
+ "video-analysis-split",
  "walkdir",
 ]
 
@@ -1818,6 +1823,38 @@ dependencies = [
  "num-rational",
  "num-traits",
  "thiserror",
+]
+
+[[package]]
+name = "video-analysis-detectors"
+version = "0.1.0"
+dependencies = [
+ "video-analysis-core",
+]
+
+[[package]]
+name = "video-analysis-ffmpeg"
+version = "0.1.0"
+dependencies = [
+ "num-rational",
+ "thiserror",
+ "video-analysis-core",
+ "video-analysis-ingest",
+]
+
+[[package]]
+name = "video-analysis-ingest"
+version = "0.1.0"
+dependencies = [
+ "num-rational",
+ "video-analysis-core",
+]
+
+[[package]]
+name = "video-analysis-split"
+version = "0.1.0"
+dependencies = [
+ "video-analysis-core",
 ]
 
 [[package]]

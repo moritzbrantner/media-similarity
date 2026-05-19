@@ -2,7 +2,7 @@
 
 Native Rust image similarity search service with a React UI and Qdrant vector storage.
 
-The service indexes configured image folders, generates thumbnails and perceptual hashes, then lets you upload a query image through the web UI or HTTP API to find visually similar images and near duplicates. Animated GIFs are supported with sampled frame and motion-aware vector search.
+The service indexes configured image folders, generates thumbnails and perceptual hashes, then lets you upload a query image or video through the web UI or HTTP API to find visually similar images and near duplicates. Animated GIFs are supported with sampled frame and motion-aware vector search. Uploaded videos are detected and split into scenes with the sibling Rust `video-analysis` crates, then each scene is searched independently.
 
 ## Features
 
@@ -10,13 +10,16 @@ The service indexes configured image folders, generates thumbnails and perceptua
 - Local folder indexing with deterministic image IDs.
 - Qdrant REST integration for vector upsert and search.
 - Native image loading for JPEG, PNG, GIF, WebP, BMP, and TIFF.
+- Uploaded video query support for MP4, MOV, M4V, WebM, MKV, and AVI when `ffmpeg`/`ffprobe` are available.
+- Local source video indexing: videos in configured local source folders are cut into scenes and indexed as individual searchable scene records.
+- Scene detection and scene splitting through the Rust `video-analysis-core`, `video-analysis-detectors`, `video-analysis-ffmpeg`, and `video-analysis-split` crates.
 - Native pHash generation, pHash Hamming distance, and thumbnail generation.
 - Animation-aware GIF indexing and upload search using sampled frame content plus motion deltas.
 - Deterministic normalized image-vector embedder in Rust.
 - React UI built with Bun, TypeScript, React Query, Tailwind CSS, and oxfmt.
 - Docker Compose setup with the Rust app, Qdrant, and a sample people image seed job.
 
-MinIO, video, and camera source URI parsing is retained, but those source backends are currently reported as unavailable by the Rust service until native implementations are added.
+MinIO, `video://`, and camera source URI parsing is retained, but those source backends are currently reported as unavailable by the Rust service. Local video files inside configured local source folders are indexed as scene records.
 
 ## Quick Start
 
@@ -64,7 +67,7 @@ curl http://localhost:8000/api/health
 curl -X POST http://localhost:8000/api/index
 ```
 
-### Search With Uploaded Image
+### Search With Uploaded Image Or Video
 
 ```bash
 curl -X POST "http://localhost:8000/api/search?limit=12" \
@@ -78,8 +81,13 @@ The response includes:
 - `near_duplicate`: `true` when `hash_distance <= DUPLICATE_HASH_DISTANCE`.
 - `thumbnail_url`: URL for the generated thumbnail served by the backend.
 - `animated_thumbnail_url`: URL for generated animated GIF previews when the result is an animated GIF.
+- `query_media_kind`: `static_image`, `animated_gif`, or `video`.
+- `scenes`: per-scene search groups for video uploads, including scene frame/time bounds and a `clip_url` for the generated scene MP4.
+- Matched source video scenes include `full_video_url`, `scene_clip_url`, and `scene_start_seconds`/`scene_end_seconds` so clients can open the source video at the matching time window.
 
 GIF vector search uses sampled frame content plus frame-to-frame motion deltas. `query_phash`, `hash_distance`, and `near_duplicate` remain based on the representative poster frame so the duplicate contract stays compatible with static images.
+
+Video query search and source video indexing use the Rust scene detection crates with the content detector defaults from the `vanalyze` CLI. The service writes per-scene MP4 clips under `UPLOAD_DIR`, samples scene frames according to `VIDEO_FRAME_STRIDE` and `VIDEO_MAX_FRAMES`, and searches/indexes each scene independently. The Rust crates are sufficient for this workflow, but their command-backed FFmpeg runtime requires `ffmpeg` and `ffprobe` on `PATH`.
 
 ## Configuration
 
@@ -99,7 +107,9 @@ Set these values in `.env`:
 | `IMAGE_EXTENSIONS` | `.jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.gif` | File extensions to index. |
 | `DEFAULT_SEARCH_LIMIT` | `12` | Default result count. |
 | `DUPLICATE_HASH_DISTANCE` | `8` | Max pHash distance for near-duplicate flag. |
-| `MAX_UPLOAD_MB` | `20` | Maximum uploaded query image size. |
+| `MAX_UPLOAD_MB` | `20` | Maximum uploaded query image or video size. |
+| `VIDEO_FRAME_STRIDE` | `30` | Frame stride used when sampling uploaded video scenes for search. |
+| `VIDEO_MAX_FRAMES` | empty | Optional maximum sampled frames per uploaded video scene. Falls back to `GIF_SAMPLE_FRAMES` when unset. |
 | `GIF_SAMPLE_FRAMES` | `16` | Maximum sampled GIF frames used for vector generation. |
 | `GIF_MAX_DECODE_FRAMES` | `512` | Maximum GIF frames decoded before deterministic truncation. |
 | `GIF_PREVIEW_FRAMES` | `16` | Maximum frames written to generated animated GIF previews. |

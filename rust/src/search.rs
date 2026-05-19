@@ -52,6 +52,7 @@ impl ImageSearchService {
                 vector_score: point.score,
                 hash_distance: Some(distance),
                 near_duplicate: distance <= self.settings.duplicate_hash_distance,
+                query_scene_index: None,
             });
         }
 
@@ -59,6 +60,8 @@ impl ImageSearchService {
             query_phash,
             count: results.len(),
             results,
+            query_media_kind: media.kind.as_str().to_string(),
+            scenes: Vec::new(),
         })
     }
 }

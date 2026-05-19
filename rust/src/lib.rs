@@ -12,6 +12,7 @@ pub mod qdrant;
 pub mod search;
 pub mod sources;
 pub mod thumbnails;
+pub mod video;
 
 use image::{DynamicImage, ImageDecoder, ImageReader};
 use image_analysis_core::OwnedImage;

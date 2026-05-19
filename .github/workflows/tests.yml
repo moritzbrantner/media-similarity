@@ -16,7 +16,7 @@ jobs:
           set -euo pipefail
           auth_header="$(printf 'x-access-token:%s' "$CHECKOUT_TOKEN" | base64 -w 0)"
 
-          git init .
+          git init --initial-branch=main .
           git config --global --add safe.directory "$PWD"
           git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin "$GITHUB_REF"
@@ -51,7 +51,7 @@ jobs:
 
           mkdir -p image-similarity-service
           cd image-similarity-service
-          git init .
+          git init --initial-branch=main .
           git config --global --add safe.directory "$PWD"
           git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin "$GITHUB_REF"
@@ -68,10 +68,10 @@ jobs:
 
           mkdir -p rust-packages
           cd rust-packages
-          git init .
+          git init --initial-branch=main .
           git config --global --add safe.directory "$PWD"
           git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY_OWNER/rust-packages"
-          if ! git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin; then
+          if ! git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin main; then
             echo "::error::Could not fetch $GITHUB_REPOSITORY_OWNER/rust-packages. If it is private, add a RUST_PACKAGES_TOKEN secret with read access to that repository."
             exit 1
           fi
