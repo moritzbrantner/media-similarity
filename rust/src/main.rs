@@ -22,6 +22,7 @@ mod search;
 mod sources;
 mod thumbnails;
 mod video;
+mod voice;
 
 use crate::api::{health, index_images, search_upload, AppState};
 use crate::config::Settings;

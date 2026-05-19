@@ -1,4 +1,4 @@
-use crate::audio::expose_source_audio;
+use crate::audio::{decode_source_audio_segments, expose_source_audio, SourceAudioSegment};
 use crate::config::Settings;
 use crate::embedder::ImageEmbedder;
 use crate::hashing::phash_image;
@@ -85,9 +85,12 @@ impl ImageIndexer {
         if source_image.is_video() {
             return self.index_video(source_image).await;
         }
+        if source_image.is_audio() {
+            return self.index_audio(source_image).await;
+        }
 
         let media = source_image.load_media(&self.settings)?;
-        let payload = self.build_payload(source_image, &media, None)?;
+        let payload = self.build_payload(source_image, &media, None, None)?;
         let vector = self
             .embedder
             .encode_media(&media.sampled_frames, self.settings.gif_motion_weight);
@@ -102,10 +105,28 @@ impl ImageIndexer {
         let scenes = decode_source_video_scenes(path, &source_image.id_base, &self.settings)?;
         let mut indexed = 0;
         for scene in &scenes {
-            let payload = self.build_payload(source_image, &scene.media, Some(scene))?;
+            let payload = self.build_payload(source_image, &scene.media, Some(scene), None)?;
             let vector = self
                 .embedder
                 .encode_media(&scene.media.sampled_frames, self.settings.gif_motion_weight);
+            self.store.upsert_image(&payload, vector).await?;
+            indexed += 1;
+        }
+        Ok(indexed)
+    }
+
+    async fn index_audio(&self, source_image: &SourceImage) -> Result<usize, String> {
+        let path = source_image
+            .local_path()
+            .ok_or_else(|| "Audio source does not have a local path".to_string())?;
+        let segments = decode_source_audio_segments(path, &source_image.id_base, &self.settings)?;
+        let mut indexed = 0;
+        for segment in &segments {
+            let payload = self.build_payload(source_image, &segment.media, None, Some(segment))?;
+            let vector = self.embedder.encode_media(
+                &segment.media.sampled_frames,
+                self.settings.gif_motion_weight,
+            );
             self.store.upsert_image(&payload, vector).await?;
             indexed += 1;
         }
@@ -117,12 +138,23 @@ impl ImageIndexer {
         source_image: &SourceImage,
         media: &DecodedMedia,
         video_scene: Option<&SourceVideoScene>,
+        audio_segment: Option<&SourceAudioSegment>,
     ) -> Result<ImagePayload, String> {
-        let id_base = video_scene
-            .map(|scene| format!("{}#scene={}", source_image.id_base, scene.scene_index + 1))
-            .unwrap_or_else(|| source_image.id_base.clone());
+        let id_base = if let Some(scene) = video_scene {
+            format!("{}#scene={}", source_image.id_base, scene.scene_index + 1)
+        } else if let Some(segment) = audio_segment {
+            format!(
+                "{}#audio-bit={}",
+                source_image.id_base,
+                segment.scene_index + 1
+            )
+        } else {
+            source_image.id_base.clone()
+        };
         let image_id = image_id_for_uri(&id_base);
-        let full_audio_url = if media.kind == MediaKind::Audio {
+        let full_audio_url = if let Some(segment) = audio_segment {
+            segment.full_audio_url.clone()
+        } else if media.kind == MediaKind::Audio {
             source_image
                 .local_path()
                 .and_then(|path| expose_source_audio(path, &image_id, &self.settings).ok())
@@ -147,34 +179,51 @@ impl ImageIndexer {
             None
         };
         let (width, height) = dimensions(&media.poster);
-        let relative_path = video_scene
-            .map(|scene| {
-                format!(
-                    "{}#scene-{:03}",
-                    source_image.relative_path,
-                    scene.scene_index + 1
-                )
-            })
-            .unwrap_or_else(|| source_image.relative_path.clone());
-        let filename = video_scene
-            .map(|scene| {
-                format!(
-                    "{} scene {:03}",
-                    source_image.filename,
-                    scene.scene_index + 1
-                )
-            })
-            .unwrap_or_else(|| source_image.filename.clone());
-        let path = video_scene
-            .map(|scene| {
-                format!(
-                    "{}#t={:.3},{:.3}",
-                    source_image.display_path,
-                    scene.start.timestamp.seconds(),
-                    scene.end.timestamp.seconds()
-                )
-            })
-            .unwrap_or_else(|| source_image.display_path.clone());
+        let relative_path = if let Some(scene) = video_scene {
+            format!(
+                "{}#scene-{:03}",
+                source_image.relative_path,
+                scene.scene_index + 1
+            )
+        } else if let Some(segment) = audio_segment {
+            format!(
+                "{}#audio-bit-{:03}",
+                source_image.relative_path,
+                segment.scene_index + 1
+            )
+        } else {
+            source_image.relative_path.clone()
+        };
+        let filename = if let Some(scene) = video_scene {
+            format!(
+                "{} scene {:03}",
+                source_image.filename,
+                scene.scene_index + 1
+            )
+        } else if let Some(segment) = audio_segment {
+            format!(
+                "{} bit {:03}",
+                source_image.filename,
+                segment.scene_index + 1
+            )
+        } else {
+            source_image.filename.clone()
+        };
+        let path = if let Some(scene) = video_scene {
+            format!(
+                "{}#t={:.3},{:.3}",
+                source_image.display_path,
+                scene.start.timestamp.seconds(),
+                scene.end.timestamp.seconds()
+            )
+        } else if let Some(segment) = audio_segment {
+            format!(
+                "{}#t={:.3},{:.3}",
+                source_image.display_path, segment.start_seconds, segment.end_seconds
+            )
+        } else {
+            source_image.display_path.clone()
+        };
         Ok(ImagePayload {
             id: image_id,
             path,
@@ -194,11 +243,17 @@ impl ImageIndexer {
             full_audio_url,
             audio_analysis: media.audio_analysis.clone(),
             scene_clip_url: video_scene.and_then(|scene| scene.clip_url.clone()),
-            scene_index: video_scene.map(|scene| scene.scene_index),
+            scene_index: video_scene
+                .map(|scene| scene.scene_index)
+                .or_else(|| audio_segment.map(|segment| segment.scene_index)),
             scene_start_frame: video_scene.map(|scene| scene.start.frame_index),
             scene_end_frame: video_scene.map(|scene| scene.end.frame_index),
-            scene_start_seconds: video_scene.map(|scene| scene.start.timestamp.seconds()),
-            scene_end_seconds: video_scene.map(|scene| scene.end.timestamp.seconds()),
+            scene_start_seconds: video_scene
+                .map(|scene| scene.start.timestamp.seconds())
+                .or_else(|| audio_segment.map(|segment| segment.start_seconds)),
+            scene_end_seconds: video_scene
+                .map(|scene| scene.end.timestamp.seconds())
+                .or_else(|| audio_segment.map(|segment| segment.end_seconds)),
             source_type: source_image.source_type.clone(),
             source_uri: Some(source_image.source_uri.clone()),
         })

@@ -19,6 +19,8 @@ export type AudioAnalysis = {
   speech_detected: boolean;
   speech_ratio: number;
   speech_segments: AudioSpeechSegment[];
+  audio_segments: AudioSegmentGuess[];
+  recognized_voices: AudioRecognizedVoice[];
   tempo_bpm: number | null;
   tempo_confidence: number;
   tempo_onset_count: number;
@@ -27,6 +29,24 @@ export type AudioAnalysis = {
 export type AudioSpeechSegment = {
   start_seconds: number;
   end_seconds: number;
+  confidence: number;
+};
+
+export type AudioSegmentGuess = {
+  segment_index: number;
+  kind: string;
+  start_seconds: number;
+  end_seconds: number;
+  confidence: number;
+  speaker_id: string | null;
+  speaker_label: string | null;
+};
+
+export type AudioRecognizedVoice = {
+  id: string;
+  label: string;
+  segment_count: number;
+  total_seconds: number;
   confidence: number;
 };
 
@@ -68,11 +88,14 @@ export type SearchResult = {
 
 export type SearchSceneResponse = {
   scene_index: number;
+  scene_kind: string;
   start_frame: number;
   end_frame: number;
   start_seconds: number;
   end_seconds: number;
   clip_url: string | null;
+  speaker_id: string | null;
+  speaker_label: string | null;
   query_phash: string;
   count: number;
   results: SearchResult[];

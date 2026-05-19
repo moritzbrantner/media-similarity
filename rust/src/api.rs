@@ -9,7 +9,8 @@ use serde::Deserialize;
 use serde_json::json;
 
 use crate::audio::{
-    audio_upload_path, decode_audio, is_audio_content_type, is_audio_extension, write_audio_upload,
+    audio_upload_path, decode_audio_segments, is_audio_content_type, is_audio_extension,
+    write_audio_upload,
 };
 use crate::config::Settings;
 use crate::embedder::ImageEmbedder;
@@ -183,8 +184,8 @@ async fn search_audio_upload(
 ) -> Result<SearchResponse, ApiError> {
     let upload_path = audio_upload_path(&state.settings.upload_dir, filename);
     write_audio_upload(&upload_path, raw).map_err(ApiError::internal)?;
-    let media = match decode_audio(&upload_path, &state.settings) {
-        Ok(media) => media,
+    let segments = match decode_audio_segments(&upload_path, &state.settings) {
+        Ok(segments) => segments,
         Err(error) => {
             let _ = std::fs::remove_file(&upload_path);
             return Err(ApiError::bad_request(format!(
@@ -198,10 +199,48 @@ async fn search_audio_upload(
         state.store.clone(),
         state.embedder.clone(),
     );
-    service
-        .search_media(&media, limit)
-        .await
-        .map_err(ApiError::internal)
+    let mut scene_responses = Vec::new();
+    let mut flattened = Vec::new();
+
+    for segment in &segments {
+        let mut response = service
+            .search_media(&segment.media, limit)
+            .await
+            .map_err(ApiError::internal)?;
+        for result in &mut response.results {
+            result.query_scene_index = Some(segment.scene_index);
+        }
+        flattened.extend(response.results.clone());
+        scene_responses.push(SearchSceneResponse {
+            scene_index: segment.scene_index,
+            scene_kind: "audio_bit".to_string(),
+            start_frame: (segment.start_seconds * 1000.0).round() as u64,
+            end_frame: (segment.end_seconds * 1000.0).round() as u64,
+            start_seconds: segment.start_seconds,
+            end_seconds: segment.end_seconds,
+            clip_url: None,
+            speaker_id: segment.speaker_id.clone(),
+            speaker_label: segment.speaker_label.clone(),
+            query_phash: response.query_phash,
+            count: response.count,
+            results: response.results,
+        });
+    }
+
+    let results = deduplicate_flat_results(flattened);
+    Ok(SearchResponse {
+        query_phash: scene_responses
+            .first()
+            .map(|scene| scene.query_phash.clone())
+            .unwrap_or_default(),
+        count: results.len(),
+        results,
+        query_media_kind: "audio".to_string(),
+        scenes: scene_responses,
+        query_audio_analysis: segments
+            .first()
+            .and_then(|segment| segment.media.audio_analysis.clone()),
+    })
 }
 
 async fn search_video_upload(
@@ -241,11 +280,14 @@ async fn search_video_upload(
         flattened.extend(response.results.clone());
         scene_responses.push(SearchSceneResponse {
             scene_index: scene.scene_index,
+            scene_kind: "scene".to_string(),
             start_frame: scene.start.frame_index,
             end_frame: scene.end.frame_index,
             start_seconds: scene.start.timestamp.seconds(),
             end_seconds: scene.end.timestamp.seconds(),
             clip_url: scene.clip_url.clone(),
+            speaker_id: None,
+            speaker_label: None,
             query_phash: response.query_phash,
             count: response.count,
             results: response.results,

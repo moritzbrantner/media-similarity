@@ -5,6 +5,10 @@ pub struct AudioAnalysis {
     pub speech_detected: bool,
     pub speech_ratio: f32,
     pub speech_segments: Vec<AudioSpeechSegment>,
+    #[serde(default)]
+    pub audio_segments: Vec<AudioSegmentGuess>,
+    #[serde(default)]
+    pub recognized_voices: Vec<AudioRecognizedVoice>,
     pub tempo_bpm: Option<f32>,
     pub tempo_confidence: f32,
     pub tempo_onset_count: u32,
@@ -14,6 +18,28 @@ pub struct AudioAnalysis {
 pub struct AudioSpeechSegment {
     pub start_seconds: f64,
     pub end_seconds: f64,
+    pub confidence: f32,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct AudioSegmentGuess {
+    pub segment_index: usize,
+    pub kind: String,
+    pub start_seconds: f64,
+    pub end_seconds: f64,
+    pub confidence: f32,
+    #[serde(default)]
+    pub speaker_id: Option<String>,
+    #[serde(default)]
+    pub speaker_label: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct AudioRecognizedVoice {
+    pub id: String,
+    pub label: String,
+    pub segment_count: u32,
+    pub total_seconds: f64,
     pub confidence: f32,
 }
 
@@ -87,11 +113,17 @@ pub struct SearchResponse {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct SearchSceneResponse {
     pub scene_index: usize,
+    #[serde(default = "default_scene_kind")]
+    pub scene_kind: String,
     pub start_frame: u64,
     pub end_frame: u64,
     pub start_seconds: f64,
     pub end_seconds: f64,
     pub clip_url: Option<String>,
+    #[serde(default)]
+    pub speaker_id: Option<String>,
+    #[serde(default)]
+    pub speaker_label: Option<String>,
     pub query_phash: String,
     pub count: usize,
     pub results: Vec<SearchResult>,
@@ -129,6 +161,10 @@ fn default_media_kind() -> String {
 
 fn default_query_media_kind() -> String {
     "static_image".to_string()
+}
+
+fn default_scene_kind() -> String {
+    "scene".to_string()
 }
 
 #[cfg(test)]
@@ -292,6 +328,22 @@ mod tests {
                     start_seconds: 0.5,
                     end_seconds: 2.0,
                     confidence: 0.2,
+                }],
+                audio_segments: vec![super::AudioSegmentGuess {
+                    segment_index: 0,
+                    kind: "speech".to_string(),
+                    start_seconds: 0.5,
+                    end_seconds: 2.0,
+                    confidence: 0.2,
+                    speaker_id: Some("voice-0001".to_string()),
+                    speaker_label: Some("Voice 1".to_string()),
+                }],
+                recognized_voices: vec![super::AudioRecognizedVoice {
+                    id: "voice-0001".to_string(),
+                    label: "Voice 1".to_string(),
+                    segment_count: 1,
+                    total_seconds: 1.5,
+                    confidence: 0.8,
                 }],
                 tempo_bpm: Some(120.0),
                 tempo_confidence: 0.8,

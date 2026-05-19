@@ -13,7 +13,7 @@ The service indexes configured media folders, generates thumbnails and perceptua
 - Uploaded video query support for MP4, MOV, M4V, WebM, MKV, and AVI when `ffmpeg`/`ffprobe` are available.
 - Local source video indexing: videos in configured local source folders are cut into scenes and indexed as individual searchable scene records.
 - Uploaded and local source audio support for MP3, WAV, FLAC, M4A, AAC, OGG, and Opus when `ffmpeg`/`ffprobe` are available.
-- Audio speech-activity and tempo detection metadata for indexed and uploaded audio.
+- Audio speech-activity, tempo, bit-boundary, and recognized-voice metadata for indexed and uploaded audio.
 - Scene detection and scene splitting through the Rust `video-analysis-core`, `video-analysis-detectors`, `video-analysis-ffmpeg`, and `video-analysis-split` crates.
 - Native pHash generation, pHash Hamming distance, and thumbnail generation.
 - Animation-aware GIF indexing and upload search using sampled frame content plus motion deltas.
@@ -84,17 +84,17 @@ The response includes:
 - `thumbnail_url`: URL for the generated thumbnail served by the backend.
 - `animated_thumbnail_url`: URL for generated animated GIF previews when the result is an animated GIF.
 - `query_media_kind`: `static_image`, `animated_gif`, `video`, or `audio`.
-- `scenes`: per-scene search groups for video uploads, including scene frame/time bounds and a `clip_url` for the generated scene MP4.
+- `scenes`: per-scene search groups for video uploads and per-bit search groups for audio uploads, including time bounds. Video scenes also include frame bounds and a `clip_url` for the generated scene MP4.
 - Matched source video scenes include `full_video_url`, `scene_clip_url`, and `scene_start_seconds`/`scene_end_seconds` so clients can open the source video at the matching time window.
-- Matched source audio records include `full_audio_url` so clients can play or open the source audio file.
-- Matched source audio records include `audio_analysis` with `speech_detected`, `speech_ratio`, `speech_segments`, `tempo_bpm`, `tempo_confidence`, and `tempo_onset_count`.
+- Matched source audio records include `full_audio_url` and `scene_start_seconds`/`scene_end_seconds` so clients can play the matched audio bit.
+- Matched source audio records include `audio_analysis` with `speech_detected`, `speech_ratio`, `speech_segments`, `audio_segments`, `recognized_voices`, `tempo_bpm`, `tempo_confidence`, and `tempo_onset_count`.
 - Audio upload responses include `query_audio_analysis` with the same analysis shape for the query audio.
 
 GIF vector search uses sampled frame content plus frame-to-frame motion deltas. `query_phash`, `hash_distance`, and `near_duplicate` remain based on the representative poster frame so the duplicate contract stays compatible with static images.
 
 Video query search and source video indexing use the Rust scene detection crates with the content detector defaults from the `vanalyze` CLI. The service writes per-scene MP4 clips under `UPLOAD_DIR`, samples scene frames according to `VIDEO_FRAME_STRIDE` and `VIDEO_MAX_FRAMES`, and searches/indexes each scene independently. The Rust crates are sufficient for this workflow, but their command-backed FFmpeg runtime requires `ffmpeg` and `ffprobe` on `PATH`.
 
-Audio query search and source audio indexing use FFmpeg to render a deterministic spectrogram image, then reuse the same thumbnail, pHash, and vector search pipeline as image media. Audio duration metadata is read with `ffprobe`. Speech activity uses a deterministic RMS voice-activity detector, and tempo uses onset detection plus BPM estimation over mono 16 kHz PCM extracted with FFmpeg.
+Audio query search and source audio indexing use FFmpeg to render deterministic spectrogram images, then reuse the same thumbnail, pHash, and vector search pipeline as image media. Audio duration metadata is read with `ffprobe`. Speech activity uses a deterministic RMS voice-activity detector, tempo uses onset detection plus BPM estimation over mono 16 kHz PCM extracted with FFmpeg, and audio bit boundaries are guessed from speech spans, speaker labels, onsets, and maximum bit duration. Recognized voices are stored in a persistent spectral speaker registry; this is a deterministic baseline suitable for matching recurring voices, not a biometric identity guarantee.
 
 ## Configuration
 
@@ -113,6 +113,7 @@ Set these values in `.env`:
 | `UPLOAD_DIR` | `/app/data/uploads` | Reserved local upload storage path. |
 | `IMAGE_EXTENSIONS` | `.jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.gif` | File extensions to index. |
 | `AUDIO_EXTENSIONS` | `.mp3,.wav,.flac,.m4a,.aac,.ogg,.opus` | Audio file extensions to index. |
+| `VOICE_REGISTRY_PATH` | `data/recognized-voices.json` | Persistent speaker registry used to recognize recurring voices across audio files. |
 | `DEFAULT_SEARCH_LIMIT` | `12` | Default result count. |
 | `DUPLICATE_HASH_DISTANCE` | `8` | Max pHash distance for near-duplicate flag. |
 | `MAX_UPLOAD_MB` | `20` | Maximum uploaded query image, video, or audio size. |

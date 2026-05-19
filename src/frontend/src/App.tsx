@@ -1141,12 +1141,15 @@ function SceneResultsList({
   const selectedScene =
     scenes.find((scene) => scene.scene_index === selectedSceneIndex) ?? scenes[0];
   const selectedResults = selectedScene ? filterResults(selectedScene.results, filters) : [];
+  const isAudioBits = scenes.some((scene) => scene.scene_kind === "audio_bit");
+  const segmentLabel = isAudioBits ? "Bit" : "Scene";
+  const SegmentIcon = isAudioBits ? FileAudio : FileVideo;
 
   return (
     <div className="flex flex-col gap-5">
       <div className="rounded-lg border border-neutral-300 bg-white p-3 shadow-sm">
         <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-neutral-950">
-          <FileVideo className="size-4 text-neutral-600" aria-hidden="true" />
+          <SegmentIcon className="size-4 text-neutral-600" aria-hidden="true" />
           <span>Query segment</span>
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
@@ -1162,8 +1165,9 @@ function SceneResultsList({
               onClick={() => onSelectScene(scene.scene_index)}
               type="button"
             >
-              Scene {scene.scene_index + 1} · {formatSeconds(scene.start_seconds)}-
+              {segmentLabel} {scene.scene_index + 1} · {formatSeconds(scene.start_seconds)}-
               {formatSeconds(scene.end_seconds)}
+              {scene.speaker_label ? ` · ${scene.speaker_label}` : ""}
             </button>
           ))}
         </div>
@@ -1174,12 +1178,16 @@ function SceneResultsList({
           <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <h3 className="text-sm font-semibold text-neutral-950">
-                Scene {selectedScene.scene_index + 1}
+                {segmentLabel} {selectedScene.scene_index + 1}
               </h3>
               <p className="text-xs text-neutral-600">
                 {formatSeconds(selectedScene.start_seconds)}-
-                {formatSeconds(selectedScene.end_seconds)} · frames {selectedScene.start_frame}-
-                {selectedScene.end_frame}
+                {formatSeconds(selectedScene.end_seconds)}
+                {isAudioBits
+                  ? selectedScene.speaker_label
+                    ? ` · ${selectedScene.speaker_label}`
+                    : ""
+                  : ` · frames ${selectedScene.start_frame}-${selectedScene.end_frame}`}
               </p>
             </div>
             {selectedScene.clip_url ? (
@@ -1253,12 +1261,24 @@ function AudioLinks({ image }: { image: SearchResult["image"] }) {
     return null;
   }
 
+  const start = image.scene_start_seconds ?? null;
+  const end = image.scene_end_seconds ?? null;
+  const audioUrl =
+    start !== null && end !== null
+      ? `${image.full_audio_url}#t=${start.toFixed(3)},${end.toFixed(3)}`
+      : image.full_audio_url;
+
   return (
     <div className="grid gap-2">
-      <audio className="w-full" controls src={image.full_audio_url} />
+      <audio className="w-full" controls src={audioUrl} />
+      {start !== null && end !== null ? (
+        <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-700">
+          {formatSeconds(start)}-{formatSeconds(end)}
+        </div>
+      ) : null}
       <a
         className="inline-flex h-8 w-fit items-center justify-center gap-2 rounded-md border border-neutral-300 bg-white px-2 text-xs font-semibold text-neutral-800 transition hover:border-neutral-500 hover:bg-neutral-50"
-        href={image.full_audio_url}
+        href={audioUrl}
         rel="noreferrer"
         target="_blank"
       >
@@ -1322,6 +1342,17 @@ function ResultCard({ result }: { result: SearchResult }) {
           {image.audio_analysis ? (
             <Metric label="Speech ratio" value={formatPercent(image.audio_analysis.speech_ratio)} />
           ) : null}
+          {image.audio_analysis?.audio_segments?.length ? (
+            <Metric label="Audio bits" value={image.audio_analysis.audio_segments.length} />
+          ) : null}
+          {image.audio_analysis?.recognized_voices?.length ? (
+            <Metric
+              label="Voices"
+              value={image.audio_analysis.recognized_voices
+                .map((voice) => voice.label)
+                .join(", ")}
+            />
+          ) : null}
           {image.audio_analysis?.tempo_bpm ? (
             <Metric label="Tempo" value={`${image.audio_analysis.tempo_bpm.toFixed(1)} BPM`} />
           ) : null}
@@ -1357,6 +1388,14 @@ function ResultCard({ result }: { result: SearchResult }) {
               Speech
             </span>
           ) : null}
+          {image.audio_analysis?.recognized_voices?.map((voice) => (
+            <span
+              className="inline-flex w-fit rounded-md border border-lime-300 bg-lime-50 px-2 py-1 text-xs font-semibold text-lime-900"
+              key={voice.id}
+            >
+              {voice.label}
+            </span>
+          ))}
           {image.audio_analysis?.tempo_bpm ? (
             <span className="inline-flex w-fit rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-900">
               {image.audio_analysis.tempo_bpm.toFixed(0)} BPM

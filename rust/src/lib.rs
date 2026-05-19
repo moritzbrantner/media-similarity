@@ -14,6 +14,7 @@ pub mod search;
 pub mod sources;
 pub mod thumbnails;
 pub mod video;
+pub mod voice;
 
 use image::{DynamicImage, ImageDecoder, ImageReader};
 use image_analysis_core::OwnedImage;

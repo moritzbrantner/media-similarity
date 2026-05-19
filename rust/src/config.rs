@@ -12,6 +12,7 @@ pub struct Settings {
     pub clip_model_name: String,
     pub thumbnail_dir: PathBuf,
     pub upload_dir: PathBuf,
+    pub voice_registry_path: PathBuf,
     pub image_extensions: BTreeSet<String>,
     pub audio_extensions: BTreeSet<String>,
     pub image_sources: Vec<String>,
@@ -44,6 +45,7 @@ impl Default for Settings {
             clip_model_name: "sentence-transformers/clip-ViT-B-32".to_string(),
             thumbnail_dir: PathBuf::from("data/thumbnails"),
             upload_dir: PathBuf::from("data/uploads"),
+            voice_registry_path: PathBuf::from("data/recognized-voices.json"),
             image_extensions: parse_extensions(".jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.gif")
                 .expect("default extensions are valid"),
             audio_extensions: parse_extensions(".mp3,.wav,.flac,.m4a,.aac,.ogg,.opus")
@@ -82,6 +84,7 @@ impl Settings {
             clip_model_name: string_var("CLIP_MODEL_NAME", defaults.clip_model_name),
             thumbnail_dir: path_var("THUMBNAIL_DIR", defaults.thumbnail_dir),
             upload_dir: path_var("UPLOAD_DIR", defaults.upload_dir),
+            voice_registry_path: path_var("VOICE_REGISTRY_PATH", defaults.voice_registry_path),
             image_extensions: match env::var("IMAGE_EXTENSIONS") {
                 Ok(value) => parse_extensions(&value)?,
                 Err(_) => defaults.image_extensions,
