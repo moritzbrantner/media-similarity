@@ -1,0 +1,273 @@
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --text: #172026;
+  --muted: #5f6b76;
+  --line: #d9dee4;
+  --primary: #116b5f;
+  --primary-hover: #0d564c;
+  --warn: #8a5800;
+  --error: #a12525;
+  --ok: #11703d;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.shell {
+  width: min(1180px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: flex-start;
+  margin-bottom: 24px;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 28px;
+  line-height: 1.2;
+  font-weight: 720;
+}
+
+h2 {
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.muted {
+  color: var(--muted);
+  margin-top: 6px;
+  font-size: 14px;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(260px, 360px) 1fr;
+  gap: 18px;
+  align-items: stretch;
+  margin-bottom: 28px;
+}
+
+.search-panel,
+.preview-panel,
+.result-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.search-panel {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  align-content: start;
+}
+
+label {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+input[type="file"],
+input[type="number"] {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  min-height: 40px;
+  padding: 9px 10px;
+  font: inherit;
+}
+
+.button {
+  appearance: none;
+  border: 1px solid #aeb8c2;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  min-height: 40px;
+  padding: 9px 14px;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.button:hover {
+  border-color: #7f8d99;
+}
+
+.button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.button.primary {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.button.primary:hover {
+  background: var(--primary-hover);
+}
+
+.status {
+  min-height: 22px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.status[data-tone="ok"] {
+  color: var(--ok);
+}
+
+.status[data-tone="warn"] {
+  color: var(--warn);
+}
+
+.status[data-tone="error"] {
+  color: var(--error);
+}
+
+.preview-panel {
+  min-height: 260px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.preview-panel img {
+  max-width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+}
+
+.preview-panel img:not([src]) {
+  display: none;
+}
+
+.results-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.results {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 14px;
+}
+
+.result-card {
+  overflow: hidden;
+}
+
+.thumb-wrap {
+  aspect-ratio: 4 / 3;
+  background: #e8ecef;
+  display: grid;
+  place-items: center;
+}
+
+.thumb-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.result-body {
+  padding: 12px;
+}
+
+.result-title {
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.path {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+dl {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 0;
+}
+
+dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+dt {
+  color: var(--muted);
+}
+
+dd {
+  margin: 0;
+  font-weight: 650;
+}
+
+.badge {
+  display: inline-flex;
+  margin-top: 12px;
+  border-radius: 999px;
+  background: #def2e6;
+  color: #0f6235;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.empty {
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 18px;
+}
+
+@media (max-width: 760px) {
+  .topbar,
+  .results-header {
+    display: grid;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+}
+

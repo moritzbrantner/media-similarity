@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Image Similarity Service</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>Image Similarity Service</h1>
+          <p id="health" class="muted">Checking service status...</p>
+        </div>
+        <button id="indexButton" class="button">Index source folder</button>
+      </header>
+
+      <section class="workspace">
+        <form id="searchForm" class="search-panel">
+          <label for="imageInput">Query image</label>
+          <input id="imageInput" name="file" type="file" accept="image/*" required />
+
+          <label for="limitInput">Result limit</label>
+          <input id="limitInput" name="limit" type="number" min="1" max="100" value="12" />
+
+          <button class="button primary" type="submit">Search</button>
+          <p id="status" class="status"></p>
+        </form>
+
+        <aside class="preview-panel">
+          <img id="previewImage" alt="" />
+        </aside>
+      </section>
+
+      <section>
+        <div class="results-header">
+          <h2>Results</h2>
+          <span id="resultCount" class="muted"></span>
+        </div>
+        <div id="results" class="results"></div>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
+
