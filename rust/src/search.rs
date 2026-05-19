@@ -62,6 +62,7 @@ impl ImageSearchService {
             results,
             query_media_kind: media.kind.as_str().to_string(),
             scenes: Vec::new(),
+            query_audio_analysis: media.audio_analysis.clone(),
         })
     }
 }

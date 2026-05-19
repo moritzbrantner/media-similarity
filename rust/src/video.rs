@@ -275,6 +275,7 @@ fn sample_scene_media(
                     poster,
                     sampled_frames: frames.clone(),
                     preview_frames: frames,
+                    audio_analysis: None,
                 },
             ))
         })

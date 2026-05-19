@@ -1313,6 +1313,24 @@ function ResultCard({ result }: { result: SearchResult }) {
           {image.duration_ms ? (
             <Metric label="Duration" value={formatDuration(image.duration_ms)} />
           ) : null}
+          {image.audio_analysis ? (
+            <Metric
+              label="Speech"
+              value={image.audio_analysis.speech_detected ? "Detected" : "Not detected"}
+            />
+          ) : null}
+          {image.audio_analysis ? (
+            <Metric label="Speech ratio" value={formatPercent(image.audio_analysis.speech_ratio)} />
+          ) : null}
+          {image.audio_analysis?.tempo_bpm ? (
+            <Metric label="Tempo" value={`${image.audio_analysis.tempo_bpm.toFixed(1)} BPM`} />
+          ) : null}
+          {image.audio_analysis?.tempo_bpm ? (
+            <Metric
+              label="Tempo confidence"
+              value={formatPercent(image.audio_analysis.tempo_confidence)}
+            />
+          ) : null}
         </dl>
 
         <VideoSceneLinks image={image} />
@@ -1332,6 +1350,16 @@ function ResultCard({ result }: { result: SearchResult }) {
           {image.media_kind === "audio" ? (
             <span className="inline-flex w-fit rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-900">
               Audio
+            </span>
+          ) : null}
+          {image.audio_analysis?.speech_detected ? (
+            <span className="inline-flex w-fit rounded-md border border-teal-300 bg-teal-50 px-2 py-1 text-xs font-semibold text-teal-900">
+              Speech
+            </span>
+          ) : null}
+          {image.audio_analysis?.tempo_bpm ? (
+            <span className="inline-flex w-fit rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-900">
+              {image.audio_analysis.tempo_bpm.toFixed(0)} BPM
             </span>
           ) : null}
           {result.query_scene_index !== null && result.query_scene_index !== undefined ? (
@@ -1363,6 +1391,10 @@ function formatDuration(durationMs: number) {
 
 function formatSeconds(seconds: number) {
   return `${seconds.toFixed(1)}s`;
+}
+
+function formatPercent(value: number) {
+  return `${Math.round(value * 100)}%`;
 }
 
 function formatFileSize(sizeBytes: number) {

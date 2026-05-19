@@ -262,6 +262,7 @@ async fn search_video_upload(
         results,
         query_media_kind: "video".to_string(),
         scenes: scene_responses,
+        query_audio_analysis: None,
     })
 }
 

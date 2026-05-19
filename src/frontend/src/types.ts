@@ -15,6 +15,21 @@ export type IndexResponse = {
   errors: string[];
 };
 
+export type AudioAnalysis = {
+  speech_detected: boolean;
+  speech_ratio: number;
+  speech_segments: AudioSpeechSegment[];
+  tempo_bpm: number | null;
+  tempo_confidence: number;
+  tempo_onset_count: number;
+};
+
+export type AudioSpeechSegment = {
+  start_seconds: number;
+  end_seconds: number;
+  confidence: number;
+};
+
 export type ImagePayload = {
   id: string;
   path: string;
@@ -32,6 +47,7 @@ export type ImagePayload = {
   duration_ms: number | null;
   full_video_url: string | null;
   full_audio_url: string | null;
+  audio_analysis: AudioAnalysis | null;
   scene_clip_url: string | null;
   scene_index: number | null;
   scene_start_frame: number | null;
@@ -68,4 +84,5 @@ export type SearchResponse = {
   results: SearchResult[];
   query_media_kind: "static_image" | "animated_gif" | "video" | "audio";
   scenes: SearchSceneResponse[];
+  query_audio_analysis: AudioAnalysis | null;
 };

@@ -13,6 +13,9 @@ name = "image-similarity-service"
 path = "src/main.rs"
 
 [dependencies]
+audio-analysis-core = { path = "../../rust-packages/crates/audio/audio-analysis-core" }
+audio-analysis-rhythm = { path = "../../rust-packages/crates/audio/audio-analysis-rhythm" }
+audio-analysis-speakers = { path = "../../rust-packages/crates/audio/audio-analysis-speakers" }
 image-analysis-core = { path = "../../rust-packages/crates/image/image-analysis-core" }
 image-analysis-io = { path = "../../rust-packages/crates/image/image-analysis-io" }
 image-analysis-processing = { path = "../../rust-packages/crates/image/image-analysis-processing" }

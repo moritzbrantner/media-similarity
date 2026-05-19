@@ -1,6 +1,23 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct AudioAnalysis {
+    pub speech_detected: bool,
+    pub speech_ratio: f32,
+    pub speech_segments: Vec<AudioSpeechSegment>,
+    pub tempo_bpm: Option<f32>,
+    pub tempo_confidence: f32,
+    pub tempo_onset_count: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct AudioSpeechSegment {
+    pub start_seconds: f64,
+    pub end_seconds: f64,
+    pub confidence: f32,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ImagePayload {
     pub id: String,
     pub path: String,
@@ -24,6 +41,8 @@ pub struct ImagePayload {
     pub full_video_url: Option<String>,
     #[serde(default)]
     pub full_audio_url: Option<String>,
+    #[serde(default)]
+    pub audio_analysis: Option<AudioAnalysis>,
     #[serde(default)]
     pub scene_clip_url: Option<String>,
     #[serde(default)]
@@ -61,6 +80,8 @@ pub struct SearchResponse {
     pub query_media_kind: String,
     #[serde(default)]
     pub scenes: Vec<SearchSceneResponse>,
+    #[serde(default)]
+    pub query_audio_analysis: Option<AudioAnalysis>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -138,6 +159,7 @@ mod tests {
         assert_eq!(payload.duration_ms, None);
         assert_eq!(payload.full_video_url, None);
         assert_eq!(payload.full_audio_url, None);
+        assert_eq!(payload.audio_analysis, None);
         assert_eq!(payload.scene_clip_url, None);
         assert_eq!(payload.scene_index, None);
     }
@@ -189,6 +211,7 @@ mod tests {
             duration_ms: Some(600),
             full_video_url: None,
             full_audio_url: None,
+            audio_analysis: None,
             scene_clip_url: None,
             scene_index: None,
             scene_start_frame: None,
@@ -224,6 +247,7 @@ mod tests {
             duration_ms: Some(1200),
             full_video_url: Some("/uploads/source-videos/id.mp4".to_string()),
             full_audio_url: None,
+            audio_analysis: None,
             scene_clip_url: Some("/uploads/source-scenes/id/scene-001.mp4".to_string()),
             scene_index: Some(0),
             scene_start_frame: Some(10),
@@ -261,6 +285,18 @@ mod tests {
             duration_ms: Some(4200),
             full_video_url: None,
             full_audio_url: Some("/uploads/source-audio/id.mp3".to_string()),
+            audio_analysis: Some(super::AudioAnalysis {
+                speech_detected: true,
+                speech_ratio: 0.4,
+                speech_segments: vec![super::AudioSpeechSegment {
+                    start_seconds: 0.5,
+                    end_seconds: 2.0,
+                    confidence: 0.2,
+                }],
+                tempo_bpm: Some(120.0),
+                tempo_confidence: 0.8,
+                tempo_onset_count: 8,
+            }),
             scene_clip_url: None,
             scene_index: None,
             scene_start_frame: None,
@@ -274,6 +310,8 @@ mod tests {
         assert_eq!(serialized["media_kind"], "audio");
         assert_eq!(serialized["full_audio_url"], "/uploads/source-audio/id.mp3");
         assert_eq!(serialized["duration_ms"], 4200);
+        assert_eq!(serialized["audio_analysis"]["speech_detected"], true);
+        assert_eq!(serialized["audio_analysis"]["tempo_bpm"], 120.0);
     }
 
     #[test]
@@ -286,5 +324,6 @@ mod tests {
         let response: super::SearchResponse = serde_json::from_str(json).unwrap();
         assert_eq!(response.query_media_kind, "static_image");
         assert!(response.scenes.is_empty());
+        assert!(response.query_audio_analysis.is_none());
     }
 }

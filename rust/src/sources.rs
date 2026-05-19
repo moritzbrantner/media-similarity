@@ -30,6 +30,7 @@ impl SourceImage {
         matches!(self.loader, SourceLoader::LocalVideo(_))
     }
 
+    #[cfg(test)]
     pub fn is_audio(&self) -> bool {
         matches!(self.loader, SourceLoader::LocalAudio(_))
     }

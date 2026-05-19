@@ -1,5 +1,7 @@
 use image::RgbImage;
 
+use crate::models::AudioAnalysis;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MediaKind {
     StaticImage,
@@ -35,4 +37,5 @@ pub struct DecodedMedia {
     pub poster: RgbImage,
     pub sampled_frames: Vec<MediaFrame>,
     pub preview_frames: Vec<MediaFrame>,
+    pub audio_analysis: Option<AudioAnalysis>,
 }

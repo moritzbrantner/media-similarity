@@ -192,6 +192,7 @@ impl ImageIndexer {
             duration_ms: media.duration_ms,
             full_video_url: video_scene.and_then(|scene| scene.full_video_url.clone()),
             full_audio_url,
+            audio_analysis: media.audio_analysis.clone(),
             scene_clip_url: video_scene.and_then(|scene| scene.clip_url.clone()),
             scene_index: video_scene.map(|scene| scene.scene_index),
             scene_start_frame: video_scene.map(|scene| scene.start.frame_index),

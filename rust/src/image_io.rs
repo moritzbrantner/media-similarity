@@ -94,6 +94,7 @@ fn decoded_static_image(image: RgbImage, delay_ms: u32) -> DecodedMedia {
         poster: image,
         sampled_frames: vec![frame.clone()],
         preview_frames: vec![frame],
+        audio_analysis: None,
     }
 }
 
@@ -130,6 +131,7 @@ where
         poster,
         sampled_frames,
         preview_frames,
+        audio_analysis: None,
     })
 }
 
