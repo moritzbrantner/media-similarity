@@ -1,0 +1,634 @@
+use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
+use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::{Arc, Mutex};
+
+use axum::extract::{Path as AxumPath, State};
+use axum::http::StatusCode as AxumStatusCode;
+use axum::routing::{get, post, put};
+use axum::{Json, Router};
+use image::codecs::gif::{GifEncoder, Repeat};
+use image::{Delay, Frame, ImageBuffer, Rgb, RgbImage};
+use reqwest::header::CONTENT_TYPE;
+use serde::Deserialize;
+use serde_json::{json, Value};
+use tokio::net::TcpListener;
+use uuid::Uuid;
+
+use _rust::api::{health, index_images, search_upload, AppState};
+use _rust::config::{parse_extensions, Settings};
+use _rust::models::{IndexResponse, SearchResponse};
+
+#[tokio::test]
+async fn static_image_recognition_covers_content_type_extension_limits_and_duplicates() {
+    let app = TestApp::new(|settings| {
+        settings.image_extensions = parse_extensions(".png,.jpg").unwrap();
+        settings.default_search_limit = 2;
+        settings.duplicate_hash_distance = 0;
+    })
+    .await;
+
+    let red = app.source_path("red-landscape.png");
+    let green = app.source_path("green-square.png");
+    let blue = app.source_path("blue-portrait.jpg");
+    write_pattern_image(&red, 64, 40, [220, 20, 20], [20, 20, 20]);
+    write_pattern_image(&green, 48, 48, [20, 180, 80], [20, 20, 20]);
+    write_pattern_image(&blue, 40, 64, [30, 70, 220], [20, 20, 20]);
+
+    let indexed = app.index().await;
+    assert_eq!(indexed.indexed, 3);
+    assert_eq!(indexed.failed, 0, "{:?}", indexed.errors);
+
+    let red_bytes = fs::read(&red).unwrap();
+    let default_limit = app
+        .search_upload("query.bin", "image/png", red_bytes.clone(), None)
+        .await;
+    assert_eq!(default_limit.query_media_kind, "static_image");
+    assert_eq!(default_limit.count, 2);
+    assert_eq!(default_limit.results[0].image.filename, "red-landscape.png");
+    assert_eq!(default_limit.results[0].hash_distance, Some(0));
+    assert!(default_limit.results[0].near_duplicate);
+    assert!(default_limit.results.iter().all(|result| {
+        result.image.media_kind == "static_image" && result.query_scene_index.is_none()
+    }));
+
+    let explicit_limit = app
+        .search_upload("query.bin", "image/png", red_bytes, Some(1))
+        .await;
+    assert_eq!(explicit_limit.count, 1);
+
+    let green_bytes = fs::read(&green).unwrap();
+    let extension_detected = app
+        .search_upload(
+            "green-square.png",
+            "application/octet-stream",
+            green_bytes,
+            Some(1),
+        )
+        .await;
+    assert_eq!(extension_detected.count, 1);
+    assert_eq!(
+        extension_detected.results[0].image.filename,
+        "green-square.png"
+    );
+}
+
+#[tokio::test]
+async fn source_extension_configuration_filters_indexed_media() {
+    let app = TestApp::new(|settings| {
+        settings.image_extensions = parse_extensions(".png").unwrap();
+        settings.default_search_limit = 10;
+    })
+    .await;
+
+    let included = app.source_path("included.PNG");
+    let excluded = app.source_path("excluded.jpg");
+    write_pattern_image(&included, 40, 40, [200, 40, 40], [10, 10, 10]);
+    write_pattern_image(&excluded, 40, 40, [40, 40, 200], [10, 10, 10]);
+
+    let indexed = app.index().await;
+    assert_eq!(indexed.indexed, 1);
+    assert_eq!(indexed.failed, 0, "{:?}", indexed.errors);
+
+    let response = app
+        .search_upload(
+            "included.PNG",
+            "application/octet-stream",
+            fs::read(&included).unwrap(),
+            None,
+        )
+        .await;
+    assert_eq!(response.count, 1);
+    assert_eq!(response.results[0].image.filename, "included.PNG");
+}
+
+#[tokio::test]
+async fn gif_recognition_indexes_animation_metadata_and_honors_gif_configuration() {
+    let app = TestApp::new(|settings| {
+        settings.image_extensions = parse_extensions(".gif").unwrap();
+        settings.default_search_limit = 5;
+        settings.gif_sample_frames = 3;
+        settings.gif_preview_frames = 2;
+        settings.gif_max_decode_frames = 4;
+        settings.gif_motion_weight = 0.75;
+    })
+    .await;
+
+    let gif = app.source_path("motion.gif");
+    write_test_gif(
+        &gif,
+        &[
+            [220, 40, 40],
+            [40, 220, 40],
+            [40, 40, 220],
+            [220, 220, 40],
+            [220, 40, 220],
+        ],
+        70,
+    );
+
+    let indexed = app.index().await;
+    assert_eq!(indexed.indexed, 1);
+    assert_eq!(indexed.failed, 0, "{:?}", indexed.errors);
+
+    let response = app
+        .search_upload("motion.gif", "image/gif", fs::read(&gif).unwrap(), None)
+        .await;
+    assert_eq!(response.query_media_kind, "animated_gif");
+    assert_eq!(response.count, 1);
+
+    let image = &response.results[0].image;
+    assert_eq!(image.filename, "motion.gif");
+    assert_eq!(image.media_kind, "animated_gif");
+    assert_eq!(image.frame_count, Some(4));
+    assert_eq!(image.duration_ms, Some(280));
+    assert!(image.animated_thumbnail_url.is_some());
+}
+
+#[tokio::test]
+async fn video_recognition_indexes_source_scenes_and_searches_uploaded_scenes() {
+    if !has_tool("ffmpeg") || !has_tool("ffprobe") {
+        eprintln!("skipping video e2e test because ffmpeg/ffprobe is unavailable");
+        return;
+    }
+
+    let app = TestApp::new(|settings| {
+        settings.image_extensions = parse_extensions(".mp4").unwrap();
+        settings.default_search_limit = 5;
+        settings.video_frame_stride = 3;
+        settings.video_max_frames = Some(4);
+        settings.gif_motion_weight = 0.4;
+    })
+    .await;
+
+    let video = app.source_path("two-scenes.mp4");
+    write_two_scene_video(&video);
+
+    let indexed = app.index().await;
+    assert!(indexed.indexed >= 1, "{indexed:?}");
+    assert_eq!(indexed.failed, 0, "{:?}", indexed.errors);
+
+    let response = app
+        .search_upload("query.mp4", "video/mp4", fs::read(&video).unwrap(), Some(3))
+        .await;
+    assert_eq!(response.query_media_kind, "video");
+    assert!(!response.scenes.is_empty());
+    assert_eq!(response.count, response.results.len());
+    assert!(response.results.iter().all(|result| {
+        result.image.media_kind == "video_scene" && result.query_scene_index.is_some()
+    }));
+
+    let scene = &response.scenes[0];
+    assert_eq!(scene.scene_kind, "scene");
+    assert!(scene.end_seconds > scene.start_seconds);
+    assert!(scene.count <= 3);
+    assert!(scene.results.iter().all(|result| {
+        result.image.full_video_url.is_some() && result.image.scene_clip_url.is_some()
+    }));
+}
+
+#[tokio::test]
+async fn audio_recognition_indexes_bits_voice_metadata_and_searches_uploaded_audio() {
+    if !has_tool("ffmpeg") || !has_tool("ffprobe") {
+        eprintln!("skipping audio e2e test because ffmpeg/ffprobe is unavailable");
+        return;
+    }
+
+    let app = TestApp::new(|settings| {
+        settings.image_extensions = parse_extensions(".wav").unwrap();
+        settings.audio_extensions = parse_extensions(".wav").unwrap();
+        settings.default_search_limit = 4;
+    })
+    .await;
+
+    let audio = app.source_path("voice-like-tone.wav");
+    write_voice_like_audio(&audio);
+
+    let indexed = app.index().await;
+    assert!(indexed.indexed >= 1, "{indexed:?}");
+    assert_eq!(indexed.failed, 0, "{:?}", indexed.errors);
+
+    let response = app
+        .search_upload("query.wav", "audio/wav", fs::read(&audio).unwrap(), Some(2))
+        .await;
+    assert_eq!(response.query_media_kind, "audio");
+    assert!(!response.scenes.is_empty());
+    assert!(response.query_audio_analysis.is_some());
+    assert_eq!(response.count, response.results.len());
+    assert!(response.results.iter().all(|result| {
+        result.image.media_kind == "audio" && result.query_scene_index.is_some()
+    }));
+
+    let first_scene = &response.scenes[0];
+    assert_eq!(first_scene.scene_kind, "audio_bit");
+    assert!(first_scene.end_seconds > first_scene.start_seconds);
+    assert!(first_scene.count <= 2);
+
+    let result_audio = response.results[0].image.audio_analysis.as_ref().unwrap();
+    assert!(result_audio.speech_detected);
+    assert!(!result_audio.audio_segments.is_empty());
+    assert!(!result_audio.recognized_voices.is_empty());
+    assert!(response.results[0].image.full_audio_url.is_some());
+}
+
+#[tokio::test]
+async fn upload_validation_covers_invalid_media_and_size_configuration() {
+    let app = TestApp::new(|settings| {
+        settings.max_upload_mb = 1;
+    })
+    .await;
+
+    let invalid = app
+        .raw_search_upload("notes.txt", "text/plain", b"not media".to_vec(), None)
+        .await;
+    assert_eq!(invalid.status(), reqwest::StatusCode::BAD_REQUEST);
+    let invalid_body: Value = invalid.json().await.unwrap();
+    assert_eq!(
+        invalid_body["detail"],
+        "Upload must be an image, video, or audio file"
+    );
+
+    let oversized = app
+        .raw_search_upload("large.png", "image/png", vec![0_u8; 1024 * 1024 + 1], None)
+        .await;
+    assert_eq!(oversized.status(), reqwest::StatusCode::PAYLOAD_TOO_LARGE);
+}
+
+struct TestApp {
+    base_url: String,
+    client: reqwest::Client,
+    source_dir: PathBuf,
+    _qdrant: FakeQdrant,
+    _root: TempDir,
+}
+
+impl TestApp {
+    async fn new(configure: impl FnOnce(&mut Settings)) -> Self {
+        let root = TempDir::new();
+        let source_dir = root.path().join("sources");
+        let thumbnail_dir = root.path().join("thumbnails");
+        let upload_dir = root.path().join("uploads");
+        fs::create_dir_all(&source_dir).unwrap();
+        fs::create_dir_all(&thumbnail_dir).unwrap();
+        fs::create_dir_all(&upload_dir).unwrap();
+
+        let qdrant = FakeQdrant::spawn().await;
+        let mut settings = Settings {
+            source_image_dir: source_dir.clone(),
+            qdrant_url: qdrant.base_url.clone(),
+            qdrant_collection: format!("test-{}", Uuid::new_v4()),
+            thumbnail_dir,
+            upload_dir: upload_dir.clone(),
+            voice_registry_path: root.path().join("recognized-voices.json"),
+            vector_size: 32,
+            default_search_limit: 10,
+            duplicate_hash_distance: 8,
+            image_sources: Vec::new(),
+            ..Settings::default()
+        };
+        configure(&mut settings);
+        fs::create_dir_all(&settings.thumbnail_dir).unwrap();
+        fs::create_dir_all(&settings.upload_dir).unwrap();
+
+        let state = Arc::new(AppState::new(settings));
+        let app = Router::new()
+            .route("/api/health", get(health))
+            .route("/api/index", post(index_images))
+            .route("/api/search", post(search_upload))
+            .with_state(state);
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        Self {
+            base_url: format!("http://{addr}"),
+            client: reqwest::Client::new(),
+            source_dir,
+            _qdrant: qdrant,
+            _root: root,
+        }
+    }
+
+    fn source_path(&self, name: &str) -> PathBuf {
+        self.source_dir.join(name)
+    }
+
+    async fn index(&self) -> IndexResponse {
+        let response = self
+            .client
+            .post(format!("{}/api/index", self.base_url))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        response.json().await.unwrap()
+    }
+
+    async fn search_upload(
+        &self,
+        filename: &str,
+        content_type: &str,
+        bytes: Vec<u8>,
+        limit: Option<u32>,
+    ) -> SearchResponse {
+        let response = self
+            .raw_search_upload(filename, content_type, bytes, limit)
+            .await;
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        response.json().await.unwrap()
+    }
+
+    async fn raw_search_upload(
+        &self,
+        filename: &str,
+        content_type: &str,
+        bytes: Vec<u8>,
+        limit: Option<u32>,
+    ) -> reqwest::Response {
+        let (request_content_type, body) = multipart_body(filename, content_type, bytes);
+        let mut url = format!("{}/api/search", self.base_url);
+        if let Some(limit) = limit {
+            url.push_str(&format!("?limit={limit}"));
+        }
+        self.client
+            .post(url)
+            .header(CONTENT_TYPE, request_content_type)
+            .body(body)
+            .send()
+            .await
+            .unwrap()
+    }
+}
+
+struct TempDir {
+    path: PathBuf,
+}
+
+impl TempDir {
+    fn new() -> Self {
+        let path = std::env::temp_dir().join(format!("image-sim-e2e-{}", Uuid::new_v4()));
+        fs::create_dir_all(&path).unwrap();
+        Self { path }
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+    }
+}
+
+struct FakeQdrant {
+    base_url: String,
+}
+
+#[derive(Default)]
+struct FakeQdrantState {
+    collections: BTreeSet<String>,
+    points: BTreeMap<(String, String), FakePoint>,
+}
+
+#[derive(Clone)]
+struct FakePoint {
+    vector: Vec<f32>,
+    payload: Value,
+}
+
+#[derive(Deserialize)]
+struct FakeUpsertRequest {
+    points: Vec<FakeUpsertPoint>,
+}
+
+#[derive(Deserialize)]
+struct FakeUpsertPoint {
+    id: String,
+    vector: Vec<f32>,
+    payload: Value,
+}
+
+#[derive(Deserialize)]
+struct FakeSearchRequest {
+    vector: Vec<f32>,
+    limit: u32,
+}
+
+impl FakeQdrant {
+    async fn spawn() -> Self {
+        let state = Arc::new(Mutex::new(FakeQdrantState::default()));
+        let app = Router::new()
+            .route("/collections", get(fake_list_collections))
+            .route("/collections/:collection", put(fake_create_collection))
+            .route("/collections/:collection/points", put(fake_upsert_points))
+            .route(
+                "/collections/:collection/points/search",
+                post(fake_search_points),
+            )
+            .with_state(state);
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr: SocketAddr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        Self {
+            base_url: format!("http://{addr}"),
+        }
+    }
+}
+
+async fn fake_list_collections(State(state): State<Arc<Mutex<FakeQdrantState>>>) -> Json<Value> {
+    let state = state.lock().unwrap();
+    let collections = state
+        .collections
+        .iter()
+        .map(|name| json!({ "name": name }))
+        .collect::<Vec<_>>();
+    Json(json!({ "result": { "collections": collections } }))
+}
+
+async fn fake_create_collection(
+    AxumPath(collection): AxumPath<String>,
+    State(state): State<Arc<Mutex<FakeQdrantState>>>,
+    Json(_request): Json<Value>,
+) -> Json<Value> {
+    state.lock().unwrap().collections.insert(collection);
+    Json(json!({ "result": true }))
+}
+
+async fn fake_upsert_points(
+    AxumPath(collection): AxumPath<String>,
+    State(state): State<Arc<Mutex<FakeQdrantState>>>,
+    Json(request): Json<FakeUpsertRequest>,
+) -> Result<Json<Value>, AxumStatusCode> {
+    let mut state = state.lock().unwrap();
+    if !state.collections.contains(&collection) {
+        return Err(AxumStatusCode::NOT_FOUND);
+    }
+    for point in request.points {
+        state.points.insert(
+            (collection.clone(), point.id),
+            FakePoint {
+                vector: point.vector,
+                payload: point.payload,
+            },
+        );
+    }
+    Ok(Json(json!({ "result": { "status": "completed" } })))
+}
+
+async fn fake_search_points(
+    AxumPath(collection): AxumPath<String>,
+    State(state): State<Arc<Mutex<FakeQdrantState>>>,
+    Json(request): Json<FakeSearchRequest>,
+) -> Result<Json<Value>, AxumStatusCode> {
+    let state = state.lock().unwrap();
+    if !state.collections.contains(&collection) {
+        return Err(AxumStatusCode::NOT_FOUND);
+    }
+    let mut scored = state
+        .points
+        .iter()
+        .filter(|((point_collection, _), _)| point_collection == &collection)
+        .map(|((_, id), point)| {
+            json!({
+                "id": id,
+                "score": cosine_similarity(&request.vector, &point.vector),
+                "payload": point.payload,
+            })
+        })
+        .collect::<Vec<_>>();
+    scored.sort_by(|left, right| {
+        right["score"]
+            .as_f64()
+            .unwrap()
+            .total_cmp(&left["score"].as_f64().unwrap())
+    });
+    scored.truncate(request.limit as usize);
+    Ok(Json(json!({ "result": scored })))
+}
+
+fn cosine_similarity(left: &[f32], right: &[f32]) -> f32 {
+    let len = left.len().min(right.len());
+    let mut dot = 0.0_f32;
+    let mut left_norm = 0.0_f32;
+    let mut right_norm = 0.0_f32;
+    for index in 0..len {
+        dot += left[index] * right[index];
+        left_norm += left[index] * left[index];
+        right_norm += right[index] * right[index];
+    }
+    if left_norm == 0.0 || right_norm == 0.0 {
+        0.0
+    } else {
+        dot / (left_norm.sqrt() * right_norm.sqrt())
+    }
+}
+
+fn multipart_body(filename: &str, content_type: &str, bytes: Vec<u8>) -> (String, Vec<u8>) {
+    let boundary = format!("boundary-{}", Uuid::new_v4());
+    let mut body = Vec::new();
+    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+    body.extend_from_slice(
+        format!("Content-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n")
+            .as_bytes(),
+    );
+    body.extend_from_slice(format!("Content-Type: {content_type}\r\n\r\n").as_bytes());
+    body.extend_from_slice(&bytes);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    (format!("multipart/form-data; boundary={boundary}"), body)
+}
+
+fn write_pattern_image(path: &Path, width: u32, height: u32, a: [u8; 3], b: [u8; 3]) {
+    let mut image = RgbImage::new(width, height);
+    for y in 0..height {
+        for x in 0..width {
+            let pixel = if (x / 8 + y / 8) % 2 == 0 { a } else { b };
+            image.put_pixel(x, y, Rgb(pixel));
+        }
+    }
+    image.save(path).unwrap();
+}
+
+fn write_test_gif(path: &Path, colors: &[[u8; 3]], delay_ms: u32) {
+    let file = fs::File::create(path).unwrap();
+    let mut encoder = GifEncoder::new(file);
+    encoder.set_repeat(Repeat::Infinite).unwrap();
+    let frames = colors
+        .iter()
+        .map(|color| {
+            let image = ImageBuffer::from_pixel(32, 24, Rgb(*color));
+            Frame::from_parts(
+                image::DynamicImage::ImageRgb8(image).to_rgba8(),
+                0,
+                0,
+                Delay::from_numer_denom_ms(delay_ms, 1),
+            )
+        })
+        .collect::<Vec<_>>();
+    encoder.encode_frames(frames).unwrap();
+}
+
+fn write_two_scene_video(path: &Path) {
+    let output = Command::new("ffmpeg")
+        .arg("-y")
+        .arg("-v")
+        .arg("error")
+        .arg("-f")
+        .arg("lavfi")
+        .arg("-i")
+        .arg("color=c=red:s=64x48:d=1:r=12")
+        .arg("-f")
+        .arg("lavfi")
+        .arg("-i")
+        .arg("color=c=blue:s=64x48:d=1:r=12")
+        .arg("-filter_complex")
+        .arg("[0:v][1:v]concat=n=2:v=1:a=0,format=yuv420p")
+        .arg("-movflags")
+        .arg("+faststart")
+        .arg(path)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn write_voice_like_audio(path: &Path) {
+    let output = Command::new("ffmpeg")
+        .arg("-y")
+        .arg("-v")
+        .arg("error")
+        .arg("-f")
+        .arg("lavfi")
+        .arg("-i")
+        .arg("sine=frequency=220:duration=2.4:sample_rate=16000")
+        .arg("-filter:a")
+        .arg("volume=0.35")
+        .arg("-ac")
+        .arg("1")
+        .arg(path)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn has_tool(name: &str) -> bool {
+    Command::new(name)
+        .arg("-version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
