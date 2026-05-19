@@ -22,16 +22,32 @@ const MAX_SEARCH_HISTORY = 8;
 const SEARCH_HISTORY_STORAGE_KEY = "image-similarity-search-history";
 
 const DEFAULT_METADATA_FILTERS = {
+  dateFrom: "",
+  dateTo: "",
+  maxHeight: "",
+  maxSizeMb: "",
+  maxWidth: "",
+  mediaKind: "all",
   minHeight: "",
+  minSizeMb: "",
   minWidth: "",
+  nameQuery: "",
   nearDuplicate: "all",
   orientation: "all",
   sourceType: "all",
 } satisfies MetadataFilters;
 
 type MetadataFilters = {
+  dateFrom: string;
+  dateTo: string;
+  maxHeight: string;
+  maxSizeMb: string;
+  maxWidth: string;
+  mediaKind: "all" | "static_image" | "animated_gif";
   minHeight: string;
+  minSizeMb: string;
   minWidth: string;
+  nameQuery: string;
   nearDuplicate: "all" | "exclude" | "only";
   orientation: "all" | "landscape" | "portrait" | "square";
   sourceType: string;
@@ -357,14 +373,41 @@ function MetadataFiltersPanel({
     onChange({ ...filters, [key]: value });
   }
 
+  const activeFilterCount = countActiveFilters(filters);
+
   return (
     <fieldset className="rounded-md border border-neutral-200 bg-neutral-50 p-3">
-      <legend className="flex items-center gap-2 px-1 text-sm font-semibold text-neutral-900">
-        <SlidersHorizontal className="size-4 text-neutral-600" aria-hidden="true" />
-        <span>Metadata filters</span>
+      <legend className="flex w-full items-center justify-between gap-2 px-1 text-sm font-semibold text-neutral-900">
+        <span className="flex items-center gap-2">
+          <SlidersHorizontal className="size-4 text-neutral-600" aria-hidden="true" />
+          <span>Metadata filters</span>
+        </span>
+        {activeFilterCount > 0 ? (
+          <button
+            className="text-xs font-semibold text-emerald-800 transition hover:text-emerald-950"
+            onClick={() => onChange(DEFAULT_METADATA_FILTERS)}
+            type="button"
+          >
+            Clear {activeFilterCount}
+          </button>
+        ) : null}
       </legend>
 
       <div className="mt-3 grid gap-3">
+        <div>
+          <label className="text-xs font-semibold text-neutral-700" htmlFor="name-query">
+            Name or path
+          </label>
+          <input
+            className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
+            id="name-query"
+            onChange={(event) => updateFilter("nameQuery", event.target.value)}
+            placeholder="Filename or folder"
+            type="search"
+            value={filters.nameQuery}
+          />
+        </div>
+
         <div>
           <label className="text-xs font-semibold text-neutral-700" htmlFor="source-type">
             Source type
@@ -381,6 +424,24 @@ function MetadataFiltersPanel({
                 {sourceType}
               </option>
             ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="text-xs font-semibold text-neutral-700" htmlFor="media-kind">
+            Media type
+          </label>
+          <select
+            className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
+            id="media-kind"
+            onChange={(event) =>
+              updateFilter("mediaKind", event.target.value as MetadataFilters["mediaKind"])
+            }
+            value={filters.mediaKind}
+          >
+            <option value="all">Images and GIFs</option>
+            <option value="static_image">Images only</option>
+            <option value="animated_gif">GIFs only</option>
           </select>
         </div>
 
@@ -428,6 +489,68 @@ function MetadataFiltersPanel({
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
           <div>
+            <label className="text-xs font-semibold text-neutral-700" htmlFor="date-from">
+              Modified after
+            </label>
+            <input
+              className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
+              id="date-from"
+              onChange={(event) => updateFilter("dateFrom", event.target.value)}
+              type="date"
+              value={filters.dateFrom}
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-neutral-700" htmlFor="date-to">
+              Modified before
+            </label>
+            <input
+              className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
+              id="date-to"
+              onChange={(event) => updateFilter("dateTo", event.target.value)}
+              type="date"
+              value={filters.dateTo}
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+          <div>
+            <label className="text-xs font-semibold text-neutral-700" htmlFor="min-size">
+              Min file size (MB)
+            </label>
+            <input
+              className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
+              id="min-size"
+              min={0}
+              onChange={(event) => updateFilter("minSizeMb", event.target.value)}
+              placeholder="Any"
+              step="0.1"
+              type="number"
+              value={filters.minSizeMb}
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-neutral-700" htmlFor="max-size">
+              Max file size (MB)
+            </label>
+            <input
+              className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
+              id="max-size"
+              min={0}
+              onChange={(event) => updateFilter("maxSizeMb", event.target.value)}
+              placeholder="Any"
+              step="0.1"
+              type="number"
+              value={filters.maxSizeMb}
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+          <div>
             <label className="text-xs font-semibold text-neutral-700" htmlFor="min-width">
               Minimum width
             </label>
@@ -457,19 +580,66 @@ function MetadataFiltersPanel({
             />
           </div>
         </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+          <div>
+            <label className="text-xs font-semibold text-neutral-700" htmlFor="max-width">
+              Maximum width
+            </label>
+            <input
+              className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
+              id="max-width"
+              min={0}
+              onChange={(event) => updateFilter("maxWidth", event.target.value)}
+              placeholder="Any"
+              type="number"
+              value={filters.maxWidth}
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-neutral-700" htmlFor="max-height">
+              Maximum height
+            </label>
+            <input
+              className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
+              id="max-height"
+              min={0}
+              onChange={(event) => updateFilter("maxHeight", event.target.value)}
+              placeholder="Any"
+              type="number"
+              value={filters.maxHeight}
+            />
+          </div>
+        </div>
       </div>
     </fieldset>
   );
 }
 
 function filterResults(results: SearchResult[], filters: MetadataFilters) {
+  const nameQuery = filters.nameQuery.trim().toLocaleLowerCase();
+  const minSizeBytes = megabytesToBytes(positiveNumber(filters.minSizeMb));
+  const maxSizeBytes = megabytesToBytes(positiveNumber(filters.maxSizeMb));
   const minWidth = positiveNumber(filters.minWidth);
   const minHeight = positiveNumber(filters.minHeight);
+  const maxWidth = positiveNumber(filters.maxWidth);
+  const maxHeight = positiveNumber(filters.maxHeight);
+  const modifiedFrom = dateBoundary(filters.dateFrom, "start");
+  const modifiedTo = dateBoundary(filters.dateTo, "end");
 
   return results.filter((result) => {
     const image = result.image;
 
+    if (nameQuery && !imageMatchesNameQuery(image, nameQuery)) {
+      return false;
+    }
+
     if (filters.sourceType !== "all" && image.source_type !== filters.sourceType) {
+      return false;
+    }
+
+    if (filters.mediaKind !== "all" && image.media_kind !== filters.mediaKind) {
       return false;
     }
 
@@ -496,6 +666,30 @@ function filterResults(results: SearchResult[], filters: MetadataFilters) {
       return false;
     }
 
+    if (maxWidth !== null && image.width > maxWidth) {
+      return false;
+    }
+
+    if (maxHeight !== null && image.height > maxHeight) {
+      return false;
+    }
+
+    if (minSizeBytes !== null && image.size_bytes < minSizeBytes) {
+      return false;
+    }
+
+    if (maxSizeBytes !== null && image.size_bytes > maxSizeBytes) {
+      return false;
+    }
+
+    if (modifiedFrom !== null && image.modified_at * 1000 < modifiedFrom) {
+      return false;
+    }
+
+    if (modifiedTo !== null && image.modified_at * 1000 > modifiedTo) {
+      return false;
+    }
+
     return true;
   });
 }
@@ -512,6 +706,34 @@ function sourceTypesFor(results: SearchResult[], currentSourceType: string) {
 function positiveNumber(value: string) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function megabytesToBytes(value: number | null) {
+  return value === null ? null : value * 1024 * 1024;
+}
+
+function dateBoundary(value: string, boundary: "end" | "start") {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  if (boundary === "end") {
+    date.setDate(date.getDate() + 1);
+    date.setMilliseconds(date.getMilliseconds() - 1);
+  }
+
+  return date.getTime();
+}
+
+function imageMatchesNameQuery(image: SearchResult["image"], nameQuery: string) {
+  return [image.filename, image.relative_path, image.path, image.source_uri ?? ""].some((value) =>
+    value.toLocaleLowerCase().includes(nameQuery),
+  );
 }
 
 function imageOrientation(width: number, height: number): MetadataFilters["orientation"] {
@@ -594,7 +816,7 @@ function isSearchHistoryItem(value: unknown): value is SearchHistoryItem {
   return (
     typeof item.id === "string" &&
     typeof item.fileName === "string" &&
-    (item.filters === undefined || isMetadataFilters(item.filters)) &&
+    (item.filters === undefined || isFilterObject(item.filters)) &&
     typeof item.limit === "number" &&
     (typeof item.queryImageUrl === "string" ||
       item.queryImageUrl === null ||
@@ -607,27 +829,46 @@ function isSearchHistoryItem(value: unknown): value is SearchHistoryItem {
   );
 }
 
+function isFilterObject(value: unknown) {
+  return Boolean(value) && typeof value === "object";
+}
+
 function normalizeMetadataFilters(filters: unknown): MetadataFilters {
-  if (!isMetadataFilters(filters)) {
+  if (!filters || typeof filters !== "object") {
     return DEFAULT_METADATA_FILTERS;
   }
 
-  return filters;
+  const partial = filters as Partial<MetadataFilters>;
+  return {
+    ...DEFAULT_METADATA_FILTERS,
+    dateFrom: stringFilter(partial.dateFrom),
+    dateTo: stringFilter(partial.dateTo),
+    maxHeight: stringFilter(partial.maxHeight),
+    maxSizeMb: stringFilter(partial.maxSizeMb),
+    maxWidth: stringFilter(partial.maxWidth),
+    mediaKind: isMediaKindFilter(partial.mediaKind)
+      ? partial.mediaKind
+      : DEFAULT_METADATA_FILTERS.mediaKind,
+    minHeight: stringFilter(partial.minHeight),
+    minSizeMb: stringFilter(partial.minSizeMb),
+    minWidth: stringFilter(partial.minWidth),
+    nameQuery: stringFilter(partial.nameQuery),
+    nearDuplicate: isNearDuplicateFilter(partial.nearDuplicate)
+      ? partial.nearDuplicate
+      : DEFAULT_METADATA_FILTERS.nearDuplicate,
+    orientation: isOrientationFilter(partial.orientation)
+      ? partial.orientation
+      : DEFAULT_METADATA_FILTERS.orientation,
+    sourceType: stringFilter(partial.sourceType) || DEFAULT_METADATA_FILTERS.sourceType,
+  };
 }
 
-function isMetadataFilters(value: unknown): value is MetadataFilters {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
+function stringFilter(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
 
-  const filters = value as Partial<MetadataFilters>;
-  return (
-    typeof filters.minHeight === "string" &&
-    typeof filters.minWidth === "string" &&
-    isNearDuplicateFilter(filters.nearDuplicate) &&
-    isOrientationFilter(filters.orientation) &&
-    typeof filters.sourceType === "string"
-  );
+function isMediaKindFilter(value: unknown): value is MetadataFilters["mediaKind"] {
+  return value === "all" || value === "static_image" || value === "animated_gif";
 }
 
 function isNearDuplicateFilter(value: unknown): value is MetadataFilters["nearDuplicate"] {
@@ -843,7 +1084,9 @@ function ResultCard({ result }: { result: SearchResult }) {
         <dl className="grid gap-2 text-sm">
           <Metric label="CLIP score" value={result.vector_score.toFixed(4)} />
           <Metric label="pHash distance" value={result.hash_distance ?? "n/a"} />
-          <Metric label="Size" value={`${image.width} x ${image.height}`} />
+          <Metric label="Dimensions" value={`${image.width} x ${image.height}`} />
+          <Metric label="File size" value={formatFileSize(image.size_bytes)} />
+          <Metric label="Modified" value={formatModifiedAt(image.modified_at)} />
           {image.frame_count ? <Metric label="Frames" value={image.frame_count} /> : null}
           {image.duration_ms ? (
             <Metric label="Duration" value={formatDuration(image.duration_ms)} />
@@ -867,8 +1110,39 @@ function ResultCard({ result }: { result: SearchResult }) {
   );
 }
 
+function countActiveFilters(filters: MetadataFilters) {
+  return Object.entries(filters).filter(([key, value]) => {
+    const defaultValue = DEFAULT_METADATA_FILTERS[key as keyof MetadataFilters];
+    return value !== defaultValue;
+  }).length;
+}
+
 function formatDuration(durationMs: number) {
   return `${(durationMs / 1000).toFixed(1)}s`;
+}
+
+function formatFileSize(sizeBytes: number) {
+  if (sizeBytes < 1024) {
+    return `${sizeBytes} B`;
+  }
+
+  if (sizeBytes < 1024 * 1024) {
+    return `${(sizeBytes / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(sizeBytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatModifiedAt(modifiedAt: number) {
+  if (!Number.isFinite(modifiedAt) || modifiedAt <= 0) {
+    return "n/a";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(modifiedAt * 1000));
 }
 
 function Metric({ label, value }: { label: string; value: number | string }) {
