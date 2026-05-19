@@ -64,7 +64,7 @@ mod tests {
     use super::{HealthResponse, ImagePayload, IndexResponse};
 
     #[test]
-    fn image_payload_defaults_match_python_contract() {
+    fn image_payload_defaults_match_api_contract() {
         let json = r#"{
             "id": "id",
             "path": "/images/cat.jpg",
@@ -84,7 +84,7 @@ mod tests {
     }
 
     #[test]
-    fn response_defaults_match_python_contract() {
+    fn response_defaults_match_api_contract() {
         let response = IndexResponse {
             indexed: 0,
             skipped: 0,

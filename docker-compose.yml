@@ -1,5 +1,7 @@
 x-app-build: &app-build
   context: .
+  additional_contexts:
+    rust-packages: ../rust-packages
 
 x-app-environment: &app-environment
   SOURCE_IMAGE_DIR: ${SOURCE_IMAGE_DIR:-/images}
@@ -11,14 +13,6 @@ x-app-environment: &app-environment
   UPLOAD_DIR: ${UPLOAD_DIR:-/app/data/uploads}
   IMAGE_EXTENSIONS: ${IMAGE_EXTENSIONS:-.jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff}
   IMAGE_SOURCES: ${IMAGE_SOURCES:-}
-  MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
-  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
-  MINIO_SECURE: ${MINIO_SECURE:-false}
-  VIDEO_FRAME_STRIDE: ${VIDEO_FRAME_STRIDE:-30}
-  VIDEO_MAX_FRAMES: ${VIDEO_MAX_FRAMES:-}
-  CAMERA_FRAME_STRIDE: ${CAMERA_FRAME_STRIDE:-30}
-  CAMERA_MAX_FRAMES: ${CAMERA_MAX_FRAMES:-100}
   DEFAULT_SEARCH_LIMIT: ${DEFAULT_SEARCH_LIMIT:-12}
   DUPLICATE_HASH_DISTANCE: ${DUPLICATE_HASH_DISTANCE:-8}
   MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-20}
@@ -39,45 +33,14 @@ services:
       seed-data:
         condition: service_completed_successfully
 
-  app-rust:
-    build:
-      context: .
-      dockerfile: Dockerfile.rust
-      additional_contexts:
-        rust-packages: ../rust-packages
-    environment:
-      <<: *app-environment
-      QDRANT_COLLECTION: ${RUST_QDRANT_COLLECTION:-image_similarity_rust}
-    ports:
-      - "8001:8000"
-    volumes:
-      # Change the host path on the left, or set HOST_SOURCE_IMAGE_DIR in .env.
-      - ${HOST_SOURCE_IMAGE_DIR:-./sample-images}:/images:ro
-      - app-rust-data:/app/data
-    depends_on:
-      qdrant:
-        condition: service_started
-      seed-data:
-        condition: service_completed_successfully
-
   test:
-    build: *app-build
+    image: rust:1-bookworm
     profiles: ["test"]
-    environment:
-      <<: *app-environment
-      PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
-      QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
-      QDRANT_COLLECTION: ${TEST_QDRANT_COLLECTION:-image_similarity_test}
-    command: ["sh", "-c", "python -m pip install pytest pytest-cov httpx && pytest -q"]
+    working_dir: /workspace/image-similarity-service/rust
+    command: ["cargo", "test"]
     volumes:
-      - .:/app
-      - ${HOST_SOURCE_IMAGE_DIR:-./sample-images}:/images:ro
-      - test-data:/app/data
-    depends_on:
-      qdrant:
-        condition: service_started
-      seed-data:
-        condition: service_completed_successfully
+      - .:/workspace/image-similarity-service
+      - ../rust-packages:/workspace/rust-packages:ro
 
   seed-data:
     build: *app-build
@@ -86,20 +49,9 @@ services:
       DUMMY_IMAGE_COUNT: ${DUMMY_IMAGE_COUNT:-8}
       DUMMY_IMAGE_SIZE: ${DUMMY_IMAGE_SIZE:-640x480}
       DUMMY_IMAGE_FORMAT: ${DUMMY_IMAGE_FORMAT:-JPEG}
-      SEED_MINIO: ${SEED_MINIO:-true}
-      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
-      MINIO_SECURE: ${MINIO_SECURE:-false}
-      MINIO_BUCKET: ${MINIO_BUCKET:-image-similarity-dev}
-      MINIO_PREFIX: ${MINIO_PREFIX:-catalog}
-      MINIO_WAIT_SECONDS: ${MINIO_WAIT_SECONDS:-60}
-    command: ["python", "scripts/seed_dummy_data.py"]
+    command: ["seed_dummy_data"]
     volumes:
       - ${HOST_SOURCE_IMAGE_DIR:-./sample-images}:/seed/local
-    depends_on:
-      minio:
-        condition: service_started
     restart: "no"
 
   qdrant:
@@ -109,21 +61,6 @@ services:
     volumes:
       - qdrant-data:/qdrant/storage
 
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
-    ports:
-      - "9000:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
-    volumes:
-      - minio-data:/data
-
 volumes:
   app-data:
-  app-rust-data:
-  test-data:
   qdrant-data:
-  minio-data:

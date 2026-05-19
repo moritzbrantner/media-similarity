@@ -8,29 +8,31 @@ COPY src/frontend ./src/frontend
 RUN bun install --frozen-lockfile \
     && bun run build
 
-FROM python:3.11-slim
+FROM rust:1-bookworm AS rust-builder
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+WORKDIR /workspace/image-similarity-service
+
+COPY --from=rust-packages . /workspace/rust-packages
+COPY rust ./rust
+
+RUN cargo build --manifest-path rust/Cargo.toml --bins --release
+
+FROM debian:bookworm-slim
+
+ENV RUST_LOG=info
 
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgomp1 curl \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml README.md ./
-COPY src ./src
+COPY --from=rust-builder /workspace/image-similarity-service/rust/target/release/image-similarity-service /usr/local/bin/image-similarity-service
+COPY --from=rust-builder /workspace/image-similarity-service/rust/target/release/seed_dummy_data /usr/local/bin/seed_dummy_data
 COPY --from=frontend-builder /workspace/src/image_similarity/static ./src/image_similarity/static
-
-RUN pip install --upgrade pip \
-    && pip install .
-
-COPY scripts ./scripts
 
 RUN mkdir -p /app/data/thumbnails /app/data/uploads /images
 
 EXPOSE 8000
 
-CMD ["uvicorn", "image_similarity.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["image-similarity-service"]
