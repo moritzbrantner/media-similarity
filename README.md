@@ -159,6 +159,26 @@ python scripts/build_rust_extension.py
 The extension uses the sibling `../rust-packages` crates for image I/O, image processing, pHash computation, and vector math. If it is not built, the service keeps the same behavior through the Python fallback paths.
 Rebuild it while the service and tests are stopped, because the script replaces the local extension file in place.
 
+### Native Rust service
+
+The repository also contains a native Rust service binary:
+
+```bash
+cargo run --manifest-path rust/Cargo.toml --bin image-similarity-service
+```
+
+It serves the same `/`, `/static`, `/thumbnails`, `/api/health`, `/api/index`, and `/api/search` routes and uses the same environment variable names as the Python service. The Rust Docker image is runtime-Python-free:
+
+```bash
+docker build --build-context rust-packages=../rust-packages -f Dockerfile.rust -t image-similarity-service:rust .
+```
+
+Current Rust parity status:
+
+- Local folder indexing, Rust image loading for JPEG/PNG/WebP/BMP/TIFF, pHashing, thumbnail generation, Qdrant REST upsert/search, and multipart search upload are implemented.
+- The Rust embedder is a deterministic normalized image-vector implementation. It is a native placeholder for the Python SentenceTransformers CLIP embedder, not CLIP-equivalent inference.
+- MinIO, video, and camera source URIs are parsed and reported as unavailable in the native Rust service until Rust-native storage and media capture backends are added.
+
 Run the deterministic test suite:
 
 ```bash

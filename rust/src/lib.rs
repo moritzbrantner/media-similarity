@@ -1,5 +1,17 @@
 use std::path::Path;
 
+pub mod api;
+pub mod config;
+pub mod embedder;
+pub mod hashing;
+pub mod image_io;
+pub mod indexer;
+pub mod models;
+pub mod qdrant;
+pub mod search;
+pub mod sources;
+pub mod thumbnails;
+
 use image::{DynamicImage, ImageDecoder, ImageReader};
 use image_analysis_core::OwnedImage;
 use image_analysis_io::{write_image_with_format, ImageFileFormat};
@@ -124,7 +136,7 @@ fn dct_axis(values: &[f64], rows: usize, cols: usize, axis: usize) -> Vec<f64> {
 fn median(values: &mut [f64]) -> f64 {
     values.sort_by(|left, right| left.total_cmp(right));
     let mid = values.len() / 2;
-    if values.len() % 2 == 0 {
+    if values.len().is_multiple_of(2) {
         (values[mid - 1] + values[mid]) / 2.0
     } else {
         values[mid]

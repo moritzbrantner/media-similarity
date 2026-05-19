@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  tests:
+  python-tests:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -28,3 +28,29 @@ jobs:
         env:
           PYTEST_DISABLE_PLUGIN_AUTOLOAD: "1"
         run: pytest -q -p pytest_cov --cov=image_similarity --cov-report=term-missing
+
+  rust-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check out sibling Rust packages
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/rust-packages
+          path: ../rust-packages
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check formatting
+        run: cargo fmt --manifest-path rust/Cargo.toml -- --check
+
+      - name: Run Clippy
+        run: cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings
+
+      - name: Run Rust tests
+        run: cargo test --manifest-path rust/Cargo.toml
