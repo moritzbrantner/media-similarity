@@ -18,11 +18,16 @@ impl ImageEmbedder {
             return vector;
         }
 
+        let channel_ranges = channel_ranges(self.vector_size);
         for (index, pixel) in image.pixels().enumerate() {
-            let bucket = index % self.vector_size;
-            vector[bucket] += f32::from(pixel[0]) / 255.0;
-            vector[(bucket + 1) % self.vector_size] += f32::from(pixel[1]) / 255.0;
-            vector[(bucket + 2) % self.vector_size] += f32::from(pixel[2]) / 255.0;
+            for (channel, value) in pixel.0.iter().enumerate() {
+                let (start, end) = channel_ranges[channel];
+                if start == end {
+                    continue;
+                }
+                let bucket = start + index % (end - start);
+                vector[bucket] += f32::from(*value) / 255.0;
+            }
         }
 
         normalize(&mut vector);
@@ -57,6 +62,20 @@ impl ImageEmbedder {
         normalize(&mut vector);
         vector
     }
+}
+
+fn channel_ranges(vector_size: usize) -> [(usize, usize); 3] {
+    let base = vector_size / 3;
+    let remainder = vector_size % 3;
+    let mut ranges = [(0, 0); 3];
+    let mut start = 0;
+    for (channel, range) in ranges.iter_mut().enumerate() {
+        let span = base + usize::from(channel < remainder);
+        let end = start + span;
+        *range = (start, end);
+        start = end;
+    }
+    ranges
 }
 
 fn normalize(vector: &mut [f32]) {
@@ -138,6 +157,21 @@ mod tests {
         assert_eq!(vector.len(), 16);
         let norm = vector.iter().map(|value| value * value).sum::<f32>().sqrt();
         assert!((norm - 1.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn embedder_separates_dominant_colors() {
+        let red = ImageBuffer::from_pixel(8, 8, Rgb([220, 20, 20]));
+        let green = ImageBuffer::from_pixel(8, 8, Rgb([20, 180, 80]));
+        let blue = ImageBuffer::from_pixel(8, 8, Rgb([30, 70, 220]));
+        let embedder = ImageEmbedder::new("test", 32);
+
+        let red_vector = embedder.encode(&red);
+        let green_vector = embedder.encode(&green);
+        let blue_vector = embedder.encode(&blue);
+
+        assert_ne!(red_vector, green_vector);
+        assert_ne!(green_vector, blue_vector);
     }
 
     #[test]
