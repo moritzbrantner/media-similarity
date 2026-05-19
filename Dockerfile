@@ -1,3 +1,13 @@
+FROM oven/bun:1.3.14 AS frontend-builder
+
+WORKDIR /workspace
+
+COPY package.json bun.lock tsconfig.json vite.config.ts .oxfmtrc.json ./
+COPY src/frontend ./src/frontend
+
+RUN bun install --frozen-lockfile \
+    && bun run build
+
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -12,6 +22,7 @@ RUN apt-get update \
 
 COPY pyproject.toml README.md ./
 COPY src ./src
+COPY --from=frontend-builder /workspace/src/image_similarity/static ./src/image_similarity/static
 
 RUN pip install --upgrade pip \
     && pip install .

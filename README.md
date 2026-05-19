@@ -12,7 +12,7 @@ The service indexes configured image sources, then lets you upload a query image
 - `sentence-transformers/clip-ViT-B-32` by default.
 - `imagehash` pHash distance for duplicate and near-duplicate detection.
 - Rust-backed PNG/JPEG/WebP image loading, thumbnail encoding, pHash DCT/hash assembly, and hash distance via the sibling Rust crates, with Python/Pillow fallback for full format compatibility and EXIF orientation handling.
-- Plain static HTML/CSS/JS UI served by FastAPI.
+- React UI built with Bun, TypeScript, React Query, Tailwind CSS, and oxfmt, served as static assets by FastAPI.
 - Docker Compose setup with Qdrant, MinIO, and a deterministic dummy-data seed job.
 
 ## Quick Start
@@ -202,6 +202,35 @@ Run the deterministic test suite:
 
 ```bash
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 pytest -q
+```
+
+### Frontend development
+
+Install frontend dependencies with Bun:
+
+```bash
+bun install
+```
+
+Run the React dev server:
+
+```bash
+bun run dev
+```
+
+The Vite dev server proxies `/api` and `/thumbnails` to `http://127.0.0.1:8000`, so run the FastAPI service separately while developing the UI.
+
+Build the frontend into the backend static directory:
+
+```bash
+bun run build
+```
+
+Format and type-check the frontend:
+
+```bash
+bun run format
+bun run typecheck
 ```
 
 Run the same tests inside Docker Compose with Qdrant, MinIO, and seeded dummy data:

@@ -39,12 +39,22 @@ class QdrantImageStore:
         )
 
     def search(self, vector: list[float], limit: int) -> list[Any]:
-        return self.client.search(
+        search = getattr(self.client, "search", None)
+        if callable(search):
+            return search(
+                collection_name=self.collection,
+                query_vector=vector,
+                limit=limit,
+                with_payload=True,
+            )
+
+        response = self.client.query_points(
             collection_name=self.collection,
-            query_vector=vector,
+            query=vector,
             limit=limit,
             with_payload=True,
         )
+        return response.points
 
     def count(self) -> int:
         self.ensure_collection()

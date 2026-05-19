@@ -158,6 +158,31 @@ def test_search_delegates_query_vector_limit_and_payload_flag(fake_qdrant_module
     ]
 
 
+def test_search_supports_current_qdrant_query_points_api(fake_qdrant_modules) -> None:
+    store = QdrantImageStore("http://qdrant:6333", "images", 512)
+    client = fake_qdrant_modules.clients[0]
+    client.search = None
+    client.query_calls = []
+
+    def query_points(**kwargs):
+        client.query_calls.append(kwargs)
+        return SimpleNamespace(points=client.search_results)
+
+    client.query_points = query_points
+
+    results = store.search([1.0, 2.0], limit=5)
+
+    assert results == client.search_results
+    assert client.query_calls == [
+        {
+            "collection_name": "images",
+            "query": [1.0, 2.0],
+            "limit": 5,
+            "with_payload": True,
+        }
+    ]
+
+
 def test_count_ensures_collection_and_requests_exact_count(fake_qdrant_modules) -> None:
     store = QdrantImageStore("http://qdrant:6333", "images", 512)
 
