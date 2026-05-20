@@ -11,7 +11,9 @@ x-app-environment: &app-environment
   VECTOR_SIZE: ${VECTOR_SIZE:-512}
   THUMBNAIL_DIR: ${THUMBNAIL_DIR:-/app/data/thumbnails}
   UPLOAD_DIR: ${UPLOAD_DIR:-/app/data/uploads}
+  VOICE_REGISTRY_PATH: ${VOICE_REGISTRY_PATH:-/app/data/recognized-voices.json}
   IMAGE_EXTENSIONS: ${IMAGE_EXTENSIONS:-.jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.gif}
+  AUDIO_EXTENSIONS: ${AUDIO_EXTENSIONS:-.mp3,.wav,.flac,.m4a,.aac,.ogg,.opus}
   IMAGE_SOURCES: ${IMAGE_SOURCES:-}
   DEFAULT_SEARCH_LIMIT: ${DEFAULT_SEARCH_LIMIT:-12}
   DUPLICATE_HASH_DISTANCE: ${DUPLICATE_HASH_DISTANCE:-8}
@@ -23,6 +25,7 @@ x-app-environment: &app-environment
   GIF_PREVIEW_FRAMES: ${GIF_PREVIEW_FRAMES:-16}
   GIF_DEFAULT_FRAME_DELAY_MS: ${GIF_DEFAULT_FRAME_DELAY_MS:-100}
   GIF_MOTION_WEIGHT: ${GIF_MOTION_WEIGHT:-0.2}
+  BIND_ADDR: ${BIND_ADDR:-0.0.0.0:8000}
 
 services:
   app:
@@ -73,3 +76,9 @@ services:
 volumes:
   app-data:
   qdrant-data:
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 10.89.0.0/24

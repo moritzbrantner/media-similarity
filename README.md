@@ -41,19 +41,27 @@ MinIO, `video://`, and camera source URI parsing is retained, but those source b
    `HOST_SOURCE_IMAGE_DIR` is used by Docker Compose on the host. `SOURCE_IMAGE_DIR` is the path inside the app container and can usually stay `/images`.
    If you keep the default `./sample-images`, Docker Compose runs the `seed-data` job first and fills that directory with example people images from `https://thispersondoesnotexist.com/`.
 
-3. Start the service:
+3. Install frontend dependencies:
 
    ```bash
-   docker compose up --build
+   bun install
    ```
 
-4. Open the UI:
+4. Start the service:
+
+   ```bash
+   bun dev
+   ```
+
+5. Open the UI:
 
    ```txt
-   http://localhost:8000
+   http://localhost:5173
    ```
 
-5. Click **Index configured sources**, then upload a query image, video, or audio file and search.
+   `bun dev` starts the Docker Compose app stack in the background, then starts the Vite dev server. The backend container remains available at `http://localhost:8000`.
+
+6. Click **Index configured sources**, then upload a query image, video, or audio file and search.
 
 ## API
 
@@ -113,7 +121,7 @@ Set these values in `.env`:
 | `UPLOAD_DIR` | `/app/data/uploads` | Reserved local upload storage path. |
 | `IMAGE_EXTENSIONS` | `.jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.gif` | File extensions to index. |
 | `AUDIO_EXTENSIONS` | `.mp3,.wav,.flac,.m4a,.aac,.ogg,.opus` | Audio file extensions to index. |
-| `VOICE_REGISTRY_PATH` | `data/recognized-voices.json` | Persistent speaker registry used to recognize recurring voices across audio files. |
+| `VOICE_REGISTRY_PATH` | `/app/data/recognized-voices.json` | Persistent speaker registry used to recognize recurring voices across audio files. |
 | `DEFAULT_SEARCH_LIMIT` | `12` | Default result count. |
 | `DUPLICATE_HASH_DISTANCE` | `8` | Max pHash distance for near-duplicate flag. |
 | `MAX_UPLOAD_MB` | `20` | Maximum uploaded query image, video, or audio size. |
@@ -201,7 +209,13 @@ Run the React dev server:
 bun run dev
 ```
 
-The Vite dev server proxies `/api` and `/thumbnails` to `http://127.0.0.1:8000`, so run the Rust service separately while developing the UI.
+The dev script starts the Docker Compose app stack first, then starts Vite. The Vite dev server proxies `/api` and `/thumbnails` to `http://127.0.0.1:8000`.
+
+Start or refresh only the Docker containers used by the dev server:
+
+```bash
+bun run dev:containers
+```
 
 Build the frontend into the backend static directory:
 

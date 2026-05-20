@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
+    "dev": "bun run dev:containers && vite --host 0.0.0.0",
+    "dev:containers": "docker compose up --build -d",
     "build": "tsc --noEmit && vite build",
     "format": "oxfmt --write package.json tsconfig.json vite.config.ts playwright.config.ts src/frontend tests/e2e",
     "format:check": "oxfmt --check package.json tsconfig.json vite.config.ts playwright.config.ts src/frontend tests/e2e",
