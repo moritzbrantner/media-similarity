@@ -178,6 +178,7 @@ export function App() {
   const previewIsAudio = activeSearch
     ? activeSearch.queryMediaKind === "audio"
     : Boolean(file && isAudioFile(file));
+  const showMetadataFilters = Boolean(file || activeSearch);
   const sourceTypeOptions = sourceTypesFor(
     activeResponse?.results ?? [],
     metadataFilters.sourceType,
@@ -276,12 +277,6 @@ export function App() {
               />
             </div>
 
-            <MetadataFiltersPanel
-              filters={metadataFilters}
-              onChange={setMetadataFilters}
-              sourceTypeOptions={sourceTypeOptions}
-            />
-
             <div className="flex gap-2">
               <button
                 className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
@@ -307,6 +302,14 @@ export function App() {
                 </button>
               ) : null}
             </div>
+
+            {showMetadataFilters ? (
+              <MetadataFiltersPanel
+                filters={metadataFilters}
+                onChange={setMetadataFilters}
+                sourceTypeOptions={sourceTypeOptions}
+              />
+            ) : null}
 
             <StatusMessage
               indexError={indexMutation.error}

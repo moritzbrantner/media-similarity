@@ -126,6 +126,7 @@ test("renders service health and empty UI state", async ({ page }) => {
   await expect(page.getByText("OK")).toBeVisible();
   await expect(page.getByText("Sources: /images, /archive")).toBeVisible();
   await expect(page.getByText("No query media selected")).toBeVisible();
+  await expect(page.getByText("Metadata filters")).toBeHidden();
   await expect(
     page.getByText("Choose a query image, video, or audio and run a search."),
   ).toBeVisible();
@@ -148,6 +149,7 @@ test("uploads query media and renders search results", async ({ page }) => {
     name: "query.png",
   });
   await expect(page.getByRole("button", { name: "Search" })).toBeEnabled();
+  await expect(page.getByText("Metadata filters")).toBeVisible();
 
   await page.getByRole("button", { name: "Search" }).click();
 
