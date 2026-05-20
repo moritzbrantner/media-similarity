@@ -1,6 +1,7 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
+  ArrowUpDown,
   CheckCircle2,
   Database,
   FileAudio,
@@ -20,8 +21,10 @@ import { fetchHealth, indexSources, searchMedia } from "./api";
 import type { IndexResponse, SearchResponse, SearchResult, SearchSceneResponse } from "./types";
 
 const DEFAULT_LIMIT = 12;
+const DEFAULT_RESULT_SORT: ResultSortMode = "phash_distance";
 const MAX_SEARCH_HISTORY = 8;
 const SEARCH_HISTORY_STORAGE_KEY = "image-similarity-search-history";
+const SEARCH_HISTORY_QUERY_KEY = ["search-history"] as const;
 const AUDIO_EXTENSIONS = [".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wma"];
 
 const DEFAULT_METADATA_FILTERS = {
@@ -56,6 +59,13 @@ type MetadataFilters = {
   sourceType: string;
 };
 
+type ResultSortMode =
+  | "filename"
+  | "modified_newest"
+  | "phash_distance"
+  | "size_largest"
+  | "vector_score";
+
 type SearchHistoryItem = {
   id: string;
   fileName: string;
@@ -63,6 +73,7 @@ type SearchHistoryItem = {
   limit: number;
   queryImageUrl: string | null;
   queryMediaKind: SearchResponse["query_media_kind"];
+  sortMode: ResultSortMode;
   searchedAt: string;
   response: SearchResponse;
 };
@@ -72,17 +83,28 @@ type SearchVariables = {
   queryFile: File;
   queryImageUrl: string | null;
   resultLimit: number;
+  sortMode: ResultSortMode;
 };
 
 export function App() {
+  const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [metadataFilters, setMetadataFilters] = useState<MetadataFilters>(DEFAULT_METADATA_FILTERS);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [resultSortMode, setResultSortMode] = useState<ResultSortMode>(DEFAULT_RESULT_SORT);
   const [lastIndex, setLastIndex] = useState<IndexResponse | null>(null);
-  const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>(loadSearchHistory);
   const [activeSearchId, setActiveSearchId] = useState<string | null>(null);
   const [selectedQuerySceneIndex, setSelectedQuerySceneIndex] = useState<number | null>(null);
+
+  const searchHistoryQuery = useQuery({
+    queryKey: SEARCH_HISTORY_QUERY_KEY,
+    queryFn: loadSearchHistory,
+    initialData: loadSearchHistory,
+    staleTime: Infinity,
+  });
+
+  const searchHistory = searchHistoryQuery.data;
 
   const healthQuery = useQuery({
     queryKey: ["health"],
@@ -107,11 +129,12 @@ export function App() {
         limit: variables.resultLimit,
         queryImageUrl: variables.queryImageUrl,
         queryMediaKind: response.query_media_kind,
+        sortMode: variables.sortMode,
         searchedAt: new Date().toISOString(),
         response,
       };
 
-      setSearchHistory((history) => [nextItem, ...history].slice(0, MAX_SEARCH_HISTORY));
+      updateSearchHistory((history) => [nextItem, ...history].slice(0, MAX_SEARCH_HISTORY));
       setActiveSearchId(nextItem.id);
       setSelectedQuerySceneIndex(response.scenes[0]?.scene_index ?? null);
     },
@@ -131,6 +154,22 @@ export function App() {
   useEffect(() => {
     saveSearchHistory(searchHistory);
   }, [searchHistory]);
+
+  function updateSearchHistory(updater: (history: SearchHistoryItem[]) => SearchHistoryItem[]) {
+    queryClient.setQueryData<SearchHistoryItem[]>(SEARCH_HISTORY_QUERY_KEY, (history = []) =>
+      updater(history),
+    );
+  }
+
+  function updateActiveSearch(updater: (item: SearchHistoryItem) => SearchHistoryItem) {
+    if (!activeSearchId) {
+      return;
+    }
+
+    updateSearchHistory((history) =>
+      history.map((item) => (item.id === activeSearchId ? updater(item) : item)),
+    );
+  }
 
   const sourcesLabel = useMemo(() => {
     const health = healthQuery.data;
@@ -159,6 +198,7 @@ export function App() {
       queryFile: file,
       queryImageUrl,
       resultLimit: limit,
+      sortMode: resultSortMode,
     });
   }
 
@@ -167,6 +207,22 @@ export function App() {
     setActiveSearchId(null);
     setSelectedQuerySceneIndex(null);
     searchMutation.reset();
+  }
+
+  function handleLimitChange(value: string) {
+    const nextLimit = Number(value || DEFAULT_LIMIT);
+    setLimit(nextLimit);
+    updateActiveSearch((item) => ({ ...item, limit: nextLimit }));
+  }
+
+  function handleMetadataFiltersChange(filters: MetadataFilters) {
+    setMetadataFilters(filters);
+    updateActiveSearch((item) => ({ ...item, filters }));
+  }
+
+  function handleResultSortModeChange(sortMode: ResultSortMode) {
+    setResultSortMode(sortMode);
+    updateActiveSearch((item) => ({ ...item, sortMode }));
   }
 
   const activeSearch = searchHistory.find((item) => item.id === activeSearchId) ?? null;
@@ -183,12 +239,16 @@ export function App() {
     activeResponse?.results ?? [],
     metadataFilters.sourceType,
   );
-  const results = filterResults(activeResponse?.results ?? [], metadataFilters);
+  const results = sortResults(
+    filterResults(activeResponse?.results ?? [], metadataFilters),
+    resultSortMode,
+  );
 
   function handleHistorySelect(item: SearchHistoryItem) {
     setActiveSearchId(item.id);
     setLimit(item.limit);
     setMetadataFilters(item.filters);
+    setResultSortMode(item.sortMode);
     setSelectedQuerySceneIndex(item.response.scenes[0]?.scene_index ?? null);
     searchMutation.reset();
   }
@@ -271,7 +331,7 @@ export function App() {
                 id="limit"
                 max={100}
                 min={1}
-                onChange={(event) => setLimit(Number(event.target.value || DEFAULT_LIMIT))}
+                onChange={(event) => handleLimitChange(event.target.value)}
                 type="number"
                 value={limit}
               />
@@ -302,14 +362,6 @@ export function App() {
                 </button>
               ) : null}
             </div>
-
-            {showMetadataFilters ? (
-              <MetadataFiltersPanel
-                filters={metadataFilters}
-                onChange={setMetadataFilters}
-                sourceTypeOptions={sourceTypeOptions}
-              />
-            ) : null}
 
             <StatusMessage
               indexError={indexMutation.error}
@@ -348,6 +400,14 @@ export function App() {
           </section>
         </section>
 
+        {showMetadataFilters ? (
+          <MetadataFiltersPanel
+            filters={metadataFilters}
+            onChange={handleMetadataFiltersChange}
+            sourceTypeOptions={sourceTypeOptions}
+          />
+        ) : null}
+
         <section className="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
           <SearchHistoryList
             activeSearchId={activeSearchId}
@@ -377,6 +437,7 @@ export function App() {
                   Collection: {healthQuery.data.collection}
                 </span>
               ) : null}
+              <ResultSortSelect onChange={handleResultSortModeChange} value={resultSortMode} />
             </div>
 
             {activeResponse?.scenes.length ? (
@@ -385,6 +446,7 @@ export function App() {
                 onSelectScene={setSelectedQuerySceneIndex}
                 scenes={activeResponse.scenes}
                 selectedSceneIndex={selectedQuerySceneIndex}
+                sortMode={resultSortMode}
               />
             ) : (
               <ResultsGrid
@@ -441,7 +503,7 @@ function MetadataFiltersPanel({
         ) : null}
       </legend>
 
-      <div className="mt-3 grid gap-3">
+      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <div>
           <label className="text-xs font-semibold text-neutral-700" htmlFor="name-query">
             Name or path
@@ -495,7 +557,7 @@ function MetadataFiltersPanel({
           </select>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+        <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="text-xs font-semibold text-neutral-700" htmlFor="near-duplicate">
               Duplicate status
@@ -537,7 +599,7 @@ function MetadataFiltersPanel({
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+        <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="text-xs font-semibold text-neutral-700" htmlFor="date-from">
               Modified after
@@ -565,7 +627,7 @@ function MetadataFiltersPanel({
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+        <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="text-xs font-semibold text-neutral-700" htmlFor="min-size">
               Min file size (MB)
@@ -599,7 +661,7 @@ function MetadataFiltersPanel({
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+        <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="text-xs font-semibold text-neutral-700" htmlFor="min-width">
               Minimum width
@@ -631,7 +693,7 @@ function MetadataFiltersPanel({
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+        <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="text-xs font-semibold text-neutral-700" htmlFor="max-width">
               Maximum width
@@ -664,6 +726,34 @@ function MetadataFiltersPanel({
         </div>
       </div>
     </fieldset>
+  );
+}
+
+function ResultSortSelect({
+  onChange,
+  value,
+}: {
+  onChange: (sortMode: ResultSortMode) => void;
+  value: ResultSortMode;
+}) {
+  return (
+    <label className="flex w-full items-center gap-2 sm:w-auto">
+      <span className="flex shrink-0 items-center gap-2 text-sm font-semibold text-neutral-800">
+        <ArrowUpDown className="size-4 text-neutral-600" aria-hidden="true" />
+        Sort
+      </span>
+      <select
+        className="h-9 min-w-48 flex-1 rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200 sm:flex-none"
+        onChange={(event) => onChange(event.target.value as ResultSortMode)}
+        value={value}
+      >
+        <option value="phash_distance">pHash distance</option>
+        <option value="vector_score">CLIP score</option>
+        <option value="modified_newest">Newest modified</option>
+        <option value="size_largest">Largest file</option>
+        <option value="filename">Filename</option>
+      </select>
+    </label>
   );
 }
 
@@ -742,6 +832,90 @@ function filterResults(results: SearchResult[], filters: MetadataFilters) {
 
     return true;
   });
+}
+
+function sortResults(results: SearchResult[], sortMode: ResultSortMode) {
+  return results
+    .map((result, index) => ({ index, result }))
+    .sort((left, right) => {
+      const comparison = compareResults(left.result, right.result, sortMode);
+      return comparison === 0 ? left.index - right.index : comparison;
+    })
+    .map(({ result }) => result);
+}
+
+function compareResults(left: SearchResult, right: SearchResult, sortMode: ResultSortMode) {
+  switch (sortMode) {
+    case "filename":
+      return compareFilenames(left, right);
+    case "modified_newest":
+      return compareDescending(left.image.modified_at, right.image.modified_at, left, right);
+    case "size_largest":
+      return compareDescending(left.image.size_bytes, right.image.size_bytes, left, right);
+    case "vector_score":
+      return compareDescending(left.vector_score, right.vector_score, left, right);
+    case "phash_distance":
+      return compareHashDistance(left, right);
+  }
+}
+
+function compareHashDistance(left: SearchResult, right: SearchResult) {
+  const leftDistance = left.hash_distance;
+  const rightDistance = right.hash_distance;
+
+  if (leftDistance === null && rightDistance === null) {
+    return compareDescending(left.vector_score, right.vector_score, left, right);
+  }
+
+  if (leftDistance === null) {
+    return 1;
+  }
+
+  if (rightDistance === null) {
+    return -1;
+  }
+
+  return (
+    leftDistance - rightDistance ||
+    compareDescending(left.vector_score, right.vector_score, left, right)
+  );
+}
+
+function compareDescending(
+  leftValue: number,
+  rightValue: number,
+  leftResult: SearchResult,
+  rightResult: SearchResult,
+) {
+  return rightValue - leftValue || compareHashDistanceForTie(leftResult, rightResult);
+}
+
+function compareHashDistanceForTie(left: SearchResult, right: SearchResult) {
+  const leftDistance = left.hash_distance;
+  const rightDistance = right.hash_distance;
+
+  if (leftDistance === null && rightDistance === null) {
+    return compareFilenames(left, right);
+  }
+
+  if (leftDistance === null) {
+    return 1;
+  }
+
+  if (rightDistance === null) {
+    return -1;
+  }
+
+  return leftDistance - rightDistance || compareFilenames(left, right);
+}
+
+function compareFilenames(left: SearchResult, right: SearchResult) {
+  return (
+    left.image.filename.localeCompare(right.image.filename, undefined, { sensitivity: "base" }) ||
+    left.image.relative_path.localeCompare(right.image.relative_path, undefined, {
+      sensitivity: "base",
+    })
+  );
 }
 
 function sourceTypesFor(results: SearchResult[], currentSourceType: string) {
@@ -847,6 +1021,8 @@ function loadSearchHistory() {
         filters: normalizeMetadataFilters(item.filters),
         queryImageUrl: normalizeStoredPreviewUrl(item.queryImageUrl),
         queryMediaKind: item.queryMediaKind ?? item.response.query_media_kind ?? "static_image",
+        response: normalizeSearchResponse(item.response),
+        sortMode: normalizeResultSortMode(item.sortMode),
       }))
       .slice(0, MAX_SEARCH_HISTORY);
   } catch {
@@ -886,6 +1062,7 @@ function isSearchHistoryItem(value: unknown): value is SearchHistoryItem {
       item.queryMediaKind === "animated_gif" ||
       item.queryMediaKind === "video" ||
       item.queryMediaKind === "audio") &&
+    (item.sortMode === undefined || isResultSortMode(item.sortMode)) &&
     typeof item.searchedAt === "string" &&
     Boolean(response) &&
     Array.isArray(response?.results) &&
@@ -956,6 +1133,29 @@ function isNearDuplicateFilter(value: unknown): value is MetadataFilters["nearDu
 
 function isOrientationFilter(value: unknown): value is MetadataFilters["orientation"] {
   return value === "all" || value === "landscape" || value === "portrait" || value === "square";
+}
+
+function normalizeSearchResponse(response: SearchHistoryItem["response"]): SearchResponse {
+  return {
+    ...response,
+    query_audio_analysis: response.query_audio_analysis ?? null,
+    query_media_kind: response.query_media_kind ?? "static_image",
+    scenes: Array.isArray(response.scenes) ? response.scenes : [],
+  };
+}
+
+function normalizeResultSortMode(value: unknown): ResultSortMode {
+  return isResultSortMode(value) ? value : DEFAULT_RESULT_SORT;
+}
+
+function isResultSortMode(value: unknown): value is ResultSortMode {
+  return (
+    value === "filename" ||
+    value === "modified_newest" ||
+    value === "phash_distance" ||
+    value === "size_largest" ||
+    value === "vector_score"
+  );
 }
 
 function SearchHistoryList({
@@ -1135,15 +1335,19 @@ function SceneResultsList({
   onSelectScene,
   scenes,
   selectedSceneIndex,
+  sortMode,
 }: {
   filters: MetadataFilters;
   onSelectScene: (sceneIndex: number) => void;
   scenes: SearchSceneResponse[];
   selectedSceneIndex: number | null;
+  sortMode: ResultSortMode;
 }) {
   const selectedScene =
     scenes.find((scene) => scene.scene_index === selectedSceneIndex) ?? scenes[0];
-  const selectedResults = selectedScene ? filterResults(selectedScene.results, filters) : [];
+  const selectedResults = selectedScene
+    ? sortResults(filterResults(selectedScene.results, filters), sortMode)
+    : [];
   const isAudioBits = scenes.some((scene) => scene.scene_kind === "audio_bit");
   const segmentLabel = isAudioBits ? "Bit" : "Scene";
   const SegmentIcon = isAudioBits ? FileAudio : FileVideo;
