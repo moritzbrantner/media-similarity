@@ -1,13 +1,14 @@
-use reqwest::Client;
+use reqwest::{Client, RequestBuilder, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use url::Url;
 
 use crate::models::ImagePayload;
 
 #[derive(Clone)]
 pub struct QdrantImageStore {
     client: Client,
-    base_url: String,
+    base_urls: Vec<String>,
     collection: String,
     vector_size: usize,
 }
@@ -22,7 +23,7 @@ impl QdrantImageStore {
     pub fn new(url: impl Into<String>, collection: impl Into<String>, vector_size: usize) -> Self {
         Self {
             client: Client::new(),
-            base_url: url.into().trim_end_matches('/').to_string(),
+            base_urls: qdrant_base_urls(&url.into()),
             collection: collection.into(),
             vector_size,
         }
@@ -30,11 +31,8 @@ impl QdrantImageStore {
 
     pub async fn ensure_collection(&self) -> Result<(), String> {
         let response = self
-            .client
-            .get(format!("{}/collections", self.base_url))
-            .send()
-            .await
-            .map_err(|error| error.to_string())?
+            .send_with_fallback(|base_url| self.client.get(format!("{base_url}/collections")))
+            .await?
             .error_for_status()
             .map_err(|error| error.to_string())?
             .json::<CollectionsResponse>()
@@ -50,19 +48,20 @@ impl QdrantImageStore {
             return Ok(());
         }
 
-        self.client
-            .put(format!("{}/collections/{}", self.base_url, self.collection))
-            .json(&CreateCollectionRequest {
-                vectors: VectorParams {
-                    size: self.vector_size,
-                    distance: "Cosine",
-                },
-            })
-            .send()
-            .await
-            .map_err(|error| error.to_string())?
-            .error_for_status()
-            .map_err(|error| error.to_string())?;
+        let request = CreateCollectionRequest {
+            vectors: VectorParams {
+                size: self.vector_size,
+                distance: "Cosine",
+            },
+        };
+        self.send_with_fallback(|base_url| {
+            self.client
+                .put(format!("{base_url}/collections/{}", self.collection))
+                .json(&request)
+        })
+        .await?
+        .error_for_status()
+        .map_err(|error| error.to_string())?;
         Ok(())
     }
 
@@ -71,41 +70,43 @@ impl QdrantImageStore {
         payload: &ImagePayload,
         vector: Vec<f32>,
     ) -> Result<(), String> {
-        self.client
-            .put(format!(
-                "{}/collections/{}/points?wait=true",
-                self.base_url, self.collection
-            ))
-            .json(&UpsertRequest {
-                points: vec![PointStruct {
-                    id: payload.id.clone(),
-                    vector,
-                    payload: serde_json::to_value(payload).map_err(|error| error.to_string())?,
-                }],
-            })
-            .send()
-            .await
-            .map_err(|error| error.to_string())?
-            .error_for_status()
-            .map_err(|error| error.to_string())?;
+        let request = UpsertRequest {
+            points: vec![PointStruct {
+                id: payload.id.clone(),
+                vector,
+                payload: serde_json::to_value(payload).map_err(|error| error.to_string())?,
+            }],
+        };
+        self.send_with_fallback(|base_url| {
+            self.client
+                .put(format!(
+                    "{base_url}/collections/{}/points?wait=true",
+                    self.collection
+                ))
+                .json(&request)
+        })
+        .await?
+        .error_for_status()
+        .map_err(|error| error.to_string())?;
         Ok(())
     }
 
     pub async fn search(&self, vector: Vec<f32>, limit: u32) -> Result<Vec<ScoredPoint>, String> {
+        let request = SearchRequest {
+            vector,
+            limit,
+            with_payload: true,
+        };
         let response = self
-            .client
-            .post(format!(
-                "{}/collections/{}/points/search",
-                self.base_url, self.collection
-            ))
-            .json(&SearchRequest {
-                vector,
-                limit,
-                with_payload: true,
+            .send_with_fallback(|base_url| {
+                self.client
+                    .post(format!(
+                        "{base_url}/collections/{}/points/search",
+                        self.collection
+                    ))
+                    .json(&request)
             })
-            .send()
-            .await
-            .map_err(|error| error.to_string())?
+            .await?
             .error_for_status()
             .map_err(|error| error.to_string())?
             .json::<SearchResponse>()
@@ -123,16 +124,17 @@ impl QdrantImageStore {
 
     #[allow(dead_code)]
     pub async fn count(&self) -> Result<u64, String> {
+        let request = serde_json::json!({ "exact": true });
         let response = self
-            .client
-            .post(format!(
-                "{}/collections/{}/points/count",
-                self.base_url, self.collection
-            ))
-            .json(&serde_json::json!({ "exact": true }))
-            .send()
-            .await
-            .map_err(|error| error.to_string())?
+            .send_with_fallback(|base_url| {
+                self.client
+                    .post(format!(
+                        "{base_url}/collections/{}/points/count",
+                        self.collection
+                    ))
+                    .json(&request)
+            })
+            .await?
             .error_for_status()
             .map_err(|error| error.to_string())?
             .json::<CountResponse>()
@@ -140,6 +142,43 @@ impl QdrantImageStore {
             .map_err(|error| error.to_string())?;
         Ok(response.result.count)
     }
+
+    async fn send_with_fallback(
+        &self,
+        build_request: impl Fn(&str) -> RequestBuilder,
+    ) -> Result<Response, String> {
+        let mut errors = Vec::new();
+
+        for base_url in &self.base_urls {
+            match build_request(base_url).send().await {
+                Ok(response) => return Ok(response),
+                Err(error) => errors.push(format!("{base_url}: {error}")),
+            }
+        }
+
+        Err(format!(
+            "Qdrant request failed for all configured URLs: {}",
+            errors.join("; ")
+        ))
+    }
+}
+
+fn qdrant_base_urls(url: &str) -> Vec<String> {
+    let primary = url.trim().trim_end_matches('/').to_string();
+    let mut urls = vec![primary.clone()];
+    if let Some(fallback) = qdrant_local_fallback(&primary) {
+        urls.push(fallback);
+    }
+    urls
+}
+
+fn qdrant_local_fallback(base_url: &str) -> Option<String> {
+    let mut url = Url::parse(base_url).ok()?;
+    if url.host_str() != Some("qdrant") {
+        return None;
+    }
+    url.set_host(Some("127.0.0.1")).ok()?;
+    Some(url.as_str().trim_end_matches('/').to_string())
 }
 
 #[derive(Deserialize)]
@@ -206,4 +245,29 @@ struct CountResponse {
 #[derive(Deserialize)]
 struct CountResult {
     count: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::qdrant_base_urls;
+
+    #[test]
+    fn qdrant_service_hostname_falls_back_to_host_port() {
+        assert_eq!(
+            qdrant_base_urls("http://qdrant:6333/"),
+            vec!["http://qdrant:6333", "http://127.0.0.1:6333"]
+        );
+    }
+
+    #[test]
+    fn non_compose_qdrant_urls_are_left_alone() {
+        assert_eq!(
+            qdrant_base_urls("http://localhost:6333"),
+            vec!["http://localhost:6333"]
+        );
+        assert_eq!(
+            qdrant_base_urls("http://qdrant.internal:6333"),
+            vec!["http://qdrant.internal:6333"]
+        );
+    }
 }
