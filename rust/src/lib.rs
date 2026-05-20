@@ -9,6 +9,7 @@ pub mod image_io;
 pub mod indexer;
 pub mod media;
 pub mod models;
+pub mod ocr;
 pub mod qdrant;
 pub mod search;
 pub mod sources;

@@ -17,6 +17,7 @@ mod image_io;
 mod indexer;
 mod media;
 mod models;
+mod ocr;
 mod qdrant;
 mod search;
 mod sources;

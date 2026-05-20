@@ -15,6 +15,12 @@ pub struct Settings {
     pub voice_registry_path: PathBuf,
     pub image_extensions: BTreeSet<String>,
     pub audio_extensions: BTreeSet<String>,
+    pub audio_transcription_enabled: bool,
+    pub audio_transcription_model: String,
+    pub audio_transcription_language: Option<String>,
+    pub audio_transcription_threads: Option<usize>,
+    pub audio_transcription_auto_download: bool,
+    pub audio_transcription_cache_dir: Option<PathBuf>,
     pub image_sources: Vec<String>,
     pub minio_endpoint: Option<String>,
     pub minio_access_key: Option<String>,
@@ -33,6 +39,10 @@ pub struct Settings {
     pub gif_preview_frames: usize,
     pub gif_default_frame_delay_ms: u32,
     pub gif_motion_weight: f32,
+    pub ocr_enabled: bool,
+    pub ocr_command: String,
+    pub ocr_language: Option<String>,
+    pub ocr_max_frames: usize,
     pub bind_addr: String,
 }
 
@@ -50,6 +60,12 @@ impl Default for Settings {
                 .expect("default extensions are valid"),
             audio_extensions: parse_extensions(".mp3,.wav,.flac,.m4a,.aac,.ogg,.opus")
                 .expect("default audio extensions are valid"),
+            audio_transcription_enabled: true,
+            audio_transcription_model: "base.en".to_string(),
+            audio_transcription_language: Some("en".to_string()),
+            audio_transcription_threads: None,
+            audio_transcription_auto_download: false,
+            audio_transcription_cache_dir: None,
             image_sources: Vec::new(),
             minio_endpoint: None,
             minio_access_key: None,
@@ -68,6 +84,10 @@ impl Default for Settings {
             gif_preview_frames: 16,
             gif_default_frame_delay_ms: 100,
             gif_motion_weight: 0.2,
+            ocr_enabled: true,
+            ocr_command: "tesseract".to_string(),
+            ocr_language: Some("eng".to_string()),
+            ocr_max_frames: 4,
             bind_addr: "0.0.0.0:8000".to_string(),
         }
     }
@@ -93,6 +113,28 @@ impl Settings {
                 Ok(value) => parse_extensions(&value)?,
                 Err(_) => defaults.audio_extensions,
             },
+            audio_transcription_enabled: bool_var(
+                "AUDIO_TRANSCRIPTION_ENABLED",
+                defaults.audio_transcription_enabled,
+            ),
+            audio_transcription_model: string_var(
+                "AUDIO_TRANSCRIPTION_MODEL",
+                defaults.audio_transcription_model,
+            ),
+            audio_transcription_language: optional_string_var("AUDIO_TRANSCRIPTION_LANGUAGE")
+                .or(defaults.audio_transcription_language),
+            audio_transcription_threads: optional_bounded_usize_var(
+                "AUDIO_TRANSCRIPTION_THREADS",
+                1,
+                usize::MAX,
+            )?,
+            audio_transcription_auto_download: bool_var(
+                "AUDIO_TRANSCRIPTION_AUTO_DOWNLOAD",
+                defaults.audio_transcription_auto_download,
+            ),
+            audio_transcription_cache_dir: optional_string_var("AUDIO_TRANSCRIPTION_CACHE_DIR")
+                .map(PathBuf::from)
+                .or(defaults.audio_transcription_cache_dir),
             image_sources: env::var("IMAGE_SOURCES")
                 .ok()
                 .map(|value| parse_image_sources(&value))
@@ -165,6 +207,10 @@ impl Settings {
                 0.0,
                 1.0,
             )?,
+            ocr_enabled: bool_var("OCR_ENABLED", defaults.ocr_enabled),
+            ocr_command: string_var("OCR_COMMAND", defaults.ocr_command),
+            ocr_language: optional_string_var("OCR_LANGUAGE").or(defaults.ocr_language),
+            ocr_max_frames: bounded_usize_var("OCR_MAX_FRAMES", defaults.ocr_max_frames, 1, 64)?,
             bind_addr: string_var("BIND_ADDR", defaults.bind_addr),
         })
     }
@@ -275,6 +321,22 @@ fn optional_bounded_u32_var(name: &str, min: u32, max: u32) -> Result<Option<u32
         Some(value) => {
             let parsed = value
                 .parse::<u32>()
+                .map_err(|_| format!("{name} must be an integer"))?;
+            if parsed < min || parsed > max {
+                Err(format!("{name} must be between {min} and {max}"))
+            } else {
+                Ok(Some(parsed))
+            }
+        }
+        None => Ok(None),
+    }
+}
+
+fn optional_bounded_usize_var(name: &str, min: usize, max: usize) -> Result<Option<usize>, String> {
+    match optional_string_var(name) {
+        Some(value) => {
+            let parsed = value
+                .parse::<usize>()
                 .map_err(|_| format!("{name} must be an integer"))?;
             if parsed < min || parsed > max {
                 Err(format!("{name} must be between {min} and {max}"))

@@ -285,6 +285,7 @@ impl TestApp {
             vector_size: 32,
             default_search_limit: 10,
             duplicate_hash_distance: 8,
+            ocr_enabled: false,
             image_sources: Vec::new(),
             ..Settings::default()
         };

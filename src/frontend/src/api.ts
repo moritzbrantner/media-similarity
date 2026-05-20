@@ -59,11 +59,20 @@ export async function indexSources(): Promise<IndexResponse> {
   return parseResponse<IndexResponse>(response);
 }
 
-export async function searchMedia(file: File, limit: number): Promise<SearchResponse> {
+export async function searchMedia(
+  file: File,
+  limit: number,
+  ocrText: string,
+): Promise<SearchResponse> {
   const formData = new FormData();
   formData.append("file", file);
+  const params = new URLSearchParams({ limit: String(limit) });
+  const normalizedOcrText = ocrText.trim();
+  if (normalizedOcrText) {
+    params.set("ocr_text", normalizedOcrText);
+  }
 
-  const response = await fetch(`/api/search?limit=${encodeURIComponent(limit)}`, {
+  const response = await fetch(`/api/search?${params.toString()}`, {
     body: formData,
     method: "POST",
   });

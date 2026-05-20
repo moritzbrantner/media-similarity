@@ -18,6 +18,7 @@ use crate::image_io::load_media_bytes;
 use crate::indexer::ImageIndexer;
 use crate::models::{HealthResponse, IndexResponse, SearchResponse};
 use crate::models::{SearchResult, SearchSceneResponse};
+use crate::ocr::normalize_ocr_query;
 use crate::qdrant::QdrantImageStore;
 use crate::search::ImageSearchService;
 use crate::sources::build_image_sources;
@@ -52,6 +53,7 @@ impl AppState {
 #[derive(Deserialize)]
 pub struct SearchQuery {
     limit: Option<u32>,
+    ocr_text: Option<String>,
 }
 
 pub async fn health(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
@@ -145,15 +147,27 @@ pub async fn search_upload(
     }
 
     if upload_kind.is_video {
-        return search_video_upload(state, query.limit, &raw, upload_kind.filename.as_deref())
-            .await
-            .map(Json);
+        return search_video_upload(
+            state,
+            query.limit,
+            query.ocr_text.as_deref(),
+            &raw,
+            upload_kind.filename.as_deref(),
+        )
+        .await
+        .map(Json);
     }
 
     if upload_kind.is_audio {
-        return search_audio_upload(state, query.limit, &raw, upload_kind.filename.as_deref())
-            .await
-            .map(Json);
+        return search_audio_upload(
+            state,
+            query.limit,
+            query.ocr_text.as_deref(),
+            &raw,
+            upload_kind.filename.as_deref(),
+        )
+        .await
+        .map(Json);
     }
 
     let media = load_media_bytes(&raw, &state.settings)
@@ -164,7 +178,7 @@ pub async fn search_upload(
         state.embedder.clone(),
     );
     service
-        .search_media(&media, query.limit)
+        .search_media(&media, query.limit, query.ocr_text.as_deref())
         .await
         .map(Json)
         .map_err(ApiError::internal)
@@ -179,6 +193,7 @@ struct UploadedFileKind {
 async fn search_audio_upload(
     state: Arc<AppState>,
     limit: Option<u32>,
+    ocr_text: Option<&str>,
     raw: &[u8],
     filename: Option<&str>,
 ) -> Result<SearchResponse, ApiError> {
@@ -204,7 +219,7 @@ async fn search_audio_upload(
 
     for segment in &segments {
         let mut response = service
-            .search_media(&segment.media, limit)
+            .search_media(&segment.media, limit, ocr_text)
             .await
             .map_err(ApiError::internal)?;
         for result in &mut response.results {
@@ -240,12 +255,14 @@ async fn search_audio_upload(
         query_audio_analysis: segments
             .first()
             .and_then(|segment| segment.media.audio_analysis.clone()),
+        query_ocr_text: normalize_ocr_query(ocr_text),
     })
 }
 
 async fn search_video_upload(
     state: Arc<AppState>,
     limit: Option<u32>,
+    ocr_text: Option<&str>,
     raw: &[u8],
     filename: Option<&str>,
 ) -> Result<SearchResponse, ApiError> {
@@ -271,7 +288,7 @@ async fn search_video_upload(
 
     for scene in &scenes {
         let mut response = service
-            .search_media(&scene.media, limit)
+            .search_media(&scene.media, limit, ocr_text)
             .await
             .map_err(ApiError::internal)?;
         for result in &mut response.results {
@@ -305,6 +322,7 @@ async fn search_video_upload(
         query_media_kind: "video".to_string(),
         scenes: scene_responses,
         query_audio_analysis: None,
+        query_ocr_text: normalize_ocr_query(ocr_text),
     })
 }
 

@@ -6,6 +6,7 @@ import {
   Database,
   FileAudio,
   FileImage,
+  FileText,
   FileVideo,
   History,
   ImageIcon,
@@ -71,6 +72,7 @@ type SearchHistoryItem = {
   fileName: string;
   filters: MetadataFilters;
   limit: number;
+  ocrTextQuery: string;
   queryImageUrl: string | null;
   queryMediaKind: SearchResponse["query_media_kind"];
   sortMode: ResultSortMode;
@@ -80,6 +82,7 @@ type SearchHistoryItem = {
 
 type SearchVariables = {
   filters: MetadataFilters;
+  ocrTextQuery: string;
   queryFile: File;
   queryImageUrl: string | null;
   resultLimit: number;
@@ -91,6 +94,7 @@ export function App() {
   const [file, setFile] = useState<File | null>(null);
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [metadataFilters, setMetadataFilters] = useState<MetadataFilters>(DEFAULT_METADATA_FILTERS);
+  const [ocrTextQuery, setOcrTextQuery] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [resultSortMode, setResultSortMode] = useState<ResultSortMode>(DEFAULT_RESULT_SORT);
   const [lastIndex, setLastIndex] = useState<IndexResponse | null>(null);
@@ -119,14 +123,15 @@ export function App() {
   });
 
   const searchMutation = useMutation({
-    mutationFn: ({ queryFile, resultLimit }: SearchVariables) =>
-      searchMedia(queryFile, resultLimit),
+    mutationFn: ({ ocrTextQuery, queryFile, resultLimit }: SearchVariables) =>
+      searchMedia(queryFile, resultLimit, ocrTextQuery),
     onSuccess: (response, variables) => {
       const nextItem: SearchHistoryItem = {
         id: createHistoryId(),
         fileName: variables.queryFile.name,
         filters: variables.filters,
         limit: variables.resultLimit,
+        ocrTextQuery: variables.ocrTextQuery,
         queryImageUrl: variables.queryImageUrl,
         queryMediaKind: response.query_media_kind,
         sortMode: variables.sortMode,
@@ -195,6 +200,7 @@ export function App() {
         : await createQueryPreview(file);
     searchMutation.mutate({
       filters: metadataFilters,
+      ocrTextQuery,
       queryFile: file,
       queryImageUrl,
       resultLimit: limit,
@@ -248,6 +254,7 @@ export function App() {
     setActiveSearchId(item.id);
     setLimit(item.limit);
     setMetadataFilters(item.filters);
+    setOcrTextQuery(item.ocrTextQuery);
     setResultSortMode(item.sortMode);
     setSelectedQuerySceneIndex(item.response.scenes[0]?.scene_index ?? null);
     searchMutation.reset();
@@ -335,6 +342,23 @@ export function App() {
                 type="number"
                 value={limit}
               />
+            </div>
+
+            <div>
+              <label className="text-sm font-semibold text-neutral-900" htmlFor="ocr-text-query">
+                Text in media
+              </label>
+              <div className="mt-2 flex h-10 items-center gap-2 rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-950 transition focus-within:border-emerald-700 focus-within:ring-2 focus-within:ring-emerald-200">
+                <FileText className="size-4 shrink-0 text-neutral-500" aria-hidden="true" />
+                <input
+                  className="min-w-0 flex-1 bg-transparent outline-none"
+                  id="ocr-text-query"
+                  onChange={(event) => setOcrTextQuery(event.target.value)}
+                  placeholder="Invoice, title, sign"
+                  type="search"
+                  value={ocrTextQuery}
+                />
+              </div>
             </div>
 
             <div className="flex gap-2">
@@ -911,7 +935,9 @@ function compareHashDistanceForTie(left: SearchResult, right: SearchResult) {
 
 function compareFilenames(left: SearchResult, right: SearchResult) {
   return (
-    left.image.filename.localeCompare(right.image.filename, undefined, { sensitivity: "base" }) ||
+    left.image.filename.localeCompare(right.image.filename, undefined, {
+      sensitivity: "base",
+    }) ||
     left.image.relative_path.localeCompare(right.image.relative_path, undefined, {
       sensitivity: "base",
     })
@@ -1019,6 +1045,7 @@ function loadSearchHistory() {
       .map((item) => ({
         ...item,
         filters: normalizeMetadataFilters(item.filters),
+        ocrTextQuery: stringFilter(item.ocrTextQuery),
         queryImageUrl: normalizeStoredPreviewUrl(item.queryImageUrl),
         queryMediaKind: item.queryMediaKind ?? item.response.query_media_kind ?? "static_image",
         response: normalizeSearchResponse(item.response),
@@ -1054,6 +1081,7 @@ function isSearchHistoryItem(value: unknown): value is SearchHistoryItem {
     typeof item.fileName === "string" &&
     (item.filters === undefined || isFilterObject(item.filters)) &&
     typeof item.limit === "number" &&
+    (item.ocrTextQuery === undefined || typeof item.ocrTextQuery === "string") &&
     (typeof item.queryImageUrl === "string" ||
       item.queryImageUrl === null ||
       item.queryImageUrl === undefined) &&
@@ -1139,6 +1167,7 @@ function normalizeSearchResponse(response: SearchHistoryItem["response"]): Searc
   return {
     ...response,
     query_audio_analysis: response.query_audio_analysis ?? null,
+    query_ocr_text: response.query_ocr_text ?? "",
     query_media_kind: response.query_media_kind ?? "static_image",
     scenes: Array.isArray(response.scenes) ? response.scenes : [],
   };
@@ -1203,6 +1232,11 @@ function SearchHistoryList({
                   </span>
                 </span>
                 <span className="text-xs text-neutral-500">Limit {item.limit}</span>
+                {item.ocrTextQuery ? (
+                  <span className="truncate text-xs text-neutral-500">
+                    Text: {item.ocrTextQuery}
+                  </span>
+                ) : null}
               </button>
             </li>
           ))}
@@ -1533,6 +1567,9 @@ function ResultCard({ result }: { result: SearchResult }) {
         <dl className="grid gap-2 text-sm">
           <Metric label="CLIP score" value={result.vector_score.toFixed(4)} />
           <Metric label="pHash distance" value={result.hash_distance ?? "n/a"} />
+          {result.ocr_score !== null && result.ocr_score !== undefined ? (
+            <Metric label="OCR score" value={result.ocr_score.toFixed(2)} />
+          ) : null}
           <Metric label="Dimensions" value={`${image.width} x ${image.height}`} />
           <Metric label="File size" value={formatFileSize(image.size_bytes)} />
           <Metric label="Modified" value={formatModifiedAt(image.modified_at)} />
@@ -1558,6 +1595,12 @@ function ResultCard({ result }: { result: SearchResult }) {
               value={image.audio_analysis.recognized_voices.map((voice) => voice.label).join(", ")}
             />
           ) : null}
+          {image.audio_analysis?.transcript_text ? (
+            <Metric label="Transcript" value={image.audio_analysis.transcript_text} />
+          ) : null}
+          {image.audio_analysis?.transcript_language ? (
+            <Metric label="Language" value={image.audio_analysis.transcript_language} />
+          ) : null}
           {image.audio_analysis?.tempo_bpm ? (
             <Metric label="Tempo" value={`${image.audio_analysis.tempo_bpm.toFixed(1)} BPM`} />
           ) : null}
@@ -1567,6 +1610,7 @@ function ResultCard({ result }: { result: SearchResult }) {
               value={formatPercent(image.audio_analysis.tempo_confidence)}
             />
           ) : null}
+          {image.ocr_text ? <Metric label="OCR text" value={image.ocr_text} /> : null}
         </dl>
 
         <VideoSceneLinks image={image} />
@@ -1588,6 +1632,11 @@ function ResultCard({ result }: { result: SearchResult }) {
               Audio
             </span>
           ) : null}
+          {image.ocr_text ? (
+            <span className="inline-flex w-fit rounded-md border border-cyan-300 bg-cyan-50 px-2 py-1 text-xs font-semibold text-cyan-900">
+              OCR
+            </span>
+          ) : null}
           {image.audio_analysis?.speech_detected ? (
             <span className="inline-flex w-fit rounded-md border border-teal-300 bg-teal-50 px-2 py-1 text-xs font-semibold text-teal-900">
               Speech
@@ -1601,6 +1650,11 @@ function ResultCard({ result }: { result: SearchResult }) {
               {voice.label}
             </span>
           ))}
+          {image.audio_analysis?.transcript_text ? (
+            <span className="inline-flex w-fit rounded-md border border-fuchsia-300 bg-fuchsia-50 px-2 py-1 text-xs font-semibold text-fuchsia-900">
+              Transcript
+            </span>
+          ) : null}
           {image.audio_analysis?.tempo_bpm ? (
             <span className="inline-flex w-fit rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-900">
               {image.audio_analysis.tempo_bpm.toFixed(0)} BPM

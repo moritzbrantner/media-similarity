@@ -24,7 +24,12 @@ ENV RUST_LOG=info
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        ffmpeg \
+        tesseract-ocr \
+        tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=rust-builder /workspace/image-similarity-service/rust/target/release/image-similarity-service /usr/local/bin/image-similarity-service

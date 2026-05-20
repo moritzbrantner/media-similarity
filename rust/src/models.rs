@@ -9,6 +9,12 @@ pub struct AudioAnalysis {
     pub audio_segments: Vec<AudioSegmentGuess>,
     #[serde(default)]
     pub recognized_voices: Vec<AudioRecognizedVoice>,
+    #[serde(default)]
+    pub transcript_text: String,
+    #[serde(default)]
+    pub transcript_language: Option<String>,
+    #[serde(default)]
+    pub transcript_segments: Vec<AudioTranscriptSegment>,
     pub tempo_bpm: Option<f32>,
     pub tempo_confidence: f32,
     pub tempo_onset_count: u32,
@@ -44,6 +50,30 @@ pub struct AudioRecognizedVoice {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct AudioTranscriptSegment {
+    pub segment_index: u64,
+    #[serde(default)]
+    pub start_seconds: Option<f64>,
+    #[serde(default)]
+    pub end_seconds: Option<f64>,
+    pub text: String,
+    #[serde(default)]
+    pub confidence: Option<f32>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct OcrAnalysis {
+    pub text: String,
+    pub frames: Vec<OcrFrameText>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct OcrFrameText {
+    pub frame_index: usize,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ImagePayload {
     pub id: String,
     pub path: String,
@@ -70,6 +100,10 @@ pub struct ImagePayload {
     #[serde(default)]
     pub audio_analysis: Option<AudioAnalysis>,
     #[serde(default)]
+    pub ocr_text: String,
+    #[serde(default)]
+    pub ocr_frames: Vec<OcrFrameText>,
+    #[serde(default)]
     pub scene_clip_url: Option<String>,
     #[serde(default)]
     pub scene_index: Option<usize>,
@@ -92,6 +126,8 @@ pub struct SearchResult {
     pub vector_score: f32,
     pub hash_distance: Option<u32>,
     #[serde(default)]
+    pub ocr_score: Option<f32>,
+    #[serde(default)]
     pub near_duplicate: bool,
     #[serde(default)]
     pub query_scene_index: Option<usize>,
@@ -108,6 +144,8 @@ pub struct SearchResponse {
     pub scenes: Vec<SearchSceneResponse>,
     #[serde(default)]
     pub query_audio_analysis: Option<AudioAnalysis>,
+    #[serde(default)]
+    pub query_ocr_text: String,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -196,6 +234,8 @@ mod tests {
         assert_eq!(payload.full_video_url, None);
         assert_eq!(payload.full_audio_url, None);
         assert_eq!(payload.audio_analysis, None);
+        assert_eq!(payload.ocr_text, "");
+        assert!(payload.ocr_frames.is_empty());
         assert_eq!(payload.scene_clip_url, None);
         assert_eq!(payload.scene_index, None);
     }
@@ -248,6 +288,11 @@ mod tests {
             full_video_url: None,
             full_audio_url: None,
             audio_analysis: None,
+            ocr_text: "SALE 50".to_string(),
+            ocr_frames: vec![super::OcrFrameText {
+                frame_index: 0,
+                text: "SALE 50".to_string(),
+            }],
             scene_clip_url: None,
             scene_index: None,
             scene_start_frame: None,
@@ -260,6 +305,7 @@ mod tests {
         let serialized = serde_json::to_value(payload).unwrap();
         assert_eq!(serialized["animated_thumbnail_url"], "/thumbnails/id.gif");
         assert_eq!(serialized["media_kind"], "animated_gif");
+        assert_eq!(serialized["ocr_text"], "SALE 50");
         assert_eq!(serialized["frame_count"], 6);
         assert_eq!(serialized["duration_ms"], 600);
     }
@@ -284,6 +330,11 @@ mod tests {
             full_video_url: Some("/uploads/source-videos/id.mp4".to_string()),
             full_audio_url: None,
             audio_analysis: None,
+            ocr_text: "Scene title".to_string(),
+            ocr_frames: vec![super::OcrFrameText {
+                frame_index: 0,
+                text: "Scene title".to_string(),
+            }],
             scene_clip_url: Some("/uploads/source-scenes/id/scene-001.mp4".to_string()),
             scene_index: Some(0),
             scene_start_frame: Some(10),
@@ -299,6 +350,7 @@ mod tests {
             serialized["full_video_url"],
             "/uploads/source-videos/id.mp4"
         );
+        assert_eq!(serialized["ocr_text"], "Scene title");
         assert_eq!(serialized["scene_start_seconds"], 1.0);
     }
 
@@ -345,10 +397,21 @@ mod tests {
                     total_seconds: 1.5,
                     confidence: 0.8,
                 }],
+                transcript_text: "hello from the audio".to_string(),
+                transcript_language: Some("en".to_string()),
+                transcript_segments: vec![super::AudioTranscriptSegment {
+                    segment_index: 0,
+                    start_seconds: Some(0.5),
+                    end_seconds: Some(2.0),
+                    text: "hello from the audio".to_string(),
+                    confidence: Some(0.75),
+                }],
                 tempo_bpm: Some(120.0),
                 tempo_confidence: 0.8,
                 tempo_onset_count: 8,
             }),
+            ocr_text: String::new(),
+            ocr_frames: Vec::new(),
             scene_clip_url: None,
             scene_index: None,
             scene_start_frame: None,
@@ -364,6 +427,10 @@ mod tests {
         assert_eq!(serialized["duration_ms"], 4200);
         assert_eq!(serialized["audio_analysis"]["speech_detected"], true);
         assert_eq!(serialized["audio_analysis"]["tempo_bpm"], 120.0);
+        assert_eq!(
+            serialized["audio_analysis"]["transcript_text"],
+            "hello from the audio"
+        );
     }
 
     #[test]

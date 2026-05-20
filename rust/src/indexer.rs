@@ -5,6 +5,7 @@ use crate::hashing::phash_image;
 use crate::image_io::{dimensions, image_id_for_uri};
 use crate::media::{DecodedMedia, MediaKind};
 use crate::models::{ImagePayload, IndexResponse};
+use crate::ocr::extract_media_ocr;
 use crate::qdrant::QdrantImageStore;
 use crate::sources::{build_image_sources, SourceImage, SourceUnavailable};
 use crate::thumbnails::{ensure_animated_thumbnail, ensure_thumbnail};
@@ -179,6 +180,10 @@ impl ImageIndexer {
             None
         };
         let (width, height) = dimensions(&media.poster);
+        let ocr_analysis = extract_media_ocr(media, &self.settings).unwrap_or_else(|error| {
+            tracing::warn!(%error, "OCR extraction failed");
+            Default::default()
+        });
         let relative_path = if let Some(scene) = video_scene {
             format!(
                 "{}#scene-{:03}",
@@ -242,6 +247,8 @@ impl ImageIndexer {
             full_video_url: video_scene.and_then(|scene| scene.full_video_url.clone()),
             full_audio_url,
             audio_analysis: media.audio_analysis.clone(),
+            ocr_text: ocr_analysis.text,
+            ocr_frames: ocr_analysis.frames,
             scene_clip_url: video_scene.and_then(|scene| scene.clip_url.clone()),
             scene_index: video_scene
                 .map(|scene| scene.scene_index)

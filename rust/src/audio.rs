@@ -9,12 +9,18 @@ use audio_analysis_rhythm::{
 use audio_analysis_speakers::{
     EnergyVadConfig, EnergyVoiceActivityDetector, SpeakerAudio, VoiceActivityDetector,
 };
+use text_analysis_transcription::{
+    Transcriber, WhisperCppConfig, WhisperCppModel, WhisperCppModelStore, WhisperCppTranscriber,
+};
 use uuid::Uuid;
 
 use crate::config::Settings;
 use crate::image_io::load_image;
 use crate::media::{DecodedMedia, MediaFrame, MediaKind};
-use crate::models::{AudioAnalysis, AudioRecognizedVoice, AudioSegmentGuess, AudioSpeechSegment};
+use crate::models::{
+    AudioAnalysis, AudioRecognizedVoice, AudioSegmentGuess, AudioSpeechSegment,
+    AudioTranscriptSegment,
+};
 use crate::voice::{VoiceRegistry, VoiceRegistryMatch};
 
 const SPECTROGRAM_WIDTH: u32 = 512;
@@ -24,6 +30,7 @@ const AUDIO_ANALYSIS_MAX_SECONDS: f64 = 300.0;
 const AUDIO_SEGMENT_MIN_SECONDS: f64 = 0.75;
 const AUDIO_SEGMENT_MAX_SECONDS: f64 = 30.0;
 const AUDIO_SEGMENT_ONSET_SPLIT_SECONDS: f64 = 8.0;
+const TRANSCRIPTION_SAMPLE_RATE: u32 = 16_000;
 
 #[derive(Clone, Debug)]
 pub struct DecodedAudioSegment {
@@ -270,6 +277,7 @@ fn analyze_audio(path: &Path, settings: &Settings) -> Result<AudioAnalysis, Stri
         AUDIO_ANALYSIS_SAMPLE_RATE,
         settings,
     )?;
+    attach_audio_transcription(&mut analysis, path, settings);
     Ok(analysis)
 }
 
@@ -319,6 +327,9 @@ fn analyze_audio_samples(
             speech_segments: Vec::new(),
             audio_segments: Vec::new(),
             recognized_voices: Vec::new(),
+            transcript_text: String::new(),
+            transcript_language: None,
+            transcript_segments: Vec::new(),
             tempo_bpm: None,
             tempo_confidence: 0.0,
             tempo_onset_count: 0,
@@ -373,10 +384,156 @@ fn analyze_audio_samples(
         speech_segments,
         audio_segments,
         recognized_voices: Vec::new(),
+        transcript_text: String::new(),
+        transcript_language: None,
+        transcript_segments: Vec::new(),
         tempo_bpm: tempo.bpm.map(|bpm| (bpm * 10.0).round() / 10.0),
         tempo_confidence: tempo.confidence.clamp(0.0, 1.0),
         tempo_onset_count: tempo.onset_count as u32,
     })
+}
+
+fn attach_audio_transcription(analysis: &mut AudioAnalysis, path: &Path, settings: &Settings) {
+    if !settings.audio_transcription_enabled || !analysis.speech_detected {
+        return;
+    }
+    match transcribe_audio(path, settings) {
+        Ok(Some(transcript)) => {
+            analysis.transcript_text = transcript.text;
+            analysis.transcript_language = transcript.language;
+            analysis.transcript_segments = transcript.segments;
+        }
+        Ok(None) => {}
+        Err(error) => {
+            tracing::warn!(%error, path = %path.display(), "Audio transcription failed");
+        }
+    }
+}
+
+#[derive(Debug)]
+struct AudioTranscript {
+    text: String,
+    language: Option<String>,
+    segments: Vec<AudioTranscriptSegment>,
+}
+
+fn transcribe_audio(path: &Path, settings: &Settings) -> Result<Option<AudioTranscript>, String> {
+    let model = parse_whisper_cpp_model(&settings.audio_transcription_model)?;
+    let store = settings
+        .audio_transcription_cache_dir
+        .clone()
+        .map(WhisperCppModelStore::new)
+        .unwrap_or_default();
+    if !settings.audio_transcription_auto_download && !whisper_model_is_cached(&store, model) {
+        tracing::warn!(
+            model = model.id(),
+            "Skipping audio transcription because the whisper.cpp model is not cached"
+        );
+        return Ok(None);
+    }
+
+    let wav_path = transcription_wav_path(settings);
+    transcode_for_transcription(path, &wav_path)?;
+    let mut transcriber = WhisperCppTranscriber::new(WhisperCppConfig {
+        model,
+        language: settings.audio_transcription_language.clone(),
+        translate: false,
+        threads: settings.audio_transcription_threads,
+    })
+    .with_model_store(store);
+    let result = transcriber
+        .transcribe(&wav_path)
+        .map_err(|error| error.to_string());
+    let _ = fs::remove_file(&wav_path);
+    let result = result?;
+    let text = result
+        .text
+        .unwrap_or_else(|| {
+            result
+                .segments
+                .iter()
+                .map(|segment| segment.text.trim())
+                .filter(|text| !text.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .trim()
+        .to_string();
+    if text.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(AudioTranscript {
+        text,
+        language: result.language,
+        segments: result
+            .segments
+            .into_iter()
+            .filter_map(|segment| {
+                let text = segment.text.trim().to_string();
+                (!text.is_empty()).then_some(AudioTranscriptSegment {
+                    segment_index: segment.index,
+                    start_seconds: segment.start_seconds,
+                    end_seconds: segment.end_seconds,
+                    text,
+                    confidence: segment.confidence,
+                })
+            })
+            .collect(),
+    }))
+}
+
+fn transcription_wav_path(settings: &Settings) -> PathBuf {
+    settings
+        .upload_dir
+        .join("audio-transcription")
+        .join(format!("{}.wav", Uuid::new_v4()))
+}
+
+fn transcode_for_transcription(input_path: &Path, output_path: &Path) -> Result<(), String> {
+    if let Some(parent) = output_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    let output = Command::new("ffmpeg")
+        .arg("-y")
+        .arg("-nostdin")
+        .arg("-v")
+        .arg("error")
+        .arg("-i")
+        .arg(input_path)
+        .arg("-map")
+        .arg("0:a:0")
+        .arg("-t")
+        .arg(format!("{AUDIO_ANALYSIS_MAX_SECONDS:.3}"))
+        .arg("-vn")
+        .arg("-ac")
+        .arg("1")
+        .arg("-ar")
+        .arg(TRANSCRIPTION_SAMPLE_RATE.to_string())
+        .arg("-f")
+        .arg("wav")
+        .arg(output_path)
+        .output()
+        .map_err(audio_tool_error)?;
+    if output.status.success() {
+        return Ok(());
+    }
+    Err(command_error("ffmpeg", &output.stderr))
+}
+
+fn whisper_model_is_cached(store: &WhisperCppModelStore, model: WhisperCppModel) -> bool {
+    store
+        .catalog()
+        .models
+        .into_iter()
+        .any(|status| status.model == model && status.cached)
+}
+
+fn parse_whisper_cpp_model(value: &str) -> Result<WhisperCppModel, String> {
+    let normalized = value.trim();
+    WhisperCppModel::ALL
+        .into_iter()
+        .find(|model| model.id().eq_ignore_ascii_case(normalized))
+        .ok_or_else(|| format!("Unknown whisper.cpp model `{normalized}`"))
 }
 
 fn attach_voice_registry(
