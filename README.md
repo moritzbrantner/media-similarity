@@ -149,6 +149,85 @@ IMAGE_SOURCES='["local:///images", "/more-images"]'
 
 Unsupported source types are surfaced in the index response as skipped sources instead of crashing the index run.
 
+## Development Workflow
+
+### Setup
+
+Install the frontend dependencies:
+
+```bash
+bun install
+```
+
+Rust service builds and tests use Cargo with path dependencies from a sibling checkout:
+
+```txt
+../rust-packages
+```
+
+Install Playwright Chromium once before running UI end-to-end tests:
+
+```bash
+bunx playwright install chromium
+```
+
+### Daily Development
+
+Start the full local app stack and the Vite frontend:
+
+```bash
+bun dev
+```
+
+This runs Docker Compose for the Rust app, Qdrant, and seed-data service, then starts Vite. Use this lighter command when only the containers need to be refreshed:
+
+```bash
+bun run dev:containers
+```
+
+### Project Commands
+
+| Command | Purpose |
+| --- | --- |
+| `bun run test` | Fast meaningful test path: Rust test suite. |
+| `bun run test:e2e` | Playwright UI tests with mocked API responses. |
+| `bun run lint` | TypeScript check, Rust format check, and Clippy with warnings denied. |
+| `bun run format:check` | Frontend formatting check. |
+| `bun run format:check:rust` | Rust formatting check. |
+| `bun run format` | Write frontend formatting changes. |
+| `bun run format:rust` | Write Rust formatting changes. |
+| `bun run build` | Build the frontend into `src/image_similarity/static`. |
+| `bun run build:rust` | Build Rust service binaries. |
+| `bun run check:hygiene` | Report dirty status, upstream state, and ignored/generated directory issues. |
+| `bun run verify` | Full local confidence check. |
+
+`src/image_similarity/static` is generated Vite output that is intentionally checked in for the Rust service to serve. Update it only by running `bun run build`.
+
+### Full Verification
+
+Run this before handing off larger changes:
+
+```bash
+bun run verify
+```
+
+The verification command runs the hygiene report, frontend format check, TypeScript/Rust static checks, Rust tests, Playwright tests, and the frontend build. It requires the sibling `../rust-packages` checkout and Playwright Chromium.
+
+### Release Notes
+
+This repository does not currently have a release or publish command. The frontend package is private and the Rust crate has `publish = false`. Use the existing Docker build when a runtime image is needed:
+
+```bash
+docker build --build-context rust-packages=../rust-packages -t image-similarity-service .
+```
+
+### Troubleshooting
+
+- If Rust commands cannot resolve `audio-analysis-*`, `image-analysis-*`, `vector-analysis-*`, or `video-analysis-*` crates, confirm `../rust-packages` exists.
+- If `bun run test:e2e` fails before opening the UI, run `bunx playwright install chromium`.
+- If video or audio indexing fails locally, confirm `ffmpeg` and `ffprobe` are installed and on `PATH`.
+- If `git status --short` is noisy, run `bun run check:hygiene` and confirm local generated directories are ignored.
+
 ## Local Development
 
 Run the backend locally:

@@ -4,14 +4,26 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "check:hygiene": "bash scripts/check_repo_hygiene.sh",
     "dev": "bun run dev:containers && vite --host 0.0.0.0",
     "dev:containers": "docker compose up --build -d",
     "build": "tsc --noEmit && vite build",
+    "build:rust": "cargo build --manifest-path rust/Cargo.toml --bins",
     "format": "oxfmt --write package.json tsconfig.json vite.config.ts playwright.config.ts src/frontend tests/e2e",
     "format:check": "oxfmt --check package.json tsconfig.json vite.config.ts playwright.config.ts src/frontend tests/e2e",
+    "format:rust": "cargo fmt --manifest-path rust/Cargo.toml",
+    "format:check:rust": "cargo fmt --manifest-path rust/Cargo.toml -- --check",
+    "lint": "bun run typecheck && bun run format:check:rust && cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings",
+    "test": "cargo test --manifest-path rust/Cargo.toml",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify": "bun run check:hygiene && bun run format:check && bun run lint && bun run test && bun run test:e2e && bun run build",
+    "services:up": "docker compose up -d qdrant",
+    "services:down": "docker compose stop qdrant",
+    "services:clean": "docker compose down -v --remove-orphans",
+    "services:ps": "docker compose ps",
+    "test:with-services": "COMPOSE_SERVICES=\"qdrant\" bash scripts/run-with-compose-services.sh bun run test"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.100.11",

@@ -1,3 +1,5 @@
+name: image-similarity-service
+
 x-app-build: &app-build
   context: .
   additional_contexts:
