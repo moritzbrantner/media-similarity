@@ -419,11 +419,7 @@ struct AudioTranscript {
 
 fn transcribe_audio(path: &Path, settings: &Settings) -> Result<Option<AudioTranscript>, String> {
     let model = parse_whisper_cpp_model(&settings.audio_transcription_model)?;
-    let store = settings
-        .audio_transcription_cache_dir
-        .clone()
-        .map(WhisperCppModelStore::new)
-        .unwrap_or_default();
+    let store = audio_transcription_model_store(settings);
     if !settings.audio_transcription_auto_download && !whisper_model_is_cached(&store, model) {
         tracing::warn!(
             model = model.id(),
@@ -520,7 +516,15 @@ fn transcode_for_transcription(input_path: &Path, output_path: &Path) -> Result<
     Err(command_error("ffmpeg", &output.stderr))
 }
 
-fn whisper_model_is_cached(store: &WhisperCppModelStore, model: WhisperCppModel) -> bool {
+pub fn audio_transcription_model_store(settings: &Settings) -> WhisperCppModelStore {
+    settings
+        .audio_transcription_cache_dir
+        .clone()
+        .map(WhisperCppModelStore::new)
+        .unwrap_or_default()
+}
+
+pub fn whisper_model_is_cached(store: &WhisperCppModelStore, model: WhisperCppModel) -> bool {
     store
         .catalog()
         .models
@@ -528,7 +532,7 @@ fn whisper_model_is_cached(store: &WhisperCppModelStore, model: WhisperCppModel)
         .any(|status| status.model == model && status.cached)
 }
 
-fn parse_whisper_cpp_model(value: &str) -> Result<WhisperCppModel, String> {
+pub fn parse_whisper_cpp_model(value: &str) -> Result<WhisperCppModel, String> {
     let normalized = value.trim();
     WhisperCppModel::ALL
         .into_iter()

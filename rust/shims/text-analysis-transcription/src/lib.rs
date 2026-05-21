@@ -85,8 +85,34 @@ impl WhisperCppModel {
         }
     }
 
-    fn file_name(self) -> String {
+    pub fn file_name(self) -> String {
         format!("ggml-{}.bin", self.id())
+    }
+
+    pub fn download_url(self) -> String {
+        format!(
+            "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/{}",
+            self.file_name()
+        )
+    }
+
+    pub fn checksum_sha256(self) -> &'static str {
+        match self {
+            Self::TinyEn => "0d686a2a6a22b02da2ef3101d4c86e68461363a623c58f27f81b1b2d36b42317",
+            Self::Tiny => "518970a29bedb265f23ac48d486ddbc63bedffd90967b10140ae5ac61243acf3",
+            Self::BaseEn => "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002",
+            Self::Base => "2f62d18b50c3f3feafbf990eec23a93d319660b1efbdd3fff55e52b7cde2e374",
+            Self::SmallEn => "0d57184d34ae7d736e5bb2db5bf83debe730bd53dcefa235a0979b9dcfd33fb3",
+            Self::Small => "edd29d67e70b000132af65205b99bb774b77abc13d10103e14f80ce2242913e1",
+            Self::MediumEn => "a163589aa264d5188df3b05ed4eac56bfd97e26910f207809d869f7e99886fd2",
+            Self::Medium => "d3d5696e6a3e0ca2aa08eb31cad208ffa1e87b3cc341f59e628fbdcf8122de9b",
+            Self::LargeV1 => "cbcb187d1e1abe979d33636cdc63381de20738eeda0885c39440b086e184248a",
+            Self::LargeV2 => "c6d6d3dcebc5e0074175386e17eba305fc5cc7d3d5dff3ecfd11e8f2bd4222d7",
+            Self::LargeV3 => "766d11cebbdf5a67c179c5774e2642b609e35e1a30240e7b559d5647c655b0a4",
+            Self::LargeV3Turbo => {
+                "5a4b65b05933d70ce9d5aa6265eb128fa5eba38f6fee40836fdedc4d2fde42ad"
+            }
+        }
     }
 }
 
@@ -126,6 +152,14 @@ impl WhisperCppModelStore {
         Self { root }
     }
 
+    pub fn models_dir(&self) -> PathBuf {
+        self.root.join("models")
+    }
+
+    pub fn model_path(&self, model: WhisperCppModel) -> PathBuf {
+        self.models_dir().join(model.file_name())
+    }
+
     pub fn catalog(&self) -> WhisperCppCatalog {
         WhisperCppCatalog {
             default_model: WhisperCppModel::BaseEn,
@@ -133,7 +167,7 @@ impl WhisperCppModelStore {
                 .into_iter()
                 .map(|model| WhisperCppModelStatus {
                     model,
-                    cached: self.root.join("models").join(model.file_name()).is_file(),
+                    cached: self.model_path(model).is_file(),
                 })
                 .collect(),
         }

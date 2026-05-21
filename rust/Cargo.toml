@@ -19,6 +19,7 @@ audio-analysis-speakers = { path = "../../rust-packages/crates/audio/audio-analy
 image-analysis-core = { path = "../../rust-packages/crates/image/image-analysis-core" }
 image-analysis-io = { path = "../../rust-packages/crates/image/image-analysis-io" }
 image-analysis-processing = { path = "../../rust-packages/crates/image/image-analysis-processing" }
+jobs-core = { path = "../../rust-packages/crates/jobs/jobs-core" }
 text-analysis-core = { path = "shims/text-analysis-core" }
 text-analysis-transcription = { path = "shims/text-analysis-transcription" }
 async-trait = "0.1"
@@ -27,9 +28,10 @@ dotenvy = "0.15"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp", "tiff", "gif"] }
 num-rational = "0.4"
 pyo3 = { version = "0.27.1", features = ["abi3-py311", "extension-module"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 thiserror = "2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs", "time"] }
 tower-http = { version = "0.6", features = ["fs", "trace"] }

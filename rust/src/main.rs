@@ -15,6 +15,7 @@ mod embedder;
 mod hashing;
 mod image_io;
 mod indexer;
+mod jobs;
 mod media;
 mod models;
 mod ocr;
@@ -25,7 +26,11 @@ mod thumbnails;
 mod video;
 mod voice;
 
-use crate::api::{health, index_images, search_upload, AppState};
+use crate::api::{
+    audio_transcription_models, cancel_job, download_audio_transcription_model,
+    enable_audio_transcription_model, get_job, get_job_events, health, index_images, list_jobs,
+    search_upload, AppState,
+};
 use crate::config::Settings;
 
 #[tokio::main]
@@ -46,6 +51,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = Router::new()
         .route("/api/health", get(health))
         .route("/api/index", post(index_images))
+        .route("/api/jobs", get(list_jobs))
+        .route("/api/jobs/:job_id", get(get_job))
+        .route("/api/jobs/:job_id/events", get(get_job_events))
+        .route("/api/jobs/:job_id/cancel", post(cancel_job))
+        .route(
+            "/api/models/audio-transcription",
+            get(audio_transcription_models),
+        )
+        .route(
+            "/api/models/audio-transcription/download",
+            post(download_audio_transcription_model),
+        )
+        .route(
+            "/api/models/audio-transcription/enable",
+            post(enable_audio_transcription_model),
+        )
         .route("/api/search", post(search_upload))
         .nest_service("/static", ServeDir::new(static_dir.join("static")))
         .nest_service("/thumbnails", ServeDir::new(settings.thumbnail_dir.clone()))

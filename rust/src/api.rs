@@ -1,21 +1,31 @@
 use std::collections::BTreeMap;
+use std::fs::{self, File};
+use std::io::{Read, Write};
 use std::sync::Arc;
 
-use axum::extract::{Multipart, Query, State};
+use axum::extract::{Multipart, Path as AxumPath, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use serde::Deserialize;
+use jobs_core::{
+    JobArtifact, JobContext, JobError, JobEvent, JobId, JobProgress, JobSnapshot, JobSpec,
+};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
+use text_analysis_transcription::{WhisperCppModel, WhisperCppModelStore};
+use uuid::Uuid;
 
 use crate::audio::{
-    audio_upload_path, decode_audio_segments, is_audio_content_type, is_audio_extension,
+    audio_transcription_model_store, audio_upload_path, decode_audio_segments,
+    is_audio_content_type, is_audio_extension, parse_whisper_cpp_model, whisper_model_is_cached,
     write_audio_upload,
 };
 use crate::config::Settings;
 use crate::embedder::ImageEmbedder;
 use crate::image_io::load_media_bytes;
 use crate::indexer::ImageIndexer;
+use crate::jobs::JobManager;
 use crate::models::{HealthResponse, IndexResponse, SearchResponse};
 use crate::models::{SearchResult, SearchSceneResponse};
 use crate::ocr::normalize_ocr_query;
@@ -32,6 +42,7 @@ pub struct AppState {
     pub settings: Settings,
     pub store: QdrantImageStore,
     pub embedder: ImageEmbedder,
+    pub jobs: JobManager,
 }
 
 impl AppState {
@@ -46,6 +57,7 @@ impl AppState {
             settings,
             store,
             embedder,
+            jobs: JobManager::default(),
         }
     }
 }
@@ -77,6 +89,150 @@ pub async fn index_images(State(state): State<Arc<AppState>>) -> Json<IndexRespo
         state.embedder.clone(),
     );
     Json(indexer.index_sources().await)
+}
+
+pub async fn list_jobs(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<JobSnapshot>>, ApiError> {
+    state.jobs.snapshots().map(Json).map_err(ApiError::from_job)
+}
+
+pub async fn get_job(
+    State(state): State<Arc<AppState>>,
+    AxumPath(job_id): AxumPath<String>,
+) -> Result<Json<JobSnapshot>, ApiError> {
+    let job_id = parse_job_id(job_id)?;
+    state
+        .jobs
+        .snapshot(&job_id)
+        .map_err(ApiError::from_job)?
+        .map(Json)
+        .ok_or_else(|| ApiError::not_found(format!("Unknown job `{job_id}`")))
+}
+
+pub async fn get_job_events(
+    State(state): State<Arc<AppState>>,
+    AxumPath(job_id): AxumPath<String>,
+) -> Result<Json<Vec<JobEvent>>, ApiError> {
+    let job_id = parse_job_id(job_id)?;
+    if state
+        .jobs
+        .snapshot(&job_id)
+        .map_err(ApiError::from_job)?
+        .is_none()
+    {
+        return Err(ApiError::not_found(format!("Unknown job `{job_id}`")));
+    }
+    state
+        .jobs
+        .events(&job_id)
+        .map(Json)
+        .map_err(ApiError::from_job)
+}
+
+pub async fn cancel_job(
+    State(state): State<Arc<AppState>>,
+    AxumPath(job_id): AxumPath<String>,
+) -> Result<Json<JobSnapshot>, ApiError> {
+    let job_id = parse_job_id(job_id)?;
+    state
+        .jobs
+        .request_cancel(&job_id)
+        .map_err(ApiError::from_job)?;
+    state
+        .jobs
+        .snapshot(&job_id)
+        .map_err(ApiError::from_job)?
+        .map(Json)
+        .ok_or_else(|| ApiError::not_found(format!("Unknown job `{job_id}`")))
+}
+
+#[derive(Debug, Serialize)]
+pub struct AudioTranscriptionModelsResponse {
+    pub enabled: bool,
+    pub configured_model: String,
+    pub auto_download: bool,
+    pub cache_dir: Option<String>,
+    pub models: Vec<AudioTranscriptionModelResponse>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AudioTranscriptionModelResponse {
+    pub id: String,
+    pub cached: bool,
+    pub configured: bool,
+}
+
+pub async fn audio_transcription_models(
+    State(state): State<Arc<AppState>>,
+) -> Json<AudioTranscriptionModelsResponse> {
+    let store = audio_transcription_model_store(&state.settings);
+    let configured_model = state.settings.audio_transcription_model.clone();
+    let models = store
+        .catalog()
+        .models
+        .into_iter()
+        .map(|status| {
+            let id = status.model.id().to_string();
+            AudioTranscriptionModelResponse {
+                cached: status.cached,
+                configured: id.eq_ignore_ascii_case(&configured_model),
+                id,
+            }
+        })
+        .collect();
+
+    Json(AudioTranscriptionModelsResponse {
+        enabled: state.settings.audio_transcription_enabled,
+        configured_model,
+        auto_download: state.settings.audio_transcription_auto_download,
+        cache_dir: state
+            .settings
+            .audio_transcription_cache_dir
+            .as_ref()
+            .map(|path| path.to_string_lossy().to_string()),
+        models,
+    })
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AudioTranscriptionModelJobRequest {
+    pub model: Option<String>,
+}
+
+pub async fn download_audio_transcription_model(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<AudioTranscriptionModelJobRequest>,
+) -> Result<Json<JobSnapshot>, ApiError> {
+    let model = requested_audio_transcription_model(&state.settings, request.model.as_deref())?;
+    let store = audio_transcription_model_store(&state.settings);
+    let spec = model_job_spec("model.download", "Download whisper.cpp model", model)?;
+    state
+        .jobs
+        .spawn(spec, move |context| {
+            download_whisper_cpp_model(context, store, model)?;
+            Ok(())
+        })
+        .map(Json)
+        .map_err(ApiError::from_job)
+}
+
+pub async fn enable_audio_transcription_model(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<AudioTranscriptionModelJobRequest>,
+) -> Result<Json<JobSnapshot>, ApiError> {
+    let model = requested_audio_transcription_model(&state.settings, request.model.as_deref())?;
+    let store = audio_transcription_model_store(&state.settings);
+    let settings = state.settings.clone();
+    let spec = model_job_spec("model.enable", "Enable whisper.cpp model", model)?;
+    state
+        .jobs
+        .spawn(spec, move |context| {
+            enable_whisper_cpp_model(context, &settings, &store, model)?;
+            Ok(())
+        })
+        .map(Json)
+        .map_err(ApiError::from_job)
 }
 
 pub async fn search_upload(
@@ -343,6 +499,179 @@ fn deduplicate_flat_results(results: Vec<SearchResult>) -> Vec<SearchResult> {
     deduped
 }
 
+fn parse_job_id(value: String) -> Result<JobId, ApiError> {
+    JobId::new(value).map_err(|error| ApiError::bad_request(error.to_string()))
+}
+
+fn requested_audio_transcription_model(
+    settings: &Settings,
+    requested: Option<&str>,
+) -> Result<WhisperCppModel, ApiError> {
+    parse_whisper_cpp_model(requested.unwrap_or(&settings.audio_transcription_model))
+        .map_err(ApiError::bad_request)
+}
+
+fn model_job_spec(kind: &str, name: &str, model: WhisperCppModel) -> Result<JobSpec, ApiError> {
+    JobSpec::new(
+        format!("{kind}.whisper.{}.{}", model.id(), Uuid::new_v4()),
+        name,
+    )
+    .and_then(|spec| spec.with_kind(kind))
+    .and_then(|spec| spec.with_metadata("provider", "whisper.cpp"))
+    .and_then(|spec| spec.with_metadata("model", model.id()))
+    .map_err(ApiError::from_job)
+}
+
+fn download_whisper_cpp_model(
+    context: JobContext,
+    store: WhisperCppModelStore,
+    model: WhisperCppModel,
+) -> jobs_core::Result<()> {
+    context.info(format!("checking whisper.cpp model `{}`", model.id()))?;
+    context.progress(
+        JobProgress::new(0, Some(1))?
+            .unit("steps")?
+            .message("checking model cache"),
+    )?;
+    context.check_cancelled()?;
+
+    let model_path = store.model_path(model);
+    if model_path.is_file() {
+        context.info(format!(
+            "whisper.cpp model `{}` is already cached",
+            model.id()
+        ))?;
+        context.progress(
+            JobProgress::new(1, Some(1))?
+                .unit("steps")?
+                .message("model already cached"),
+        )?;
+        context.artifact(
+            JobArtifact::new("model", format!("whisper.cpp model {}", model.id()))
+                .kind("model")
+                .path(model_path),
+        )?;
+        return Ok(());
+    }
+
+    fs::create_dir_all(store.models_dir()).map_err(job_failed)?;
+    let temp_path = model_path.with_extension(format!("{}.part", context.id()));
+    if temp_path.exists() {
+        fs::remove_file(&temp_path).map_err(job_failed)?;
+    }
+
+    context.info(format!("downloading whisper.cpp model `{}`", model.id()))?;
+    let mut response = reqwest::blocking::get(model.download_url())
+        .and_then(|response| response.error_for_status())
+        .map_err(job_failed)?;
+    let total_bytes = response.content_length().filter(|total| *total > 0);
+    let mut output = File::create(&temp_path).map_err(job_failed)?;
+    let mut hasher = Sha256::new();
+    let mut downloaded = 0_u64;
+    let mut buffer = [0_u8; 64 * 1024];
+
+    loop {
+        context.check_cancelled()?;
+        let read = response.read(&mut buffer).map_err(job_failed)?;
+        if read == 0 {
+            break;
+        }
+        output.write_all(&buffer[..read]).map_err(job_failed)?;
+        hasher.update(&buffer[..read]);
+        downloaded += read as u64;
+        context.progress(bytes_progress(
+            downloaded,
+            total_bytes,
+            format!("downloaded {} bytes", downloaded),
+        )?)?;
+    }
+    output.flush().map_err(job_failed)?;
+
+    let checksum = format!("{:x}", hasher.finalize());
+    if checksum != model.checksum_sha256() {
+        let _ = fs::remove_file(&temp_path);
+        return Err(JobError::Failed(format!(
+            "downloaded model `{}` failed checksum verification",
+            model.id()
+        )));
+    }
+
+    fs::rename(&temp_path, &model_path).map_err(job_failed)?;
+    context.info(format!("downloaded whisper.cpp model `{}`", model.id()))?;
+    context.artifact(
+        JobArtifact::new("model", format!("whisper.cpp model {}", model.id()))
+            .kind("model")
+            .path(model_path),
+    )?;
+    Ok(())
+}
+
+fn enable_whisper_cpp_model(
+    context: JobContext,
+    settings: &Settings,
+    store: &WhisperCppModelStore,
+    model: WhisperCppModel,
+) -> jobs_core::Result<()> {
+    context.info(format!("checking whisper.cpp model `{}`", model.id()))?;
+    context.progress(
+        JobProgress::new(0, Some(1))?
+            .unit("steps")?
+            .message("checking model settings"),
+    )?;
+    context.check_cancelled()?;
+
+    if !whisper_model_is_cached(store, model) {
+        return Err(JobError::Failed(format!(
+            "whisper.cpp model `{}` is not cached; download it before enabling",
+            model.id()
+        )));
+    }
+
+    if !settings.audio_transcription_enabled {
+        context
+            .warn("AUDIO_TRANSCRIPTION_ENABLED is false; set it to true to use transcription")?;
+    }
+    if !settings
+        .audio_transcription_model
+        .eq_ignore_ascii_case(model.id())
+    {
+        context.warn(format!(
+            "AUDIO_TRANSCRIPTION_MODEL is `{}`; set it to `{}` to make this the active model",
+            settings.audio_transcription_model,
+            model.id()
+        ))?;
+    }
+    context.metadata("enabled", settings.audio_transcription_enabled.to_string())?;
+    context.metadata(
+        "configured_model",
+        settings.audio_transcription_model.clone(),
+    )?;
+    context.progress(
+        JobProgress::new(1, Some(1))?
+            .unit("steps")?
+            .message("model enable check complete"),
+    )?;
+    context.info(format!("finished enable check for `{}`", model.id()))?;
+    Ok(())
+}
+
+fn bytes_progress(
+    completed: u64,
+    total: Option<u64>,
+    message: impl Into<String>,
+) -> jobs_core::Result<JobProgress> {
+    let total = total.filter(|total| *total >= completed && *total > 0);
+    let progress = JobProgress::new(completed, total)?
+        .unit("bytes")?
+        .message(message);
+    progress.validate()?;
+    Ok(progress)
+}
+
+fn job_failed(error: impl std::fmt::Display) -> JobError {
+    JobError::Failed(error.to_string())
+}
+
 pub struct ApiError {
     status: StatusCode,
     detail: String,
@@ -363,10 +692,27 @@ impl ApiError {
         }
     }
 
+    fn not_found(detail: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::NOT_FOUND,
+            detail: detail.into(),
+        }
+    }
+
     fn internal(detail: impl Into<String>) -> Self {
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             detail: detail.into(),
+        }
+    }
+
+    fn from_job(error: JobError) -> Self {
+        match error {
+            JobError::InvalidArgument(message) => Self::bad_request(message),
+            JobError::Cancelled => Self::bad_request("job cancelled"),
+            JobError::Failed(message) | JobError::StateUnavailable(message) => {
+                Self::internal(message)
+            }
         }
     }
 }
