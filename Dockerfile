@@ -35,8 +35,9 @@ RUN apt-get update \
 COPY --from=rust-builder /workspace/image-similarity-service/rust/target/release/image-similarity-service /usr/local/bin/image-similarity-service
 COPY --from=rust-builder /workspace/image-similarity-service/rust/target/release/seed_dummy_data /usr/local/bin/seed_dummy_data
 COPY --from=frontend-builder /workspace/src/image_similarity/static ./src/image_similarity/static
+COPY config ./config
 
-RUN mkdir -p /app/data/thumbnails /app/data/uploads /images
+RUN mkdir -p /app/data/thumbnails /app/data/uploads /images /media/pictures /media/videos /media/audio
 
 EXPOSE 8000
 

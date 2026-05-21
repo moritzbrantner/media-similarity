@@ -19,7 +19,7 @@ The service indexes configured media folders, generates thumbnails and perceptua
 - Animation-aware GIF indexing and upload search using sampled frame content plus motion deltas.
 - Deterministic normalized image-vector embedder in Rust.
 - React UI built with Bun, TypeScript, React Query, Tailwind CSS, and oxfmt.
-- Docker Compose setup with the Rust app, Qdrant, and a sample people image seed job.
+- Docker Compose setup with the Rust app, Qdrant, and default host media folder mounts.
 
 MinIO, `video://`, and camera source URI parsing is retained, but those source backends are currently reported as unavailable by the Rust service. Local video files inside configured local source folders are indexed as scene records, and local audio files are indexed as spectrogram records.
 
@@ -31,15 +31,15 @@ MinIO, `video://`, and camera source URI parsing is retained, but those source b
    cp .env.example .env
    ```
 
-2. Optionally edit `.env` and set `HOST_SOURCE_IMAGE_DIR` to your local image folder:
+2. Optionally edit `.env` to point the default media mounts at your local folders:
 
    ```env
-   HOST_SOURCE_IMAGE_DIR=/absolute/path/to/your/images
-   SOURCE_IMAGE_DIR=/images
+   HOST_PICTURES_DIR=/absolute/path/to/your/pictures
+   HOST_VIDEO_DIR=/absolute/path/to/your/videos
+   HOST_AUDIO_DIR=/absolute/path/to/your/audio
    ```
 
-   `HOST_SOURCE_IMAGE_DIR` is used by Docker Compose on the host. `SOURCE_IMAGE_DIR` is the path inside the app container and can usually stay `/images`.
-   If you keep the default `./sample-images`, Docker Compose runs the `seed-data` job first and fills that directory with example people images from `https://thispersondoesnotexist.com/`.
+   Docker Compose mounts those host folders read-only at `/media/pictures`, `/media/videos`, and `/media/audio`. The checked-in `config/media-sources.txt` file lists those container paths, one source per line.
 
 3. Install frontend dependencies:
 
@@ -112,9 +112,12 @@ Set these values in `.env`:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `HOST_SOURCE_IMAGE_DIR` | `./sample-images` | Host folder mounted into the app container. |
-| `SOURCE_IMAGE_DIR` | `/images` | Container path scanned by the indexer. |
-| `IMAGE_SOURCES` | empty | Optional source list. When empty, the indexer scans `SOURCE_IMAGE_DIR`. Use a JSON array, comma-separated list, semicolon-separated list, or newline-separated list. |
+| `HOST_PICTURES_DIR` | `${HOME}/Pictures` | Host pictures folder mounted into the app container. |
+| `HOST_VIDEO_DIR` | `${HOME}/Videos` | Host video folder mounted into the app container. |
+| `HOST_AUDIO_DIR` | `${HOME}/Music` | Host audio folder mounted into the app container. |
+| `MEDIA_SOURCES_FILE` | `/app/config/media-sources.txt` | Source list file read by the Rust service when `IMAGE_SOURCES` is empty. |
+| `SOURCE_IMAGE_DIR` | `/images` | Legacy fallback path scanned only when `IMAGE_SOURCES` is empty and no media sources file is available. |
+| `IMAGE_SOURCES` | empty | Optional source list override. When set, this takes precedence over `MEDIA_SOURCES_FILE`. Use a JSON array, comma-separated list, semicolon-separated list, or newline-separated list. |
 | `QDRANT_URL` | `http://qdrant:6333` | Qdrant URL from inside the app container. |
 | `QDRANT_COLLECTION` | `image_similarity` | Qdrant collection name. |
 | `VECTOR_SIZE` | `512` | Qdrant vector size for the Rust embedder. |
@@ -135,7 +138,8 @@ Set these values in `.env`:
 | `GIF_PREVIEW_FRAMES` | `16` | Maximum frames written to generated animated GIF previews. |
 | `GIF_DEFAULT_FRAME_DELAY_MS` | `100` | Delay used when a GIF frame delay is zero or missing. |
 | `GIF_MOTION_WEIGHT` | `0.2` | Blend weight for motion deltas in animation-aware GIF vectors. |
-| `SAMPLE_FACE_DATA_DIR` | `/seed/local` | Container path where the seed job writes local sample images. |
+| `SAMPLE_FACE_HOST_DIR` | `./sample-images` | Host folder used only when the optional seed profile is run. |
+| `SAMPLE_FACE_DATA_DIR` | `/seed/local` | Container path where the optional seed job writes local sample images. |
 | `SAMPLE_FACE_COUNT` | `150` | Number of example people images to download. |
 | `SAMPLE_FACE_URL` | `https://thispersondoesnotexist.com/` | JPEG source used by the seed job. |
 | `SAMPLE_FACE_DELAY_MS` | `1000` | Delay between download attempts, to avoid duplicate cached responses. |
@@ -144,7 +148,18 @@ Set these values in `.env`:
 
 ## Source Examples
 
-`IMAGE_SOURCES` accepts multiple local source paths. Local folder support is backward compatible with `SOURCE_IMAGE_DIR` and scans configured image, video, and audio extensions.
+By default, source folders are configured in `config/media-sources.txt`:
+
+```txt
+# Local media folders indexed by default.
+/media/pictures
+/media/videos
+/media/audio
+```
+
+The file uses a small `.gitignore`-style convention: blank lines and lines starting with `#` are ignored. Each remaining line is a local path or supported source URI. Local paths may use `~`, `$VAR`, or `${VAR}` expansion. The indexer scans configured image, video, and audio extensions under each listed folder.
+
+`IMAGE_SOURCES` still accepts multiple local source paths and overrides the file when set. Local folder support remains backward compatible with `SOURCE_IMAGE_DIR`.
 
 ```env
 IMAGE_SOURCES='["local:///images", "/more-images"]'
@@ -182,7 +197,7 @@ Start the full local app stack and the Vite frontend:
 bun dev
 ```
 
-This runs Docker Compose for the Rust app, Qdrant, and seed-data service, then starts Vite. Use this lighter command when only the containers need to be refreshed:
+This runs Docker Compose for the Rust app and Qdrant, then starts Vite. Use this lighter command when only the containers need to be refreshed:
 
 ```bash
 bun run dev:containers
@@ -237,7 +252,7 @@ Run the backend locally:
 
 ```bash
 QDRANT_URL=http://localhost:6333 \
-SOURCE_IMAGE_DIR=/absolute/path/to/images \
+MEDIA_SOURCES_FILE=config/media-sources.txt \
 cargo run --manifest-path rust/Cargo.toml --bin image-similarity-service
 ```
 
@@ -274,7 +289,7 @@ cargo run --manifest-path rust/Cargo.toml --bin seed_dummy_data
 Run the Compose seed job again:
 
 ```bash
-docker compose run --rm seed-data
+docker compose --profile seed run --rm seed-data
 ```
 
 ### Frontend Development

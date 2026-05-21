@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::env;
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -21,6 +22,7 @@ pub struct Settings {
     pub audio_transcription_threads: Option<usize>,
     pub audio_transcription_auto_download: bool,
     pub audio_transcription_cache_dir: Option<PathBuf>,
+    pub media_sources_file: PathBuf,
     pub image_sources: Vec<String>,
     pub minio_endpoint: Option<String>,
     pub minio_access_key: Option<String>,
@@ -66,6 +68,7 @@ impl Default for Settings {
             audio_transcription_threads: None,
             audio_transcription_auto_download: false,
             audio_transcription_cache_dir: None,
+            media_sources_file: PathBuf::from("config/media-sources.txt"),
             image_sources: Vec::new(),
             minio_endpoint: None,
             minio_access_key: None,
@@ -97,6 +100,12 @@ impl Settings {
     pub fn from_env() -> Result<Self, String> {
         dotenvy::dotenv().ok();
         let defaults = Self::default();
+        let media_sources_file = path_var("MEDIA_SOURCES_FILE", defaults.media_sources_file);
+        let media_sources_file_is_set = optional_string_var("MEDIA_SOURCES_FILE").is_some();
+        let image_sources = match optional_string_var("IMAGE_SOURCES") {
+            Some(value) => parse_image_sources(&value)?,
+            None => read_media_sources_file(&media_sources_file, media_sources_file_is_set)?,
+        };
         Ok(Self {
             source_image_dir: path_var("SOURCE_IMAGE_DIR", defaults.source_image_dir),
             qdrant_url: string_var("QDRANT_URL", defaults.qdrant_url),
@@ -135,11 +144,8 @@ impl Settings {
             audio_transcription_cache_dir: optional_string_var("AUDIO_TRANSCRIPTION_CACHE_DIR")
                 .map(PathBuf::from)
                 .or(defaults.audio_transcription_cache_dir),
-            image_sources: env::var("IMAGE_SOURCES")
-                .ok()
-                .map(|value| parse_image_sources(&value))
-                .transpose()?
-                .unwrap_or_default(),
+            media_sources_file,
+            image_sources,
             minio_endpoint: optional_string_var("MINIO_ENDPOINT"),
             minio_access_key: optional_string_var("MINIO_ACCESS_KEY"),
             minio_secret_key: optional_string_var("MINIO_SECRET_KEY"),
@@ -255,7 +261,7 @@ pub fn parse_image_sources(value: &str) -> Result<Vec<String>, String> {
             .map_err(|error| format!("IMAGE_SOURCES must be a JSON string array: {error}"))?;
         return Ok(parsed
             .into_iter()
-            .map(|part| part.trim().to_string())
+            .map(|part| expand_local_source_spec(part.trim()))
             .filter(|part| !part.is_empty())
             .collect());
     }
@@ -265,11 +271,106 @@ pub fn parse_image_sources(value: &str) -> Result<Vec<String>, String> {
                 .split(separator)
                 .map(str::trim)
                 .filter(|part| !part.is_empty())
-                .map(ToOwned::to_owned)
+                .map(expand_local_source_spec)
                 .collect());
         }
     }
-    Ok(vec![stripped.to_string()])
+    Ok(vec![expand_local_source_spec(stripped)])
+}
+
+pub fn parse_media_sources_file(value: &str) -> Result<Vec<String>, String> {
+    Ok(value
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(expand_local_source_spec)
+        .filter(|line| !line.is_empty())
+        .collect())
+}
+
+fn read_media_sources_file(path: &Path, required: bool) -> Result<Vec<String>, String> {
+    match fs::read_to_string(path) {
+        Ok(value) => parse_media_sources_file(&value),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound && !required => Ok(Vec::new()),
+        Err(error) => Err(format!(
+            "Could not read MEDIA_SOURCES_FILE {}: {error}",
+            path.display()
+        )),
+    }
+}
+
+fn expand_local_source_spec(value: &str) -> String {
+    if has_uri_scheme(value) {
+        return value.to_string();
+    }
+
+    let expanded = expand_env_vars(value);
+    if let Some(home) = home_dir() {
+        if expanded == "~" {
+            return home;
+        }
+        if let Some(rest) = expanded.strip_prefix("~/") {
+            return format!("{home}/{rest}");
+        }
+    }
+    expanded
+}
+
+fn has_uri_scheme(value: &str) -> bool {
+    value
+        .find(':')
+        .map(|index| {
+            value[..index].chars().all(|character| {
+                character.is_ascii_alphanumeric() || matches!(character, '+' | '-' | '.')
+            })
+        })
+        .unwrap_or(false)
+}
+
+fn expand_env_vars(value: &str) -> String {
+    let mut output = String::new();
+    let mut chars = value.chars().peekable();
+
+    while let Some(character) = chars.next() {
+        if character != '$' {
+            output.push(character);
+            continue;
+        }
+
+        if chars.peek() == Some(&'{') {
+            chars.next();
+            let mut name = String::new();
+            for next in chars.by_ref() {
+                if next == '}' {
+                    break;
+                }
+                name.push(next);
+            }
+            output.push_str(&env::var(name).unwrap_or_default());
+            continue;
+        }
+
+        let mut name = String::new();
+        while let Some(next) = chars.peek() {
+            if next.is_ascii_alphanumeric() || *next == '_' {
+                name.push(*next);
+                chars.next();
+            } else {
+                break;
+            }
+        }
+        if name.is_empty() {
+            output.push('$');
+        } else {
+            output.push_str(&env::var(name).unwrap_or_default());
+        }
+    }
+
+    output
+}
+
+fn home_dir() -> Option<String> {
+    optional_string_var("HOME")
 }
 
 fn string_var(name: &str, default: String) -> String {
@@ -382,7 +483,7 @@ fn bounded_f32_var(name: &str, default: f32, min: f32, max: f32) -> Result<f32, 
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_extensions, parse_image_sources, Settings};
+    use super::{parse_extensions, parse_image_sources, parse_media_sources_file, Settings};
 
     #[test]
     fn extensions_are_normalized() {
@@ -403,6 +504,19 @@ mod tests {
             parse_image_sources(r#"["/images", "video:///clips/demo.mp4"]"#).unwrap(),
             vec!["/images", "video:///clips/demo.mp4"]
         );
+    }
+
+    #[test]
+    fn media_sources_file_accepts_ignore_style_comments_and_expands_paths() {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let mut input = "# Default user media folders.\n/srv/audio\n".to_string();
+        let mut expected = vec!["/srv/audio".to_string()];
+        if !home.is_empty() {
+            input.push_str("~/Pictures\n$HOME/Videos\n");
+            expected.push(format!("{home}/Pictures"));
+            expected.push(format!("{home}/Videos"));
+        }
+        assert_eq!(parse_media_sources_file(&input).unwrap(), expected);
     }
 
     #[test]
