@@ -1,4 +1,4 @@
-import type { HealthResponse, IndexResponse, SearchResponse } from "./types";
+import type { HealthResponse, IndexResponse, SearchResponse, SourceConfigResponse } from "./types";
 
 async function parseResponse<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -57,6 +57,20 @@ export async function fetchHealth(): Promise<HealthResponse> {
 export async function indexSources(): Promise<IndexResponse> {
   const response = await fetch("/api/index", { method: "POST" });
   return parseResponse<IndexResponse>(response);
+}
+
+export async function fetchSourceConfig(): Promise<SourceConfigResponse> {
+  const response = await fetch("/api/source-config");
+  return parseResponse<SourceConfigResponse>(response);
+}
+
+export async function updateSourceConfig(sources: string[]): Promise<SourceConfigResponse> {
+  const response = await fetch("/api/source-config", {
+    body: JSON.stringify({ sources }),
+    headers: { "Content-Type": "application/json" },
+    method: "PUT",
+  });
+  return parseResponse<SourceConfigResponse>(response);
 }
 
 export async function searchMedia(

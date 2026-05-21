@@ -15,6 +15,44 @@ export type IndexResponse = {
   errors: string[];
 };
 
+export type SourceConfigResponse = {
+  media_sources_file: string;
+  default_source_dir: string;
+  sources: SourceConfigSource[];
+  supported_source_types: SupportedSourceType[];
+  indexing: SourceIndexingConfig;
+};
+
+export type SourceConfigSource = {
+  spec: string;
+  kind: string;
+  status: "not_implemented" | "ready" | "unavailable" | "unsupported" | string;
+  detail: string | null;
+};
+
+export type SupportedSourceType = {
+  kind: string;
+  label: string;
+  implemented: boolean;
+  example: string;
+};
+
+export type SourceIndexingConfig = {
+  collection: string;
+  image_extensions: string[];
+  audio_extensions: string[];
+  video_extensions: string[];
+  gif_sample_frames: number;
+  gif_max_decode_frames: number;
+  gif_preview_frames: number;
+  gif_motion_weight: number;
+  video_frame_stride: number;
+  video_max_frames: number | null;
+  ocr_enabled: boolean;
+  ocr_max_frames: number;
+  audio_transcription_enabled: boolean;
+};
+
 export type AudioAnalysis = {
   speech_detected: boolean;
   speech_ratio: number;

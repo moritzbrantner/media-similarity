@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use axum::extract::{Multipart, Path as AxumPath, Query, State};
 use axum::http::StatusCode;
@@ -21,7 +21,7 @@ use crate::audio::{
     is_audio_content_type, is_audio_extension, parse_whisper_cpp_model, whisper_model_is_cached,
     write_audio_upload,
 };
-use crate::config::Settings;
+use crate::config::{parse_media_sources_file, Settings};
 use crate::embedder::ImageEmbedder;
 use crate::image_io::load_media_bytes;
 use crate::indexer::ImageIndexer;
@@ -37,9 +37,9 @@ use crate::video::{
     write_video_upload,
 };
 
-#[derive(Clone)]
 pub struct AppState {
     pub settings: Settings,
+    source_specs: RwLock<Vec<String>>,
     pub store: QdrantImageStore,
     pub embedder: ImageEmbedder,
     pub jobs: JobManager,
@@ -53,12 +53,28 @@ impl AppState {
             settings.vector_size,
         );
         let embedder = ImageEmbedder::new(settings.clip_model_name.clone(), settings.vector_size);
+        let source_specs = RwLock::new(settings.source_specs());
         Self {
             settings,
+            source_specs,
             store,
             embedder,
             jobs: JobManager::default(),
         }
+    }
+
+    pub fn indexing_settings(&self) -> Settings {
+        let mut settings = self.settings.clone();
+        settings.image_sources = read_source_specs(&self.source_specs);
+        settings
+    }
+
+    fn replace_source_specs(&self, sources: Vec<String>) {
+        let mut source_specs = self
+            .source_specs
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *source_specs = sources;
     }
 }
 
@@ -69,22 +85,19 @@ pub struct SearchQuery {
 }
 
 pub async fn health(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
-    let sources = build_image_sources(&state.settings);
+    let settings = state.indexing_settings();
+    let sources = build_image_sources(&settings);
     Json(HealthResponse {
         status: "ok".to_string(),
-        collection: state.settings.qdrant_collection.clone(),
-        source_dir: state
-            .settings
-            .source_image_dir
-            .to_string_lossy()
-            .to_string(),
+        collection: settings.qdrant_collection.clone(),
+        source_dir: settings.source_image_dir.to_string_lossy().to_string(),
         sources: sources.iter().map(|source| source.uri()).collect(),
     })
 }
 
 pub async fn index_images(State(state): State<Arc<AppState>>) -> Json<IndexResponse> {
     let indexer = ImageIndexer::new(
-        state.settings.clone(),
+        state.indexing_settings(),
         state.store.clone(),
         state.embedder.clone(),
     );
@@ -99,13 +112,263 @@ pub fn spawn_startup_index_job(state: Arc<AppState>) -> jobs_core::Result<JobSna
     .with_kind("index.startup")?
     .with_metadata("collection", state.settings.qdrant_collection.clone())?;
     let jobs = state.jobs.clone();
-    let settings = state.settings.clone();
+    let settings = state.indexing_settings();
     let store = state.store.clone();
     let embedder = state.embedder.clone();
 
     jobs.spawn(spec, move |context| {
         run_index_job(context, settings, store, embedder)
     })
+}
+
+#[derive(Debug, Serialize)]
+pub struct SourceConfigResponse {
+    pub media_sources_file: String,
+    pub default_source_dir: String,
+    pub sources: Vec<SourceConfigSource>,
+    pub supported_source_types: Vec<SupportedSourceType>,
+    pub indexing: SourceIndexingConfig,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SourceConfigSource {
+    pub spec: String,
+    pub kind: String,
+    pub status: String,
+    pub detail: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SupportedSourceType {
+    pub kind: String,
+    pub label: String,
+    pub implemented: bool,
+    pub example: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SourceIndexingConfig {
+    pub collection: String,
+    pub image_extensions: Vec<String>,
+    pub audio_extensions: Vec<String>,
+    pub video_extensions: Vec<String>,
+    pub gif_sample_frames: usize,
+    pub gif_max_decode_frames: usize,
+    pub gif_preview_frames: usize,
+    pub gif_motion_weight: f32,
+    pub video_frame_stride: u32,
+    pub video_max_frames: Option<u32>,
+    pub ocr_enabled: bool,
+    pub ocr_max_frames: usize,
+    pub audio_transcription_enabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateSourceConfigRequest {
+    pub sources: Vec<String>,
+}
+
+pub async fn get_source_config(State(state): State<Arc<AppState>>) -> Json<SourceConfigResponse> {
+    Json(source_config_response(&state))
+}
+
+pub async fn update_source_config(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<UpdateSourceConfigRequest>,
+) -> Result<Json<SourceConfigResponse>, ApiError> {
+    let sources = normalize_source_specs(&request.sources)?;
+    write_media_sources_file(&state.settings.media_sources_file, &sources)?;
+    state.replace_source_specs(sources);
+    Ok(Json(source_config_response(&state)))
+}
+
+fn source_config_response(state: &AppState) -> SourceConfigResponse {
+    let settings = state.indexing_settings();
+    SourceConfigResponse {
+        media_sources_file: settings.media_sources_file.to_string_lossy().to_string(),
+        default_source_dir: settings.source_image_dir.to_string_lossy().to_string(),
+        sources: settings
+            .source_specs()
+            .into_iter()
+            .map(source_config_source)
+            .collect(),
+        supported_source_types: supported_source_types(),
+        indexing: SourceIndexingConfig {
+            collection: settings.qdrant_collection,
+            image_extensions: settings.image_extensions.into_iter().collect(),
+            audio_extensions: settings.audio_extensions.into_iter().collect(),
+            video_extensions: video_source_extensions(),
+            gif_sample_frames: settings.gif_sample_frames,
+            gif_max_decode_frames: settings.gif_max_decode_frames,
+            gif_preview_frames: settings.gif_preview_frames,
+            gif_motion_weight: settings.gif_motion_weight,
+            video_frame_stride: settings.video_frame_stride,
+            video_max_frames: settings.video_max_frames,
+            ocr_enabled: settings.ocr_enabled,
+            ocr_max_frames: settings.ocr_max_frames,
+            audio_transcription_enabled: settings.audio_transcription_enabled,
+        },
+    }
+}
+
+fn read_source_specs(source_specs: &RwLock<Vec<String>>) -> Vec<String> {
+    source_specs
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}
+
+fn normalize_source_specs(sources: &[String]) -> Result<Vec<String>, ApiError> {
+    let input = sources
+        .iter()
+        .map(|source| source.trim())
+        .filter(|source| !source.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let parsed = parse_media_sources_file(&input).map_err(ApiError::bad_request)?;
+    if parsed.is_empty() {
+        return Err(ApiError::bad_request(
+            "At least one media source must be configured",
+        ));
+    }
+    Ok(parsed)
+}
+
+fn write_media_sources_file(path: &std::path::Path, sources: &[String]) -> Result<(), ApiError> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            ApiError::internal(format!(
+                "Could not create media source config directory {}: {error}",
+                parent.display()
+            ))
+        })?;
+    }
+    let mut content = "# Managed by image-similarity-service.\n".to_string();
+    content.push_str("# One source per line. Supported now: local paths, file://, local://.\n");
+    content.push_str(
+        "# Planned source specs can be kept here, but unsupported types will be skipped.\n",
+    );
+    for source in sources {
+        content.push_str(source);
+        content.push('\n');
+    }
+    fs::write(path, content).map_err(|error| {
+        ApiError::internal(format!(
+            "Could not write media source config file {}: {error}",
+            path.display()
+        ))
+    })
+}
+
+fn source_config_source(spec: String) -> SourceConfigSource {
+    let kind = source_kind(&spec);
+    let (status, detail) = match kind.as_str() {
+        "local" => {
+            let path = local_source_path(&spec);
+            if path.is_dir() {
+                ("ready".to_string(), None)
+            } else {
+                (
+                    "unavailable".to_string(),
+                    Some(format!("Directory does not exist: {}", path.display())),
+                )
+            }
+        }
+        "minio" => (
+            "not_implemented".to_string(),
+            Some("MinIO sources are not implemented in the native Rust service yet".to_string()),
+        ),
+        "video" => (
+            "not_implemented".to_string(),
+            Some(
+                "Video source specs are not implemented; local folders can include video files"
+                    .to_string(),
+            ),
+        ),
+        "camera" => (
+            "not_implemented".to_string(),
+            Some("Camera sources are not implemented in the native Rust service yet".to_string()),
+        ),
+        _ => (
+            "unsupported".to_string(),
+            Some(format!("Unsupported media source: {spec}")),
+        ),
+    };
+
+    SourceConfigSource {
+        spec,
+        kind,
+        status,
+        detail,
+    }
+}
+
+fn source_kind(spec: &str) -> String {
+    if let Some((scheme, _)) = spec.split_once(':') {
+        if scheme.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '+' | '-' | '.')
+        }) {
+            return match scheme {
+                "file" | "local" => "local".to_string(),
+                other => other.to_string(),
+            };
+        }
+    }
+    "local".to_string()
+}
+
+fn local_source_path(spec: &str) -> std::path::PathBuf {
+    match url::Url::parse(spec) {
+        Ok(url) if url.scheme() == "file" => {
+            url.to_file_path().unwrap_or_else(|_| url.path().into())
+        }
+        Ok(url) if url.scheme() == "local" => {
+            let mut path = String::new();
+            if let Some(host) = url.host_str() {
+                path.push('/');
+                path.push_str(host);
+            }
+            path.push_str(url.path());
+            path.into()
+        }
+        _ => spec.into(),
+    }
+}
+
+fn supported_source_types() -> Vec<SupportedSourceType> {
+    vec![
+        SupportedSourceType {
+            kind: "local".to_string(),
+            label: "Local folder".to_string(),
+            implemented: true,
+            example: "/images or local:///images".to_string(),
+        },
+        SupportedSourceType {
+            kind: "minio".to_string(),
+            label: "MinIO bucket".to_string(),
+            implemented: false,
+            example: "minio://bucket/prefix".to_string(),
+        },
+        SupportedSourceType {
+            kind: "video".to_string(),
+            label: "Video stream".to_string(),
+            implemented: false,
+            example: "video:///clips/demo.mp4".to_string(),
+        },
+        SupportedSourceType {
+            kind: "camera".to_string(),
+            label: "Camera".to_string(),
+            implemented: false,
+            example: "camera://front-door".to_string(),
+        },
+    ]
+}
+
+fn video_source_extensions() -> Vec<String> {
+    [".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi"]
+        .into_iter()
+        .map(ToOwned::to_owned)
+        .collect()
 }
 
 pub async fn list_jobs(

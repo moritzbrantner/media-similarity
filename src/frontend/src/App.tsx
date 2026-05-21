@@ -2,24 +2,48 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   ArrowUpDown,
+  Camera,
   CheckCircle2,
+  Cloud,
   Database,
   FileAudio,
   FileImage,
   FileText,
   FileVideo,
+  Film,
+  FolderPlus,
+  HardDrive,
   History,
   ImageIcon,
+  Info,
   Loader2,
+  Plus,
   RotateCw,
+  Save,
   Search,
+  Settings,
   SlidersHorizontal,
+  Trash2,
   Upload,
   X,
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { fetchHealth, indexSources, searchMedia } from "./api";
-import type { IndexResponse, SearchResponse, SearchResult, SearchSceneResponse } from "./types";
+import {
+  fetchHealth,
+  fetchSourceConfig,
+  indexSources,
+  searchMedia,
+  updateSourceConfig,
+} from "./api";
+import type {
+  IndexResponse,
+  SearchResponse,
+  SearchResult,
+  SearchSceneResponse,
+  SourceConfigResponse,
+  SourceConfigSource,
+  SupportedSourceType,
+} from "./types";
 
 const DEFAULT_LIMIT = 12;
 const DEFAULT_RESULT_SORT: ResultSortMode = "phash_distance";
@@ -89,8 +113,17 @@ type SearchVariables = {
   sortMode: ResultSortMode;
 };
 
+type AppView = "configure" | "search";
+
+type SourceDraft = {
+  id: string;
+  kind: string;
+  spec: string;
+};
+
 export function App() {
   const queryClient = useQueryClient();
+  const [activeView, setActiveView] = useState<AppView>("search");
   const [file, setFile] = useState<File | null>(null);
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [metadataFilters, setMetadataFilters] = useState<MetadataFilters>(DEFAULT_METADATA_FILTERS);
@@ -115,10 +148,24 @@ export function App() {
     queryFn: fetchHealth,
   });
 
+  const sourceConfigQuery = useQuery({
+    queryKey: ["source-config"],
+    queryFn: fetchSourceConfig,
+  });
+
   const indexMutation = useMutation({
     mutationFn: indexSources,
     onSuccess: (response) => {
       setLastIndex(response);
+      queryClient.invalidateQueries({ queryKey: ["health"] });
+    },
+  });
+
+  const sourceConfigMutation = useMutation({
+    mutationFn: updateSourceConfig,
+    onSuccess: (response) => {
+      queryClient.setQueryData(["source-config"], response);
+      queryClient.invalidateQueries({ queryKey: ["health"] });
     },
   });
 
@@ -283,204 +330,257 @@ export function App() {
             </p>
           </div>
 
-          <button
-            className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-neutral-400 bg-white px-4 text-sm font-semibold text-neutral-900 shadow-sm transition hover:border-neutral-500 hover:bg-neutral-50 disabled:cursor-wait disabled:opacity-60"
-            disabled={indexMutation.isPending}
-            onClick={() => indexMutation.mutate()}
-            type="button"
-          >
-            {indexMutation.isPending ? (
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <Database className="size-4" aria-hidden="true" />
-            )}
-            <span>Index Sources</span>
-          </button>
-        </header>
-
-        <section className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
-          <form
-            className="flex flex-col gap-4 rounded-lg border border-neutral-300 bg-white p-4 shadow-sm"
-            onSubmit={handleSubmit}
-          >
-            <div>
-              <label className="text-sm font-semibold text-neutral-900" htmlFor="query-image">
-                Query media
-              </label>
-              <label
-                className="mt-2 flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed border-neutral-400 bg-neutral-50 px-4 py-5 text-center transition hover:border-emerald-600 hover:bg-emerald-50"
-                htmlFor="query-image"
-              >
-                <Upload className="size-6 text-neutral-600" aria-hidden="true" />
-                <span className="max-w-full truncate text-sm font-medium text-neutral-800">
-                  {file?.name ?? "Choose an image, video, or audio"}
-                </span>
-                <span className="text-xs text-neutral-500">
-                  PNG, JPEG, GIF, WebP, BMP, TIFF, MP4, MOV, WebM, MKV, AVI, MP3, WAV, FLAC, M4A,
-                  AAC, OGG, or Opus
-                </span>
-              </label>
-              <input
-                accept="image/*,video/*,audio/*"
-                className="sr-only"
-                id="query-image"
-                onChange={(event) => handleFileChange(event.target.files?.[0] ?? null)}
-                type="file"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-semibold text-neutral-900" htmlFor="limit">
-                Result limit
-              </label>
-              <input
-                className="mt-2 h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
-                id="limit"
-                max={100}
-                min={1}
-                onChange={(event) => handleLimitChange(event.target.value)}
-                type="number"
-                value={limit}
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-semibold text-neutral-900" htmlFor="ocr-text-query">
-                Text in media
-              </label>
-              <div className="mt-2 flex h-10 items-center gap-2 rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-950 transition focus-within:border-emerald-700 focus-within:ring-2 focus-within:ring-emerald-200">
-                <FileText className="size-4 shrink-0 text-neutral-500" aria-hidden="true" />
-                <input
-                  className="min-w-0 flex-1 bg-transparent outline-none"
-                  id="ocr-text-query"
-                  onChange={(event) => setOcrTextQuery(event.target.value)}
-                  placeholder="Invoice, title, sign"
-                  type="search"
-                  value={ocrTextQuery}
-                />
-              </div>
-            </div>
-
-            <div className="flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row lg:items-center">
+            <div className="inline-flex h-10 rounded-md border border-neutral-300 bg-white p-1 shadow-sm">
               <button
-                className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={!file || searchMutation.isPending}
-                type="submit"
+                aria-label="Open query page"
+                aria-pressed={activeView === "search"}
+                className={`inline-flex items-center justify-center gap-2 rounded px-3 text-sm font-semibold transition ${
+                  activeView === "search"
+                    ? "bg-neutral-900 text-white"
+                    : "text-neutral-700 hover:bg-neutral-100"
+                }`}
+                onClick={() => setActiveView("search")}
+                type="button"
               >
-                {searchMutation.isPending ? (
-                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                ) : (
-                  <Search className="size-4" aria-hidden="true" />
-                )}
+                <Search className="size-4" aria-hidden="true" />
                 <span>Search</span>
               </button>
-              {file ? (
-                <button
-                  aria-label="Clear selected media"
-                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-neutral-300 bg-white text-neutral-700 transition hover:border-neutral-500 hover:bg-neutral-50"
-                  onClick={() => handleFileChange(null)}
-                  title="Clear selected media"
-                  type="button"
-                >
-                  <X className="size-4" aria-hidden="true" />
-                </button>
-              ) : null}
+              <button
+                aria-label="Open media configuration"
+                aria-pressed={activeView === "configure"}
+                className={`inline-flex items-center justify-center gap-2 rounded px-3 text-sm font-semibold transition ${
+                  activeView === "configure"
+                    ? "bg-neutral-900 text-white"
+                    : "text-neutral-700 hover:bg-neutral-100"
+                }`}
+                onClick={() => setActiveView("configure")}
+                type="button"
+              >
+                <Settings className="size-4" aria-hidden="true" />
+                <span>Sources</span>
+              </button>
             </div>
-
-            <StatusMessage
-              indexError={indexMutation.error}
-              lastIndex={lastIndex}
-              searchError={searchMutation.error}
-              searchPending={searchMutation.isPending}
-            />
-          </form>
-
-          <section className="grid min-h-72 overflow-hidden rounded-lg border border-neutral-300 bg-white shadow-sm">
-            {displayedPreviewUrl ? (
-              previewIsVideo ? (
-                <video
-                  className="h-full max-h-[420px] w-full bg-black object-contain"
-                  controls
-                  src={displayedPreviewUrl}
-                />
-              ) : previewIsAudio ? (
-                <div className="flex h-full min-h-72 flex-col items-center justify-center gap-4 bg-neutral-50 p-8">
-                  <FileAudio className="size-12 text-neutral-500" aria-hidden="true" />
-                  <audio className="w-full max-w-xl" controls src={displayedPreviewUrl} />
-                </div>
+            <button
+              className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-neutral-400 bg-white px-4 text-sm font-semibold text-neutral-900 shadow-sm transition hover:border-neutral-500 hover:bg-neutral-50 disabled:cursor-wait disabled:opacity-60"
+              disabled={indexMutation.isPending}
+              onClick={() => indexMutation.mutate()}
+              type="button"
+            >
+              {indexMutation.isPending ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
               ) : (
-                <img
-                  alt="Query preview"
-                  className="h-full max-h-[420px] w-full object-contain"
-                  src={displayedPreviewUrl}
-                />
-              )
-            ) : (
-              <div className="flex flex-col items-center justify-center gap-3 bg-neutral-50 p-8 text-center text-neutral-500">
-                <ImageIcon className="size-12" aria-hidden="true" />
-                <span className="text-sm font-medium">No query media selected</span>
-              </div>
-            )}
-          </section>
-        </section>
-
-        {showMetadataFilters ? (
-          <MetadataFiltersPanel
-            filters={metadataFilters}
-            onChange={handleMetadataFiltersChange}
-            sourceTypeOptions={sourceTypeOptions}
-          />
-        ) : null}
-
-        <section className="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
-          <SearchHistoryList
-            activeSearchId={activeSearchId}
-            history={searchHistory}
-            onSelect={handleHistorySelect}
-          />
-
-          <div className="flex min-w-0 flex-col gap-3">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-neutral-950">Results</h2>
-                <p className="text-sm text-neutral-600">
-                  {activeResponse?.scenes.length
-                    ? `${activeResponse.scenes.length} scene(s), ${results.length} unique result(s)`
-                    : activeResponse
-                      ? `${results.length} of ${activeResponse.count} result(s), query pHash ${activeResponse.query_phash}`
-                      : searchMutation.isPending
-                        ? "Searching indexed media."
-                        : "Search results will appear here."}
-                </p>
-              </div>
-              {healthQuery.data ? (
-                <span
-                  className="truncate text-sm text-neutral-600"
-                  title={healthQuery.data.collection}
-                >
-                  Collection: {healthQuery.data.collection}
-                </span>
-              ) : null}
-              <ResultSortSelect onChange={handleResultSortModeChange} value={resultSortMode} />
-            </div>
-
-            {activeResponse?.scenes.length ? (
-              <SceneResultsList
-                filters={metadataFilters}
-                onSelectScene={setSelectedQuerySceneIndex}
-                scenes={activeResponse.scenes}
-                selectedSceneIndex={selectedQuerySceneIndex}
-                sortMode={resultSortMode}
-              />
-            ) : (
-              <ResultsGrid
-                pending={searchMutation.isPending}
-                results={results}
-                searched={Boolean(activeResponse)}
-              />
-            )}
+                <Database className="size-4" aria-hidden="true" />
+              )}
+              <span>Index Sources</span>
+            </button>
           </div>
-        </section>
+        </header>
+
+        {activeView === "search" ? (
+          <>
+            <section className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
+              <form
+                className="flex flex-col gap-4 rounded-lg border border-neutral-300 bg-white p-4 shadow-sm"
+                onSubmit={handleSubmit}
+              >
+                <div>
+                  <label className="text-sm font-semibold text-neutral-900" htmlFor="query-image">
+                    Query media
+                  </label>
+                  <label
+                    className="mt-2 flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed border-neutral-400 bg-neutral-50 px-4 py-5 text-center transition hover:border-emerald-600 hover:bg-emerald-50"
+                    htmlFor="query-image"
+                  >
+                    <Upload className="size-6 text-neutral-600" aria-hidden="true" />
+                    <span className="max-w-full truncate text-sm font-medium text-neutral-800">
+                      {file?.name ?? "Choose an image, video, or audio"}
+                    </span>
+                    <span className="text-xs text-neutral-500">
+                      PNG, JPEG, GIF, WebP, BMP, TIFF, MP4, MOV, WebM, MKV, AVI, MP3, WAV, FLAC,
+                      M4A, AAC, OGG, or Opus
+                    </span>
+                  </label>
+                  <input
+                    accept="image/*,video/*,audio/*"
+                    className="sr-only"
+                    id="query-image"
+                    onChange={(event) => handleFileChange(event.target.files?.[0] ?? null)}
+                    type="file"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-semibold text-neutral-900" htmlFor="limit">
+                    Result limit
+                  </label>
+                  <input
+                    className="mt-2 h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
+                    id="limit"
+                    max={100}
+                    min={1}
+                    onChange={(event) => handleLimitChange(event.target.value)}
+                    type="number"
+                    value={limit}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    className="text-sm font-semibold text-neutral-900"
+                    htmlFor="ocr-text-query"
+                  >
+                    Text in media
+                  </label>
+                  <div className="mt-2 flex h-10 items-center gap-2 rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-950 transition focus-within:border-emerald-700 focus-within:ring-2 focus-within:ring-emerald-200">
+                    <FileText className="size-4 shrink-0 text-neutral-500" aria-hidden="true" />
+                    <input
+                      className="min-w-0 flex-1 bg-transparent outline-none"
+                      id="ocr-text-query"
+                      onChange={(event) => setOcrTextQuery(event.target.value)}
+                      placeholder="Invoice, title, sign"
+                      type="search"
+                      value={ocrTextQuery}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={!file || searchMutation.isPending}
+                    type="submit"
+                  >
+                    {searchMutation.isPending ? (
+                      <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Search className="size-4" aria-hidden="true" />
+                    )}
+                    <span>Search</span>
+                  </button>
+                  {file ? (
+                    <button
+                      aria-label="Clear selected media"
+                      className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-neutral-300 bg-white text-neutral-700 transition hover:border-neutral-500 hover:bg-neutral-50"
+                      onClick={() => handleFileChange(null)}
+                      title="Clear selected media"
+                      type="button"
+                    >
+                      <X className="size-4" aria-hidden="true" />
+                    </button>
+                  ) : null}
+                </div>
+
+                <StatusMessage
+                  indexError={indexMutation.error}
+                  lastIndex={lastIndex}
+                  searchError={searchMutation.error}
+                  searchPending={searchMutation.isPending}
+                />
+              </form>
+
+              <section className="grid min-h-72 overflow-hidden rounded-lg border border-neutral-300 bg-white shadow-sm">
+                {displayedPreviewUrl ? (
+                  previewIsVideo ? (
+                    <video
+                      className="h-full max-h-[420px] w-full bg-black object-contain"
+                      controls
+                      src={displayedPreviewUrl}
+                    />
+                  ) : previewIsAudio ? (
+                    <div className="flex h-full min-h-72 flex-col items-center justify-center gap-4 bg-neutral-50 p-8">
+                      <FileAudio className="size-12 text-neutral-500" aria-hidden="true" />
+                      <audio className="w-full max-w-xl" controls src={displayedPreviewUrl} />
+                    </div>
+                  ) : (
+                    <img
+                      alt="Query preview"
+                      className="h-full max-h-[420px] w-full object-contain"
+                      src={displayedPreviewUrl}
+                    />
+                  )
+                ) : (
+                  <div className="flex flex-col items-center justify-center gap-3 bg-neutral-50 p-8 text-center text-neutral-500">
+                    <ImageIcon className="size-12" aria-hidden="true" />
+                    <span className="text-sm font-medium">No query media selected</span>
+                  </div>
+                )}
+              </section>
+            </section>
+
+            {showMetadataFilters ? (
+              <MetadataFiltersPanel
+                filters={metadataFilters}
+                onChange={handleMetadataFiltersChange}
+                sourceTypeOptions={sourceTypeOptions}
+              />
+            ) : null}
+
+            <section className="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
+              <SearchHistoryList
+                activeSearchId={activeSearchId}
+                history={searchHistory}
+                onSelect={handleHistorySelect}
+              />
+
+              <div className="flex min-w-0 flex-col gap-3">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold text-neutral-950">Results</h2>
+                    <p className="text-sm text-neutral-600">
+                      {activeResponse?.scenes.length
+                        ? `${activeResponse.scenes.length} scene(s), ${results.length} unique result(s)`
+                        : activeResponse
+                          ? `${results.length} of ${activeResponse.count} result(s), query pHash ${activeResponse.query_phash}`
+                          : searchMutation.isPending
+                            ? "Searching indexed media."
+                            : "Search results will appear here."}
+                    </p>
+                  </div>
+                  {healthQuery.data ? (
+                    <span
+                      className="truncate text-sm text-neutral-600"
+                      title={healthQuery.data.collection}
+                    >
+                      Collection: {healthQuery.data.collection}
+                    </span>
+                  ) : null}
+                  <ResultSortSelect onChange={handleResultSortModeChange} value={resultSortMode} />
+                </div>
+
+                {activeResponse?.scenes.length ? (
+                  <SceneResultsList
+                    filters={metadataFilters}
+                    onSelectScene={setSelectedQuerySceneIndex}
+                    scenes={activeResponse.scenes}
+                    selectedSceneIndex={selectedQuerySceneIndex}
+                    sortMode={resultSortMode}
+                  />
+                ) : (
+                  <ResultsGrid
+                    pending={searchMutation.isPending}
+                    results={results}
+                    searched={Boolean(activeResponse)}
+                  />
+                )}
+              </div>
+            </section>
+          </>
+        ) : (
+          <SourceConfigurationPage
+            config={sourceConfigQuery.data ?? null}
+            error={sourceConfigQuery.error}
+            indexError={indexMutation.error}
+            indexPending={indexMutation.isPending}
+            lastIndex={lastIndex}
+            loading={sourceConfigQuery.isLoading}
+            onIndex={() => indexMutation.mutate()}
+            onSave={(sources) => sourceConfigMutation.mutate(sources)}
+            saveError={sourceConfigMutation.error}
+            savePending={sourceConfigMutation.isPending}
+            saveSuccess={sourceConfigMutation.isSuccess}
+          />
+        )}
       </div>
     </main>
   );
@@ -492,6 +592,403 @@ function createHistoryId() {
   }
 
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function SourceConfigurationPage({
+  config,
+  error,
+  indexError,
+  indexPending,
+  lastIndex,
+  loading,
+  onIndex,
+  onSave,
+  saveError,
+  savePending,
+  saveSuccess,
+}: {
+  config: SourceConfigResponse | null;
+  error: Error | null;
+  indexError: Error | null;
+  indexPending: boolean;
+  lastIndex: IndexResponse | null;
+  loading: boolean;
+  onIndex: () => void;
+  onSave: (sources: string[]) => void;
+  saveError: Error | null;
+  savePending: boolean;
+  saveSuccess: boolean;
+}) {
+  const [drafts, setDrafts] = useState<SourceDraft[]>([]);
+
+  useEffect(() => {
+    if (!config) {
+      return;
+    }
+
+    setDrafts(
+      config.sources.map((source) => ({
+        id: createHistoryId(),
+        kind: source.kind,
+        spec: source.spec,
+      })),
+    );
+  }, [config]);
+
+  function updateDraft(id: string, patch: Partial<SourceDraft>) {
+    setDrafts((current) =>
+      current.map((source) => (source.id === id ? { ...source, ...patch } : source)),
+    );
+  }
+
+  function addSource(kind = "local") {
+    const type = config?.supported_source_types.find((item) => item.kind === kind);
+    setDrafts((current) => [
+      ...current,
+      {
+        id: createHistoryId(),
+        kind,
+        spec: type?.example.split(" or ")[0] ?? "",
+      },
+    ]);
+  }
+
+  function removeSource(id: string) {
+    setDrafts((current) => current.filter((source) => source.id !== id));
+  }
+
+  function saveSources() {
+    onSave(drafts.map((source) => source.spec.trim()).filter(Boolean));
+  }
+
+  const configuredSources = drafts.map((source) => source.spec.trim()).filter(Boolean);
+  const canSave = configuredSources.length > 0 && !savePending;
+
+  if (loading) {
+    return (
+      <div className="grid min-h-96 place-items-center rounded-lg border border-neutral-300 bg-white text-neutral-600 shadow-sm">
+        <Loader2 className="size-7 animate-spin" aria-label="Loading source configuration" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return <Message icon={<AlertCircle className="size-4" />} text={error.message} tone="error" />;
+  }
+
+  if (!config) {
+    return null;
+  }
+
+  return (
+    <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="flex min-w-0 flex-col gap-5">
+        <section className="rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-neutral-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <h2 className="text-lg font-semibold text-neutral-950">Media Sources</h2>
+              <p
+                className="mt-1 truncate text-sm text-neutral-600"
+                title={config.media_sources_file}
+              >
+                Stored in {config.media_sources_file}
+              </p>
+            </div>
+            <button
+              className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-neutral-300 bg-white px-3 text-sm font-semibold text-neutral-800 transition hover:border-neutral-500 hover:bg-neutral-50"
+              onClick={() => addSource()}
+              type="button"
+            >
+              <Plus className="size-4" aria-hidden="true" />
+              <span>Add Source</span>
+            </button>
+          </div>
+
+          <div className="mt-4 flex flex-col gap-3">
+            {drafts.map((source, index) => (
+              <SourceDraftRow
+                index={index}
+                key={source.id}
+                onRemove={() => removeSource(source.id)}
+                onUpdate={(patch) => updateDraft(source.id, patch)}
+                source={source}
+                supportedTypes={config.supported_source_types}
+              />
+            ))}
+            {drafts.length === 0 ? (
+              <div className="rounded-md border border-dashed border-neutral-300 bg-neutral-50 px-4 py-8 text-center text-sm text-neutral-500">
+                No media sources configured.
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-4 flex flex-col gap-3 border-t border-neutral-200 pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-h-11">
+              {savePending ? (
+                <Message
+                  icon={<Loader2 className="size-4 animate-spin" />}
+                  text="Saving source configuration."
+                  tone="info"
+                />
+              ) : saveError ? (
+                <Message
+                  icon={<AlertCircle className="size-4" />}
+                  text={saveError.message}
+                  tone="error"
+                />
+              ) : saveSuccess ? (
+                <Message
+                  icon={<CheckCircle2 className="size-4" />}
+                  text="Saved source configuration."
+                  tone="ok"
+                />
+              ) : (
+                <Message
+                  icon={<Info className="size-4" />}
+                  text="Index sources after changing the source list."
+                  tone="info"
+                />
+              )}
+            </div>
+            <div className="flex gap-2">
+              <button
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-neutral-300 bg-white px-3 text-sm font-semibold text-neutral-800 transition hover:border-neutral-500 hover:bg-neutral-50 disabled:cursor-wait disabled:opacity-60"
+                disabled={indexPending}
+                onClick={onIndex}
+                type="button"
+              >
+                {indexPending ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Database className="size-4" aria-hidden="true" />
+                )}
+                <span>Index Sources</span>
+              </button>
+              <button
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={!canSave}
+                onClick={saveSources}
+                type="button"
+              >
+                {savePending ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Save className="size-4" aria-hidden="true" />
+                )}
+                <span>Save</span>
+              </button>
+            </div>
+          </div>
+          {indexError || lastIndex ? (
+            <div className="mt-3">
+              {indexError ? (
+                <Message
+                  icon={<AlertCircle className="size-4" />}
+                  text={indexError.message}
+                  tone="error"
+                />
+              ) : lastIndex ? (
+                <Message
+                  icon={<CheckCircle2 className="size-4" />}
+                  text={`Indexed ${lastIndex.indexed} media item(s), skipped ${lastIndex.skipped}, failed ${lastIndex.failed}.`}
+                  tone={lastIndex.failed > 0 ? "warn" : "ok"}
+                />
+              ) : null}
+            </div>
+          ) : null}
+        </section>
+
+        <section className="rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-neutral-950">
+            <FolderPlus className="size-4 text-neutral-600" aria-hidden="true" />
+            <span>Configured Source Status</span>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {config.sources.map((source) => (
+              <SourceStatusCard key={`${source.kind}-${source.spec}`} source={source} />
+            ))}
+          </div>
+        </section>
+      </div>
+
+      <aside className="flex h-fit flex-col gap-5">
+        <section className="rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-neutral-950">Source Types</h2>
+          <div className="mt-3 grid gap-2">
+            {config.supported_source_types.map((sourceType) => (
+              <SupportedSourceTypeRow key={sourceType.kind} sourceType={sourceType} />
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-neutral-950">Indexing Behavior</h2>
+          <dl className="mt-3 grid gap-2 text-sm">
+            <Metric label="Collection" value={config.indexing.collection} />
+            <Metric label="Images" value={config.indexing.image_extensions.join(", ")} />
+            <Metric label="Video" value={config.indexing.video_extensions.join(", ")} />
+            <Metric label="Audio" value={config.indexing.audio_extensions.join(", ")} />
+            <Metric label="GIF samples" value={config.indexing.gif_sample_frames} />
+            <Metric label="GIF motion" value={config.indexing.gif_motion_weight.toFixed(2)} />
+            <Metric label="Video stride" value={config.indexing.video_frame_stride} />
+            <Metric label="Video cap" value={config.indexing.video_max_frames ?? "none"} />
+            <Metric label="OCR" value={config.indexing.ocr_enabled ? "enabled" : "disabled"} />
+            <Metric label="OCR frames" value={config.indexing.ocr_max_frames} />
+            <Metric
+              label="Transcription"
+              value={config.indexing.audio_transcription_enabled ? "enabled" : "disabled"}
+            />
+          </dl>
+        </section>
+      </aside>
+    </section>
+  );
+}
+
+function SourceDraftRow({
+  index,
+  onRemove,
+  onUpdate,
+  source,
+  supportedTypes,
+}: {
+  index: number;
+  onRemove: () => void;
+  onUpdate: (patch: Partial<SourceDraft>) => void;
+  source: SourceDraft;
+  supportedTypes: SupportedSourceType[];
+}) {
+  const inputId = `source-spec-${source.id}`;
+  const selectId = `source-kind-${source.id}`;
+  const hasKnownType =
+    source.kind === "custom" ||
+    supportedTypes.some((sourceType) => sourceType.kind === source.kind);
+
+  return (
+    <div className="grid gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-3 md:grid-cols-[180px_minmax(0,1fr)_40px]">
+      <div>
+        <label className="text-xs font-semibold text-neutral-700" htmlFor={selectId}>
+          Source {index + 1}
+        </label>
+        <select
+          className="mt-1 h-10 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
+          id={selectId}
+          onChange={(event) => onUpdate({ kind: event.target.value })}
+          value={source.kind}
+        >
+          {supportedTypes.map((sourceType) => (
+            <option key={sourceType.kind} value={sourceType.kind}>
+              {sourceType.label}
+            </option>
+          ))}
+          {!hasKnownType ? <option value={source.kind}>{source.kind}</option> : null}
+          <option value="custom">Custom</option>
+        </select>
+      </div>
+      <div className="min-w-0">
+        <label className="text-xs font-semibold text-neutral-700" htmlFor={inputId}>
+          Source spec
+        </label>
+        <input
+          className="mt-1 h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
+          id={inputId}
+          onChange={(event) => onUpdate({ spec: event.target.value })}
+          placeholder="/images or minio://bucket/prefix"
+          value={source.spec}
+        />
+      </div>
+      <div className="flex items-end">
+        <button
+          aria-label={`Remove source ${index + 1}`}
+          className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-neutral-300 bg-white text-neutral-700 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+          onClick={onRemove}
+          title="Remove source"
+          type="button"
+        >
+          <Trash2 className="size-4" aria-hidden="true" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SourceStatusCard({ source }: { source: SourceConfigSource }) {
+  const Icon = sourceKindIcon(source.kind);
+  const toneClass =
+    {
+      not_implemented: "border-amber-200 bg-amber-50 text-amber-900",
+      ready: "border-emerald-200 bg-emerald-50 text-emerald-900",
+      unavailable: "border-red-200 bg-red-50 text-red-900",
+      unsupported: "border-red-200 bg-red-50 text-red-900",
+    }[source.status] ?? "border-neutral-200 bg-neutral-50 text-neutral-800";
+
+  return (
+    <article className="rounded-md border border-neutral-200 bg-neutral-50 p-3">
+      <div className="flex items-start gap-3">
+        <Icon className="mt-0.5 size-4 shrink-0 text-neutral-600" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-sm font-semibold text-neutral-950" title={source.spec}>
+            {source.spec}
+          </h3>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <span className="inline-flex rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs font-semibold text-neutral-700">
+              {source.kind}
+            </span>
+            <span
+              className={`inline-flex rounded-md border px-2 py-1 text-xs font-semibold ${toneClass}`}
+            >
+              {source.status.replaceAll("_", " ")}
+            </span>
+          </div>
+          {source.detail ? <p className="mt-2 text-xs text-neutral-600">{source.detail}</p> : null}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function SupportedSourceTypeRow({ sourceType }: { sourceType: SupportedSourceType }) {
+  const Icon = sourceKindIcon(sourceType.kind);
+
+  return (
+    <div className="rounded-md border border-neutral-200 bg-neutral-50 p-3">
+      <div className="flex items-start gap-3">
+        <Icon className="mt-0.5 size-4 shrink-0 text-neutral-600" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-neutral-950">{sourceType.label}</h3>
+            <span
+              className={`shrink-0 rounded-md border px-2 py-1 text-xs font-semibold ${
+                sourceType.implemented
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : "border-amber-200 bg-amber-50 text-amber-800"
+              }`}
+            >
+              {sourceType.implemented ? "available" : "planned"}
+            </span>
+          </div>
+          <p className="mt-1 truncate text-xs text-neutral-600" title={sourceType.example}>
+            {sourceType.example}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function sourceKindIcon(kind: string) {
+  switch (kind) {
+    case "camera":
+      return Camera;
+    case "minio":
+      return Cloud;
+    case "video":
+      return Film;
+    case "local":
+      return HardDrive;
+    default:
+      return FolderPlus;
+  }
 }
 
 function MetadataFiltersPanel({

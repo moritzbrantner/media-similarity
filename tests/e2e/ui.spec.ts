@@ -22,6 +22,66 @@ const indexResponse = {
   sources: ["/images", "/archive"],
 };
 
+const sourceConfigResponse = {
+  default_source_dir: "/images",
+  indexing: {
+    audio_extensions: [".mp3", ".wav"],
+    audio_transcription_enabled: false,
+    collection: "image_similarity_test",
+    gif_max_decode_frames: 512,
+    gif_motion_weight: 0.2,
+    gif_preview_frames: 16,
+    gif_sample_frames: 16,
+    image_extensions: [".jpg", ".png", ".gif"],
+    ocr_enabled: true,
+    ocr_max_frames: 4,
+    video_extensions: [".mp4", ".mov"],
+    video_frame_stride: 30,
+    video_max_frames: null,
+  },
+  media_sources_file: "config/media-sources.txt",
+  sources: [
+    {
+      detail: null,
+      kind: "local",
+      spec: "/images",
+      status: "ready",
+    },
+    {
+      detail: null,
+      kind: "local",
+      spec: "/archive",
+      status: "ready",
+    },
+  ],
+  supported_source_types: [
+    {
+      example: "/images or local:///images",
+      implemented: true,
+      kind: "local",
+      label: "Local folder",
+    },
+    {
+      example: "minio://bucket/prefix",
+      implemented: false,
+      kind: "minio",
+      label: "MinIO bucket",
+    },
+    {
+      example: "video:///clips/demo.mp4",
+      implemented: false,
+      kind: "video",
+      label: "Video stream",
+    },
+    {
+      example: "camera://front-door",
+      implemented: false,
+      kind: "camera",
+      label: "Camera",
+    },
+  ],
+};
+
 const searchResponse = {
   count: 2,
   query_audio_analysis: null,
@@ -183,6 +243,26 @@ test.beforeEach(async ({ page }) => {
     await route.fulfill({ json: indexResponse });
   });
 
+  await page.route("**/api/source-config", async (route) => {
+    if (route.request().method() === "PUT") {
+      const request = route.request().postDataJSON() as { sources: string[] };
+      await route.fulfill({
+        json: {
+          ...sourceConfigResponse,
+          sources: request.sources.map((spec) => ({
+            detail: null,
+            kind: spec.startsWith("minio:") ? "minio" : "local",
+            spec,
+            status: spec.startsWith("minio:") ? "not_implemented" : "ready",
+          })),
+        },
+      });
+      return;
+    }
+
+    await route.fulfill({ json: sourceConfigResponse });
+  });
+
   await page.route("**/api/search?**", async (route) => {
     await route.fulfill({ json: searchResponse });
   });
@@ -233,6 +313,29 @@ test("indexes sources from the UI", async ({ page }) => {
 
   await page.getByRole("button", { name: "Index Sources" }).click();
 
+  await expect(page.getByText("Indexed 3 media item(s), skipped 1, failed 0.")).toBeVisible();
+});
+
+test("configures media sources from the UI", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Open media configuration" }).click();
+
+  await expect(page.getByRole("heading", { name: "Media Sources" })).toBeVisible();
+  await expect(page.getByText("Stored in config/media-sources.txt")).toBeVisible();
+  await expect(page.locator('input[value="/images"]')).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Local folder" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "MinIO bucket" })).toBeVisible();
+  await expect(page.getByText("Images", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Add Source" }).click();
+  await page.getByLabel("Source spec").last().fill("/new-media");
+  await page.getByRole("button", { name: "Save" }).click();
+
+  await expect(page.getByText("Saved source configuration.")).toBeVisible();
+  await expect(page.getByText("/new-media")).toBeVisible();
+
+  await page.getByRole("button", { name: "Index Sources" }).last().click();
   await expect(page.getByText("Indexed 3 media item(s), skipped 1, failed 0.")).toBeVisible();
 });
 
