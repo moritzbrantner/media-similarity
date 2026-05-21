@@ -117,6 +117,10 @@ pub struct ImagePayload {
     pub scene_end_seconds: Option<f64>,
     #[serde(default = "default_source_type")]
     pub source_type: String,
+    #[serde(default)]
+    pub source_item_uri: Option<String>,
+    #[serde(default)]
+    pub indexing_profile: Option<String>,
     pub source_uri: Option<String>,
 }
 
@@ -238,6 +242,8 @@ mod tests {
         assert!(payload.ocr_frames.is_empty());
         assert_eq!(payload.scene_clip_url, None);
         assert_eq!(payload.scene_index, None);
+        assert_eq!(payload.source_item_uri, None);
+        assert_eq!(payload.indexing_profile, None);
     }
 
     #[test]
@@ -300,6 +306,8 @@ mod tests {
             scene_start_seconds: None,
             scene_end_seconds: None,
             source_type: "local".to_string(),
+            source_item_uri: Some("/images/clip.gif".to_string()),
+            indexing_profile: Some("profile".to_string()),
             source_uri: Some("/images".to_string()),
         };
         let serialized = serde_json::to_value(payload).unwrap();
@@ -342,6 +350,8 @@ mod tests {
             scene_start_seconds: Some(1.0),
             scene_end_seconds: Some(2.5),
             source_type: "local".to_string(),
+            source_item_uri: Some("/images/clip.mp4".to_string()),
+            indexing_profile: Some("profile".to_string()),
             source_uri: Some("/images".to_string()),
         };
         let serialized = serde_json::to_value(payload).unwrap();
@@ -419,6 +429,8 @@ mod tests {
             scene_start_seconds: None,
             scene_end_seconds: None,
             source_type: "local".to_string(),
+            source_item_uri: Some("/images/song.mp3".to_string()),
+            indexing_profile: Some("profile".to_string()),
             source_uri: Some("/images".to_string()),
         };
         let serialized = serde_json::to_value(payload).unwrap();

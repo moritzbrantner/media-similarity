@@ -1,3 +1,9 @@
+use std::collections::BTreeMap;
+
+use jobs_core::{JobContext, JobProgress};
+use serde::Serialize;
+use sha2::{Digest, Sha256};
+
 use crate::audio::{decode_source_audio_segments, expose_source_audio, SourceAudioSegment};
 use crate::config::Settings;
 use crate::embedder::ImageEmbedder;
@@ -28,38 +34,142 @@ impl ImageIndexer {
     }
 
     pub async fn index_sources(&self) -> IndexResponse {
+        self.index_missing_sources(None).await
+    }
+
+    pub async fn index_missing_sources(&self, context: Option<&JobContext>) -> IndexResponse {
+        let plan = match self.plan_sources().await {
+            Ok(plan) => plan,
+            Err(error) => {
+                return IndexResponse {
+                    indexed: 0,
+                    skipped: 0,
+                    failed: 1,
+                    collection: self.settings.qdrant_collection.clone(),
+                    source_dir: self.settings.source_image_dir.to_string_lossy().to_string(),
+                    sources: build_image_sources(&self.settings)
+                        .iter()
+                        .map(|source| source.uri())
+                        .collect(),
+                    errors: vec![format!("Could not prepare indexing plan: {error}")],
+                };
+            }
+        };
+
+        if let Some(context) = context {
+            let _ = context.info(format!(
+                "{} source file(s) already indexed; {} source file(s) need indexing",
+                plan.already_indexed,
+                plan.pending.len()
+            ));
+            let _ = context.metadata("already_indexed", plan.already_indexed.to_string());
+            let _ = context.metadata("needs_indexing", plan.pending.len().to_string());
+        }
+
         let mut indexed = 0;
-        let mut skipped = 0;
+        let skipped = plan.skipped + plan.already_indexed;
         let mut failed = 0;
-        let mut errors = Vec::new();
+        let mut errors = plan.errors;
+        let total = plan.pending.len() as u64;
+        if let Some(context) = context {
+            if let Ok(progress) = index_progress(0, total, "indexing pending sources") {
+                let _ = context.progress(progress);
+            }
+        }
+        for (index, source_image) in plan.pending.iter().enumerate() {
+            if let Some(context) = context {
+                if let Err(error) = context.check_cancelled() {
+                    errors.truncate(50);
+                    let _ = context.metadata("indexed", indexed.to_string());
+                    let _ = context.metadata("failed", failed.to_string());
+                    let _ = context.metadata("skipped", skipped.to_string());
+                    let _ = context.warn(format!(
+                        "indexing cancelled before {}",
+                        source_image.display_path
+                    ));
+                    return IndexResponse {
+                        indexed,
+                        skipped,
+                        failed,
+                        collection: self.settings.qdrant_collection.clone(),
+                        source_dir: self.settings.source_image_dir.to_string_lossy().to_string(),
+                        sources: plan.source_uris,
+                        errors: {
+                            errors.push(error.to_string());
+                            errors
+                        },
+                    };
+                }
+                let _ = context.info(format!("indexing {}", source_image.display_path));
+            }
+
+            match self.index_one(source_image).await {
+                Ok(count) => indexed += count,
+                Err(error) => {
+                    failed += 1;
+                    errors.push(format!("{}: {error}", source_image.display_path));
+                    if let Some(context) = context {
+                        let _ = context.warn(format!("{}: {error}", source_image.display_path));
+                    }
+                }
+            }
+
+            if let Some(context) = context {
+                let completed = index as u64 + 1;
+                if let Ok(progress) = index_progress(
+                    completed,
+                    total,
+                    format!("indexed {completed}/{total} pending source files"),
+                ) {
+                    let _ = context.progress(progress);
+                }
+            }
+        }
+
+        if let Some(context) = context {
+            let _ = context.metadata("indexed", indexed.to_string());
+            let _ = context.metadata("failed", failed.to_string());
+            let _ = context.metadata("skipped", skipped.to_string());
+            let _ = context.info(format!(
+                "indexing complete: {indexed} media item(s), {skipped} skipped, {failed} failed"
+            ));
+        }
+
+        errors.truncate(50);
+        IndexResponse {
+            indexed,
+            skipped,
+            failed,
+            collection: self.settings.qdrant_collection.clone(),
+            source_dir: self.settings.source_image_dir.to_string_lossy().to_string(),
+            sources: plan.source_uris,
+            errors,
+        }
+    }
+
+    async fn plan_sources(&self) -> Result<SourceIndexPlan, String> {
         let sources = build_image_sources(&self.settings);
         let source_uris = sources
             .iter()
             .map(|source| source.uri())
             .collect::<Vec<_>>();
 
-        if let Err(error) = self.store.ensure_collection().await {
-            return IndexResponse {
-                indexed,
-                skipped,
-                failed: 1,
-                collection: self.settings.qdrant_collection.clone(),
-                source_dir: self.settings.source_image_dir.to_string_lossy().to_string(),
-                sources: source_uris,
-                errors: vec![format!("Could not ensure Qdrant collection: {error}")],
-            };
-        }
+        self.store.ensure_collection().await?;
+        let indexing_profile = indexing_profile(&self.settings);
+        let indexed_sources = self.indexed_source_records().await?;
 
+        let mut pending = Vec::new();
+        let mut already_indexed = 0;
+        let mut skipped = 0;
+        let mut errors = Vec::new();
         for source in &sources {
             match source.iter_images() {
                 Ok(images) => {
                     for source_image in images {
-                        match self.index_one(&source_image).await {
-                            Ok(count) => indexed += count,
-                            Err(error) => {
-                                failed += 1;
-                                errors.push(format!("{}: {error}", source_image.display_path));
-                            }
+                        if source_is_current(&indexed_sources, &source_image, &indexing_profile) {
+                            already_indexed += 1;
+                        } else {
+                            pending.push(source_image);
                         }
                     }
                 }
@@ -71,15 +181,41 @@ impl ImageIndexer {
         }
 
         errors.truncate(50);
-        IndexResponse {
-            indexed,
+        Ok(SourceIndexPlan {
+            source_uris,
+            pending,
+            already_indexed,
             skipped,
-            failed,
-            collection: self.settings.qdrant_collection.clone(),
-            source_dir: self.settings.source_image_dir.to_string_lossy().to_string(),
-            sources: source_uris,
             errors,
+        })
+    }
+
+    async fn indexed_source_records(
+        &self,
+    ) -> Result<BTreeMap<String, Vec<IndexedSourceRecord>>, String> {
+        let mut records = BTreeMap::<String, Vec<IndexedSourceRecord>>::new();
+        for payload in self.store.scroll_payloads().await? {
+            let Ok(payload) = serde_json::from_value::<ImagePayload>(payload) else {
+                continue;
+            };
+            let Some(source_item_uri) = payload
+                .source_item_uri
+                .clone()
+                .or_else(|| legacy_source_item_uri(&payload))
+            else {
+                continue;
+            };
+            records
+                .entry(source_item_uri)
+                .or_default()
+                .push(IndexedSourceRecord {
+                    size_bytes: payload.size_bytes,
+                    modified_at: payload.modified_at,
+                    indexing_profile: payload.indexing_profile.clone(),
+                    analysis_complete: payload_analysis_complete(&payload, &self.settings),
+                });
         }
+        Ok(records)
     }
 
     async fn index_one(&self, source_image: &SourceImage) -> Result<usize, String> {
@@ -262,7 +398,137 @@ impl ImageIndexer {
                 .map(|scene| scene.end.timestamp.seconds())
                 .or_else(|| audio_segment.map(|segment| segment.end_seconds)),
             source_type: source_image.source_type.clone(),
+            source_item_uri: Some(source_image.item_uri.clone()),
+            indexing_profile: Some(indexing_profile(&self.settings)),
             source_uri: Some(source_image.source_uri.clone()),
         })
     }
+}
+
+struct SourceIndexPlan {
+    source_uris: Vec<String>,
+    pending: Vec<SourceImage>,
+    already_indexed: usize,
+    skipped: usize,
+    errors: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+struct IndexedSourceRecord {
+    size_bytes: u64,
+    modified_at: f64,
+    indexing_profile: Option<String>,
+    analysis_complete: bool,
+}
+
+fn source_is_current(
+    indexed_sources: &BTreeMap<String, Vec<IndexedSourceRecord>>,
+    source_image: &SourceImage,
+    indexing_profile: &str,
+) -> bool {
+    indexed_sources
+        .get(&source_image.item_uri)
+        .map(|records| {
+            records.iter().any(|record| {
+                record.size_bytes == source_image.size_bytes
+                    && (record.modified_at - source_image.modified_at).abs() <= 0.001
+                    && record.indexing_profile.as_deref() == Some(indexing_profile)
+                    && record.analysis_complete
+            })
+        })
+        .unwrap_or(false)
+}
+
+fn payload_analysis_complete(payload: &ImagePayload, settings: &Settings) -> bool {
+    if payload.media_kind == "video_scene"
+        && (payload.scene_index.is_none()
+            || payload.scene_start_seconds.is_none()
+            || payload.scene_end_seconds.is_none())
+    {
+        return false;
+    }
+
+    if settings.audio_transcription_enabled && payload.media_kind == "audio" {
+        let Some(analysis) = &payload.audio_analysis else {
+            return false;
+        };
+        if analysis.speech_detected && analysis.transcript_text.trim().is_empty() {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn indexing_profile(settings: &Settings) -> String {
+    let profile = IndexingProfile {
+        version: 1,
+        clip_model_name: &settings.clip_model_name,
+        vector_size: settings.vector_size,
+        gif_sample_frames: settings.gif_sample_frames,
+        gif_max_decode_frames: settings.gif_max_decode_frames,
+        gif_preview_frames: settings.gif_preview_frames,
+        gif_default_frame_delay_ms: settings.gif_default_frame_delay_ms,
+        gif_motion_weight_bits: settings.gif_motion_weight.to_bits(),
+        video_frame_stride: settings.video_frame_stride,
+        video_max_frames: settings.video_max_frames,
+        audio_transcription_enabled: settings.audio_transcription_enabled,
+        audio_transcription_model: &settings.audio_transcription_model,
+        audio_transcription_language: settings.audio_transcription_language.as_deref(),
+        audio_transcription_threads: settings.audio_transcription_threads,
+        ocr_enabled: settings.ocr_enabled,
+        ocr_command: &settings.ocr_command,
+        ocr_language: settings.ocr_language.as_deref(),
+        ocr_max_frames: settings.ocr_max_frames,
+    };
+    let encoded = serde_json::to_vec(&profile).unwrap_or_default();
+    let digest = Sha256::digest(encoded);
+    format!("v{}:{digest:x}", profile.version)
+}
+
+#[derive(Serialize)]
+struct IndexingProfile<'a> {
+    version: u32,
+    clip_model_name: &'a str,
+    vector_size: usize,
+    gif_sample_frames: usize,
+    gif_max_decode_frames: usize,
+    gif_preview_frames: usize,
+    gif_default_frame_delay_ms: u32,
+    gif_motion_weight_bits: u32,
+    video_frame_stride: u32,
+    video_max_frames: Option<u32>,
+    audio_transcription_enabled: bool,
+    audio_transcription_model: &'a str,
+    audio_transcription_language: Option<&'a str>,
+    audio_transcription_threads: Option<usize>,
+    ocr_enabled: bool,
+    ocr_command: &'a str,
+    ocr_language: Option<&'a str>,
+    ocr_max_frames: usize,
+}
+
+fn legacy_source_item_uri(payload: &ImagePayload) -> Option<String> {
+    let source_path = payload
+        .path
+        .split_once('#')
+        .map_or(payload.path.as_str(), |(path, _)| path);
+    if source_path.is_empty() {
+        None
+    } else {
+        Some(source_path.to_string())
+    }
+}
+
+fn index_progress(
+    completed: u64,
+    total: u64,
+    message: impl Into<String>,
+) -> jobs_core::Result<JobProgress> {
+    let total = (total > 0).then_some(total);
+    let progress = JobProgress::new(completed, total)?
+        .unit("files")?
+        .message(message);
+    progress.validate()?;
+    Ok(progress)
 }

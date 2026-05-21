@@ -122,6 +122,50 @@ impl QdrantImageStore {
             .collect())
     }
 
+    pub async fn scroll_payloads(&self) -> Result<Vec<Value>, String> {
+        let mut offset = None;
+        let mut payloads = Vec::new();
+
+        loop {
+            let request = ScrollRequest {
+                limit: 256,
+                with_payload: true,
+                with_vector: false,
+                offset: offset.clone(),
+            };
+            let response = self
+                .send_with_fallback(|base_url| {
+                    self.client
+                        .post(format!(
+                            "{base_url}/collections/{}/points/scroll",
+                            self.collection
+                        ))
+                        .json(&request)
+                })
+                .await?
+                .error_for_status()
+                .map_err(|error| error.to_string())?
+                .json::<ScrollResponse>()
+                .await
+                .map_err(|error| error.to_string())?;
+
+            payloads.extend(
+                response
+                    .result
+                    .points
+                    .into_iter()
+                    .filter_map(|point| point.payload),
+            );
+
+            match response.result.next_page_offset {
+                Some(next_offset) => offset = Some(next_offset),
+                None => break,
+            }
+        }
+
+        Ok(payloads)
+    }
+
     #[allow(dead_code)]
     pub async fn count(&self) -> Result<u64, String> {
         let request = serde_json::json!({ "exact": true });
@@ -235,6 +279,31 @@ struct SearchResponse {
 struct SearchPoint {
     payload: Option<Value>,
     score: f32,
+}
+
+#[derive(Serialize)]
+struct ScrollRequest {
+    limit: u32,
+    with_payload: bool,
+    with_vector: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    offset: Option<Value>,
+}
+
+#[derive(Deserialize)]
+struct ScrollResponse {
+    result: ScrollResult,
+}
+
+#[derive(Deserialize)]
+struct ScrollResult {
+    points: Vec<ScrollPoint>,
+    next_page_offset: Option<Value>,
+}
+
+#[derive(Deserialize)]
+struct ScrollPoint {
+    payload: Option<Value>,
 }
 
 #[derive(Deserialize)]

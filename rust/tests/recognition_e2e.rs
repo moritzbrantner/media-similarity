@@ -76,6 +76,32 @@ async fn static_image_recognition_covers_content_type_extension_limits_and_dupli
 }
 
 #[tokio::test]
+async fn index_skips_files_that_are_already_current() {
+    let app = TestApp::new(|settings| {
+        settings.image_extensions = parse_extensions(".png").unwrap();
+    })
+    .await;
+
+    let source = app.source_path("current.png");
+    write_pattern_image(&source, 64, 40, [220, 20, 20], [20, 20, 20]);
+
+    let first = app.index().await;
+    assert_eq!(first.indexed, 1);
+    assert_eq!(first.skipped, 0);
+    assert_eq!(first.failed, 0, "{:?}", first.errors);
+
+    let second = app.index().await;
+    assert_eq!(second.indexed, 0);
+    assert_eq!(second.skipped, 1);
+    assert_eq!(second.failed, 0, "{:?}", second.errors);
+
+    write_pattern_image(&source, 65, 40, [20, 20, 220], [20, 20, 20]);
+    let third = app.index().await;
+    assert_eq!(third.indexed, 1);
+    assert_eq!(third.failed, 0, "{:?}", third.errors);
+}
+
+#[tokio::test]
 async fn source_extension_configuration_filters_indexed_media() {
     let app = TestApp::new(|settings| {
         settings.image_extensions = parse_extensions(".png").unwrap();
@@ -421,6 +447,12 @@ struct FakeSearchRequest {
     limit: u32,
 }
 
+#[derive(Deserialize)]
+struct FakeScrollRequest {
+    limit: u32,
+    offset: Option<Value>,
+}
+
 impl FakeQdrant {
     async fn spawn() -> Self {
         let state = Arc::new(Mutex::new(FakeQdrantState::default()));
@@ -428,6 +460,10 @@ impl FakeQdrant {
             .route("/collections", get(fake_list_collections))
             .route("/collections/:collection", put(fake_create_collection))
             .route("/collections/:collection/points", put(fake_upsert_points))
+            .route(
+                "/collections/:collection/points/scroll",
+                post(fake_scroll_points),
+            )
             .route(
                 "/collections/:collection/points/search",
                 post(fake_search_points),
@@ -513,6 +549,49 @@ async fn fake_search_points(
     });
     scored.truncate(request.limit as usize);
     Ok(Json(json!({ "result": scored })))
+}
+
+async fn fake_scroll_points(
+    AxumPath(collection): AxumPath<String>,
+    State(state): State<Arc<Mutex<FakeQdrantState>>>,
+    Json(request): Json<FakeScrollRequest>,
+) -> Result<Json<Value>, AxumStatusCode> {
+    let state = state.lock().unwrap();
+    if !state.collections.contains(&collection) {
+        return Err(AxumStatusCode::NOT_FOUND);
+    }
+    let offset = request.offset.as_ref().and_then(Value::as_str);
+    let mut points = state
+        .points
+        .iter()
+        .filter(|((point_collection, id), _)| {
+            point_collection == &collection
+                && offset.map(|offset| id.as_str() > offset).unwrap_or(true)
+        })
+        .map(|((_, id), point)| {
+            json!({
+                "id": id,
+                "payload": point.payload,
+            })
+        })
+        .collect::<Vec<_>>();
+    points.sort_by(|left, right| left["id"].as_str().cmp(&right["id"].as_str()));
+    let limit = request.limit as usize;
+    let next_page_offset = if points.len() > limit {
+        points
+            .get(limit - 1)
+            .and_then(|point| point["id"].as_str())
+            .map(|id| json!(id))
+    } else {
+        None
+    };
+    points.truncate(limit);
+    Ok(Json(json!({
+        "result": {
+            "points": points,
+            "next_page_offset": next_page_offset,
+        }
+    })))
 }
 
 fn cosine_similarity(left: &[f32], right: &[f32]) -> f32 {

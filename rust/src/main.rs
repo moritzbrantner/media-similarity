@@ -29,7 +29,7 @@ mod voice;
 use crate::api::{
     audio_transcription_models, cancel_job, download_audio_transcription_model,
     enable_audio_transcription_model, get_job, get_job_events, health, index_images, list_jobs,
-    search_upload, AppState,
+    search_upload, spawn_startup_index_job, AppState,
 };
 use crate::config::Settings;
 
@@ -48,6 +48,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let static_dir = static_dir();
     let app_state = Arc::new(AppState::new(settings.clone()));
+    match spawn_startup_index_job(app_state.clone()) {
+        Ok(job) => tracing::info!(job_id = %job.spec.id, "queued startup indexing job"),
+        Err(error) => tracing::warn!(%error, "could not queue startup indexing job"),
+    }
     let app = Router::new()
         .route("/api/health", get(health))
         .route("/api/index", post(index_images))

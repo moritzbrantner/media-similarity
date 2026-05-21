@@ -91,6 +91,23 @@ pub async fn index_images(State(state): State<Arc<AppState>>) -> Json<IndexRespo
     Json(indexer.index_sources().await)
 }
 
+pub fn spawn_startup_index_job(state: Arc<AppState>) -> jobs_core::Result<JobSnapshot> {
+    let spec = JobSpec::new(
+        format!("index.startup.{}", Uuid::new_v4()),
+        "Index missing media on startup",
+    )?
+    .with_kind("index.startup")?
+    .with_metadata("collection", state.settings.qdrant_collection.clone())?;
+    let jobs = state.jobs.clone();
+    let settings = state.settings.clone();
+    let store = state.store.clone();
+    let embedder = state.embedder.clone();
+
+    jobs.spawn(spec, move |context| {
+        run_index_job(context, settings, store, embedder)
+    })
+}
+
 pub async fn list_jobs(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<JobSnapshot>>, ApiError> {
@@ -520,6 +537,35 @@ fn model_job_spec(kind: &str, name: &str, model: WhisperCppModel) -> Result<JobS
     .and_then(|spec| spec.with_metadata("provider", "whisper.cpp"))
     .and_then(|spec| spec.with_metadata("model", model.id()))
     .map_err(ApiError::from_job)
+}
+
+fn run_index_job(
+    context: JobContext,
+    settings: Settings,
+    store: QdrantImageStore,
+    embedder: ImageEmbedder,
+) -> jobs_core::Result<()> {
+    context.info("checking indexed media sources")?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(job_failed)?;
+    let indexer = ImageIndexer::new(settings, store, embedder);
+    let response = runtime.block_on(indexer.index_missing_sources(Some(&context)));
+
+    for error in &response.errors {
+        context.warn(error.clone())?;
+    }
+    if context.is_cancelled() {
+        return Err(JobError::Cancelled);
+    }
+    if response.failed > 0 {
+        return Err(JobError::Failed(format!(
+            "indexing finished with {} failed source file(s)",
+            response.failed
+        )));
+    }
+    Ok(())
 }
 
 fn download_whisper_cpp_model(
