@@ -1,0 +1,9 @@
+[package]
+name = "text-analysis-transcription"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "text_analysis_transcription"
+path = "src/lib.rs"

@@ -19,8 +19,8 @@ audio-analysis-speakers = { path = "../../rust-packages/crates/audio/audio-analy
 image-analysis-core = { path = "../../rust-packages/crates/image/image-analysis-core" }
 image-analysis-io = { path = "../../rust-packages/crates/image/image-analysis-io" }
 image-analysis-processing = { path = "../../rust-packages/crates/image/image-analysis-processing" }
-text-analysis-core = { path = "../../rust-packages/crates/text/text-analysis-core" }
-text-analysis-transcription = { path = "../../rust-packages/crates/text/text-analysis-transcription" }
+text-analysis-core = { path = "shims/text-analysis-core" }
+text-analysis-transcription = { path = "shims/text-analysis-transcription" }
 async-trait = "0.1"
 axum = { version = "0.7", features = ["multipart"] }
 dotenvy = "0.15"

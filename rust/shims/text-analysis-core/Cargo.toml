@@ -1,0 +1,9 @@
+[package]
+name = "text-analysis-core"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "text_analysis_core"
+path = "src/lib.rs"

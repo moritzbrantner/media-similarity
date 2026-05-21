@@ -60,7 +60,7 @@ impl Default for Settings {
                 .expect("default extensions are valid"),
             audio_extensions: parse_extensions(".mp3,.wav,.flac,.m4a,.aac,.ogg,.opus")
                 .expect("default audio extensions are valid"),
-            audio_transcription_enabled: true,
+            audio_transcription_enabled: false,
             audio_transcription_model: "base.en".to_string(),
             audio_transcription_language: Some("en".to_string()),
             audio_transcription_threads: None,

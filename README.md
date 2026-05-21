@@ -104,6 +104,8 @@ Video query search and source video indexing use the Rust scene detection crates
 
 Audio query search and source audio indexing use FFmpeg to render deterministic spectrogram images, then reuse the same thumbnail, pHash, and vector search pipeline as image media. Audio duration metadata is read with `ffprobe`. Speech activity uses a deterministic RMS voice-activity detector, tempo uses onset detection plus BPM estimation over mono 16 kHz PCM extracted with FFmpeg, and audio bit boundaries are guessed from speech spans, speaker labels, onsets, and maximum bit duration. Recognized voices are stored in a persistent spectral speaker registry; this is a deterministic baseline suitable for matching recurring voices, not a biometric identity guarantee.
 
+Audio transcript fields are retained in the API shape, but native whisper.cpp transcription is disabled by default and not bundled into the repository-local text compatibility layer.
+
 ## Configuration
 
 Set these values in `.env`:
@@ -121,6 +123,7 @@ Set these values in `.env`:
 | `UPLOAD_DIR` | `/app/data/uploads` | Reserved local upload storage path. |
 | `IMAGE_EXTENSIONS` | `.jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.gif` | File extensions to index. |
 | `AUDIO_EXTENSIONS` | `.mp3,.wav,.flac,.m4a,.aac,.ogg,.opus` | Audio file extensions to index. |
+| `AUDIO_TRANSCRIPTION_ENABLED` | `false` | Compatibility switch for transcript analysis. The repository-local text compatibility layer does not bundle a native transcription backend. |
 | `VOICE_REGISTRY_PATH` | `/app/data/recognized-voices.json` | Persistent speaker registry used to recognize recurring voices across audio files. |
 | `DEFAULT_SEARCH_LIMIT` | `12` | Default result count. |
 | `DUPLICATE_HASH_DISTANCE` | `8` | Max pHash distance for near-duplicate flag. |
