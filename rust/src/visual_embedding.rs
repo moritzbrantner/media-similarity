@@ -1,4 +1,7 @@
 use image::RgbImage;
+use image_analysis_core::{ImagePixelFormat, ImageView};
+use image_analysis_models::ImageEmbedderBackend;
+use image_analysis_onnx::{NativeOnnxRunner, OnnxImageEmbedder};
 
 use crate::config::Settings;
 use crate::embedder::ImageEmbedder;
@@ -81,12 +84,14 @@ impl VisualEmbeddingBackend for LegacyColorEmbedder {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct OnnxVisualEmbedder {
     model_name: String,
     model_path: std::path::PathBuf,
     preprocessor_path: std::path::PathBuf,
-    fallback: LegacyColorEmbedder,
+    vector_size: usize,
+    runner:
+        std::sync::OnceLock<std::sync::Mutex<Result<OnnxImageEmbedder<NativeOnnxRunner>, String>>>,
 }
 
 impl OnnxVisualEmbedder {
@@ -95,10 +100,8 @@ impl OnnxVisualEmbedder {
             model_name: settings.clip_model_name.clone(),
             model_path: settings.visual_embedding_model_path.clone(),
             preprocessor_path: settings.visual_embedding_preprocessor_path.clone(),
-            fallback: LegacyColorEmbedder::new(
-                settings.clip_model_name.clone(),
-                settings.visual_embedding_vector_size,
-            ),
+            vector_size: settings.visual_embedding_vector_size,
+            runner: std::sync::OnceLock::new(),
         }
     }
 
@@ -113,6 +116,26 @@ impl OnnxVisualEmbedder {
             self.preprocessor_path.display()
         )
     }
+
+    fn runner(
+        &self,
+    ) -> Result<
+        std::sync::MutexGuard<'_, Result<OnnxImageEmbedder<NativeOnnxRunner>, String>>,
+        String,
+    > {
+        let model_path = self.model_path.clone();
+        let preprocessor_path = self.preprocessor_path.clone();
+        let vector_size = self.vector_size;
+        self.runner
+            .get_or_init(|| {
+                std::sync::Mutex::new(
+                    OnnxImageEmbedder::from_paths(model_path, preprocessor_path, Some(vector_size))
+                        .map_err(|error| error.to_string()),
+                )
+            })
+            .lock()
+            .map_err(|_| "visual ONNX runner mutex was poisoned".to_string())
+    }
 }
 
 impl VisualEmbeddingBackend for OnnxVisualEmbedder {
@@ -121,7 +144,7 @@ impl VisualEmbeddingBackend for OnnxVisualEmbedder {
     }
 
     fn vector_size(&self) -> usize {
-        self.fallback.vector_size()
+        self.vector_size
     }
 
     fn embed_image(&self, image: &RgbImage) -> Result<Vec<f32>, String> {
@@ -129,11 +152,13 @@ impl VisualEmbeddingBackend for OnnxVisualEmbedder {
             return Err(self.unavailable_error());
         }
 
-        // The local ONNX model contract is wired here. Until a concrete CLIP
-        // runner is exposed by the sibling crates, keep output deterministic,
-        // finite, normalized, and model-gated so collection schemas and callers
-        // already use the production vector path.
-        self.fallback.embed_image(image)
+        let mut runner = self.runner()?;
+        let runner = runner.as_mut().map_err(|error| error.clone())?;
+        let view = rgb_image_view(image)?;
+        runner
+            .embed_image(&view)
+            .map(|embedding| embedding.vector)
+            .map_err(|error| error.to_string())
     }
 }
 
@@ -208,11 +233,22 @@ fn normalize(vector: &mut [f32]) {
     }
 }
 
+fn rgb_image_view(image: &RgbImage) -> Result<ImageView<'_>, String> {
+    ImageView::packed(
+        image.width(),
+        image.height(),
+        ImagePixelFormat::Rgb24,
+        image.as_raw(),
+    )
+    .map_err(|error| error.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use image::{ImageBuffer, Rgb};
 
-    use super::{LegacyColorEmbedder, VisualEmbeddingBackend};
+    use super::{build_visual_embedder, LegacyColorEmbedder, VisualEmbeddingBackend};
+    use crate::config::Settings;
 
     #[test]
     fn legacy_color_embedder_returns_normalized_vectors() {
@@ -224,5 +260,23 @@ mod tests {
         assert_eq!(vector.len(), 32);
         let norm = vector.iter().map(|value| value * value).sum::<f32>().sqrt();
         assert!((norm - 1.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn onnx_visual_embedder_falls_back_when_model_files_are_missing() {
+        let settings = Settings {
+            visual_embedding_model_path: std::env::temp_dir().join("missing-clip-model.onnx"),
+            visual_embedding_preprocessor_path: std::env::temp_dir()
+                .join("missing-preprocessor-config.json"),
+            visual_embedding_vector_size: 16,
+            ..Settings::default()
+        };
+        let image = ImageBuffer::from_pixel(4, 4, Rgb([10, 20, 30]));
+        let embedder = build_visual_embedder(&settings);
+
+        let vector = embedder.embed_image(&image).unwrap();
+
+        assert_eq!(vector.len(), 16);
+        assert!(vector.iter().all(|value| value.is_finite()));
     }
 }

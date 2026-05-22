@@ -18,6 +18,8 @@ audio-analysis-rhythm = { path = "../../rust-packages/crates/audio/audio-analysi
 audio-analysis-speakers = { path = "../../rust-packages/crates/audio/audio-analysis-speakers" }
 image-analysis-core = { path = "../../rust-packages/crates/image/image-analysis-core" }
 image-analysis-io = { path = "../../rust-packages/crates/image/image-analysis-io" }
+image-analysis-models = { path = "../../rust-packages/crates/image/image-analysis-models" }
+image-analysis-onnx = { path = "../../rust-packages/crates/image/image-analysis-onnx", features = ["onnxruntime"] }
 image-analysis-processing = { path = "../../rust-packages/crates/image/image-analysis-processing" }
 jobs-core = { path = "../../rust-packages/crates/jobs/jobs-core" }
 text-analysis-core = { path = "shims/text-analysis-core" }

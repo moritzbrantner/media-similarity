@@ -1,11 +1,17 @@
-use image::{imageops, RgbImage};
+use image::RgbImage;
+use image_analysis_core::{ImagePixelFormat, ImageView};
+use image_analysis_models::{
+    FaceDetection as SharedFaceDetection, FaceDetectorBackend, FaceEmbedderBackend,
+};
+use image_analysis_onnx::{
+    NativeOnnxRunner, OnnxFaceDetectionOptions, OnnxFaceDetector, OnnxFaceEmbedder,
+};
 
 use crate::config::Settings;
 use crate::media::DecodedMedia;
 use crate::models::{FaceBoxPayload, FaceDetectionPayload, PersonSummary};
 use crate::persons::{assign_person, face_point_payload, summarize_people};
 use crate::qdrant::QdrantImageStore;
-use crate::visual_embedding::{LegacyColorEmbedder, VisualEmbeddingBackend};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct FaceAnalysis {
@@ -105,13 +111,16 @@ impl FaceAnalyzer {
             .take(self.detector.max_frames)
             .enumerate()
         {
-            for (face_index, bbox) in self.detector.detect(&frame.image)?.into_iter().enumerate() {
-                let embedding = self.embedder.embed_face(&frame.image, &bbox)?;
+            for (face_index, detection) in
+                self.detector.detect(&frame.image)?.into_iter().enumerate()
+            {
+                let bbox = FaceBox::from_shared(&detection.bbox);
+                let embedding = self.embedder.embed_face(&frame.image, &detection)?;
                 let candidate = DetectedFace {
                     face_id: format!("{media_id}#face={frame_index}-{face_index}"),
                     frame_index,
                     bbox,
-                    confidence: 1.0,
+                    confidence: detection.confidence,
                     embedding,
                     person_id: None,
                     person_label: None,
@@ -130,6 +139,8 @@ pub struct FaceDetector {
     min_confidence: f32,
     max_frames: usize,
     cluster_threshold: f32,
+    runner:
+        std::sync::OnceLock<std::sync::Mutex<Result<OnnxFaceDetector<NativeOnnxRunner>, String>>>,
 }
 
 impl FaceDetector {
@@ -139,10 +150,11 @@ impl FaceDetector {
             min_confidence: settings.face_detection_min_confidence,
             max_frames: settings.face_max_frames_per_media,
             cluster_threshold: settings.face_cluster_threshold,
+            runner: std::sync::OnceLock::new(),
         }
     }
 
-    pub fn detect(&self, _image: &RgbImage) -> Result<Vec<FaceBox>, String> {
+    pub fn detect(&self, image: &RgbImage) -> Result<Vec<SharedFaceDetection>, String> {
         if !self.model_path.is_file() {
             return Err(format!(
                 "face detection model is not available at {}",
@@ -150,28 +162,52 @@ impl FaceDetector {
             ));
         }
 
-        let _ = self.min_confidence;
-        Ok(Vec::new())
+        let model_path = self.model_path.clone();
+        let min_confidence = self.min_confidence;
+        let mut runner = self
+            .runner
+            .get_or_init(|| {
+                let options = OnnxFaceDetectionOptions {
+                    score_threshold: min_confidence,
+                    ..OnnxFaceDetectionOptions::default()
+                };
+                std::sync::Mutex::new(
+                    NativeOnnxRunner::new(model_path)
+                        .and_then(|runner| OnnxFaceDetector::with_options(options, runner))
+                        .map_err(|error| error.to_string()),
+                )
+            })
+            .lock()
+            .map_err(|_| "face detection runner mutex was poisoned".to_string())?;
+        let runner = runner.as_mut().map_err(|error| error.clone())?;
+        let view = rgb_image_view(image)?;
+        runner
+            .detect_faces(&view)
+            .map_err(|error| error.to_string())
     }
 }
 
 pub struct FaceEmbedder {
     model_path: std::path::PathBuf,
-    fallback: LegacyColorEmbedder,
+    vector_size: usize,
+    runner:
+        std::sync::OnceLock<std::sync::Mutex<Result<OnnxFaceEmbedder<NativeOnnxRunner>, String>>>,
 }
 
 impl FaceEmbedder {
     pub fn new(settings: &Settings) -> Self {
         Self {
             model_path: settings.face_embedding_model_path.clone(),
-            fallback: LegacyColorEmbedder::new(
-                "face-legacy-fallback",
-                settings.face_embedding_vector_size,
-            ),
+            vector_size: settings.face_embedding_vector_size,
+            runner: std::sync::OnceLock::new(),
         }
     }
 
-    pub fn embed_face(&self, image: &RgbImage, bbox: &FaceBox) -> Result<Vec<f32>, String> {
+    pub fn embed_face(
+        &self,
+        image: &RgbImage,
+        detection: &SharedFaceDetection,
+    ) -> Result<Vec<f32>, String> {
         if !self.model_path.is_file() {
             return Err(format!(
                 "face embedding model is not available at {}",
@@ -179,21 +215,25 @@ impl FaceEmbedder {
             ));
         }
 
-        let crop = crop_face(image, bbox);
-        self.fallback.embed_image(&crop)
+        let model_path = self.model_path.clone();
+        let vector_size = self.vector_size;
+        let mut runner = self
+            .runner
+            .get_or_init(|| {
+                std::sync::Mutex::new(
+                    OnnxFaceEmbedder::from_model_path(model_path, Some(vector_size))
+                        .map_err(|error| error.to_string()),
+                )
+            })
+            .lock()
+            .map_err(|_| "face embedding runner mutex was poisoned".to_string())?;
+        let runner = runner.as_mut().map_err(|error| error.clone())?;
+        let view = rgb_image_view(image)?;
+        runner
+            .embed_face(&view, Some(detection))
+            .map(|embedding| embedding.vector)
+            .map_err(|error| error.to_string())
     }
-}
-
-fn crop_face(image: &RgbImage, bbox: &FaceBox) -> RgbImage {
-    let width = image.width().max(1);
-    let height = image.height().max(1);
-    let x = (bbox.x.clamp(0.0, 1.0) * width as f32).floor() as u32;
-    let y = (bbox.y.clamp(0.0, 1.0) * height as f32).floor() as u32;
-    let crop_width = (bbox.width.clamp(0.0, 1.0) * width as f32).ceil() as u32;
-    let crop_height = (bbox.height.clamp(0.0, 1.0) * height as f32).ceil() as u32;
-    let crop_width = crop_width.max(1).min(width.saturating_sub(x).max(1));
-    let crop_height = crop_height.max(1).min(height.saturating_sub(y).max(1));
-    imageops::crop_imm(image, x, y, crop_width, crop_height).to_image()
 }
 
 fn is_duplicate_face(candidate: &DetectedFace, faces: &[DetectedFace], threshold: f32) -> bool {
@@ -227,5 +267,60 @@ impl From<FaceBox> for FaceBoxPayload {
             width: value.width,
             height: value.height,
         }
+    }
+}
+
+impl FaceBox {
+    fn from_shared(value: &image_analysis_models::FaceBox) -> Self {
+        Self {
+            x: value.x,
+            y: value.y,
+            width: value.width,
+            height: value.height,
+        }
+    }
+}
+
+fn rgb_image_view(image: &RgbImage) -> Result<ImageView<'_>, String> {
+    ImageView::packed(
+        image.width(),
+        image.height(),
+        ImagePixelFormat::Rgb24,
+        image.as_raw(),
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use image::{ImageBuffer, Rgb};
+
+    use super::{FaceBox, FaceDetector};
+    use crate::config::Settings;
+
+    #[test]
+    fn face_detector_reports_missing_model_without_panicking() {
+        let settings = Settings {
+            face_detection_model_path: std::env::temp_dir().join("missing-yunet-model.onnx"),
+            ..Settings::default()
+        };
+        let detector = FaceDetector::new(&settings);
+        let image = ImageBuffer::from_pixel(8, 8, Rgb([0, 0, 0]));
+
+        let error = detector.detect(&image).unwrap_err();
+
+        assert!(error.contains("face detection model is not available"));
+    }
+
+    #[test]
+    fn shared_face_box_maps_to_service_payload_box() {
+        let shared = image_analysis_models::FaceBox::new(0.1, 0.2, 0.3, 0.4).unwrap();
+
+        let service = FaceBox::from_shared(&shared);
+
+        assert_eq!(service.x, 0.1);
+        assert_eq!(service.y, 0.2);
+        assert_eq!(service.width, 0.3);
+        assert_eq!(service.height, 0.4);
     }
 }
