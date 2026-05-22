@@ -90,6 +90,12 @@ export type SourceIndexingConfig = {
   image_extensions: string[];
   audio_extensions: string[];
   video_extensions: string[];
+  visual_embedding_enabled: boolean;
+  visual_embedding_model: string;
+  visual_embedding_vector_size: number;
+  face_analysis_enabled: boolean;
+  face_detection_min_confidence: number;
+  face_cluster_threshold: number;
   gif_sample_frames: number;
   gif_max_decode_frames: number;
   gif_preview_frames: number;
@@ -152,6 +158,31 @@ export type OcrFrameText = {
   text: string;
 };
 
+export type FaceBoxPayload = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
+export type FaceDetectionPayload = {
+  face_id: string;
+  media_id: string;
+  frame_index: number;
+  bbox: FaceBoxPayload;
+  confidence: number;
+  person_id: string | null;
+  person_label: string | null;
+};
+
+export type PersonSummary = {
+  person_id: string;
+  label: string | null;
+  face_count: number;
+  media_count: number;
+  confidence: number;
+};
+
 export type ImagePayload = {
   id: string;
   path: string;
@@ -172,6 +203,9 @@ export type ImagePayload = {
   audio_analysis: AudioAnalysis | null;
   ocr_text: string;
   ocr_frames: OcrFrameText[];
+  visual_embedding_model: string | null;
+  faces: FaceDetectionPayload[];
+  people: PersonSummary[];
   scene_clip_url: string | null;
   scene_index: number | null;
   scene_start_frame: number | null;

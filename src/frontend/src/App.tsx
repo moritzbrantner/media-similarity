@@ -42,6 +42,7 @@ import type {
   IndexResponse,
   JobEvent,
   JobSnapshot,
+  PersonSummary,
   SearchResponse,
   SearchResult,
   SearchSceneResponse,
@@ -72,6 +73,7 @@ const DEFAULT_METADATA_FILTERS = {
   nameQuery: "",
   nearDuplicate: "all",
   orientation: "all",
+  personId: "",
   sourceType: "all",
 } satisfies MetadataFilters;
 
@@ -88,6 +90,7 @@ type MetadataFilters = {
   nameQuery: string;
   nearDuplicate: "all" | "exclude" | "only";
   orientation: "all" | "landscape" | "portrait" | "square";
+  personId: string;
   sourceType: string;
 };
 
@@ -205,7 +208,12 @@ export function App() {
 
   const searchMutation = useMutation({
     mutationFn: ({ filters, ocrTextQuery, queryFile, resultLimit }: SearchVariables) =>
-      searchMedia(queryFile, searchCandidateLimit(resultLimit, filters), ocrTextQuery),
+      searchMedia(
+        queryFile,
+        searchCandidateLimit(resultLimit, filters),
+        ocrTextQuery,
+        filters.personId,
+      ),
     onSuccess: (response, variables) => {
       const nextItem: SearchHistoryItem = {
         id: createHistoryId(),
@@ -1055,6 +1063,26 @@ function SourceConfigurationPage({
             <Metric label="Images" value={config.indexing.image_extensions.join(", ")} />
             <Metric label="Video" value={config.indexing.video_extensions.join(", ")} />
             <Metric label="Audio" value={config.indexing.audio_extensions.join(", ")} />
+            <Metric
+              label="Visual embeddings"
+              value={
+                config.indexing.visual_embedding_enabled
+                  ? `${config.indexing.visual_embedding_model} (${config.indexing.visual_embedding_vector_size})`
+                  : "disabled"
+              }
+            />
+            <Metric
+              label="Faces"
+              value={config.indexing.face_analysis_enabled ? "enabled" : "disabled"}
+            />
+            <Metric
+              label="Face confidence"
+              value={(config.indexing.face_detection_min_confidence ?? 0).toFixed(2)}
+            />
+            <Metric
+              label="Face threshold"
+              value={(config.indexing.face_cluster_threshold ?? 0).toFixed(2)}
+            />
             <Metric label="GIF samples" value={config.indexing.gif_sample_frames} />
             <Metric label="GIF motion" value={config.indexing.gif_motion_weight.toFixed(2)} />
             <Metric label="Video stride" value={config.indexing.video_frame_stride} />
@@ -1293,6 +1321,20 @@ function MetadataFiltersPanel({
         </div>
 
         <div>
+          <label className="text-xs font-semibold text-neutral-700" htmlFor="person-id">
+            Person ID
+          </label>
+          <input
+            className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
+            id="person-id"
+            onChange={(event) => updateFilter("personId", event.target.value)}
+            placeholder="person-..."
+            type="search"
+            value={filters.personId}
+          />
+        </div>
+
+        <div>
           <label className="text-xs font-semibold text-neutral-700" htmlFor="media-kind">
             Media type
           </label>
@@ -1503,7 +1545,7 @@ function ResultSortSelect({
         value={value}
       >
         <option value="phash_distance">pHash distance</option>
-        <option value="vector_score">CLIP score</option>
+        <option value="vector_score">Visual score</option>
         <option value="modified_newest">Newest modified</option>
         <option value="size_largest">Largest file</option>
         <option value="filename">Filename</option>
@@ -1514,6 +1556,7 @@ function ResultSortSelect({
 
 function filterResults(results: SearchResult[], filters: MetadataFilters) {
   const nameQuery = filters.nameQuery.trim().toLocaleLowerCase();
+  const personId = filters.personId.trim();
   const minSizeBytes = megabytesToBytes(positiveNumber(filters.minSizeMb));
   const maxSizeBytes = megabytesToBytes(positiveNumber(filters.maxSizeMb));
   const minWidth = positiveNumber(filters.minWidth);
@@ -1535,6 +1578,10 @@ function filterResults(results: SearchResult[], filters: MetadataFilters) {
     }
 
     if (filters.mediaKind !== "all" && image.media_kind !== filters.mediaKind) {
+      return false;
+    }
+
+    if (personId && !(image.people ?? []).some((person) => person.person_id === personId)) {
       return false;
     }
 
@@ -1860,6 +1907,7 @@ function normalizeMetadataFilters(filters: unknown): MetadataFilters {
     orientation: isOrientationFilter(partial.orientation)
       ? partial.orientation
       : DEFAULT_METADATA_FILTERS.orientation,
+    personId: stringFilter(partial.personId),
     sourceType: stringFilter(partial.sourceType) || DEFAULT_METADATA_FILTERS.sourceType,
   };
 }
@@ -1897,10 +1945,28 @@ function isOrientationFilter(value: unknown): value is MetadataFilters["orientat
 function normalizeSearchResponse(response: SearchHistoryItem["response"]): SearchResponse {
   return {
     ...response,
+    results: Array.isArray(response.results) ? response.results.map(normalizeSearchResult) : [],
     query_audio_analysis: response.query_audio_analysis ?? null,
     query_ocr_text: response.query_ocr_text ?? "",
     query_media_kind: response.query_media_kind ?? "static_image",
-    scenes: Array.isArray(response.scenes) ? response.scenes : [],
+    scenes: Array.isArray(response.scenes)
+      ? response.scenes.map((scene) => ({
+          ...scene,
+          results: Array.isArray(scene.results) ? scene.results.map(normalizeSearchResult) : [],
+        }))
+      : [],
+  };
+}
+
+function normalizeSearchResult(result: SearchResult): SearchResult {
+  return {
+    ...result,
+    image: {
+      ...result.image,
+      faces: Array.isArray(result.image.faces) ? result.image.faces : [],
+      people: Array.isArray(result.image.people) ? result.image.people : [],
+      visual_embedding_model: result.image.visual_embedding_model ?? null,
+    },
   };
 }
 
@@ -2335,6 +2401,8 @@ function EmptyResults({ text }: { text: string }) {
 
 function ResultCard({ result }: { result: SearchResult }) {
   const image = result.image;
+  const faces = image.faces ?? [];
+  const people = image.people ?? [];
   const previewUrl = image.animated_thumbnail_url ?? image.thumbnail_url;
 
   return (
@@ -2357,7 +2425,7 @@ function ResultCard({ result }: { result: SearchResult }) {
         </div>
 
         <dl className="grid gap-2 text-sm">
-          <Metric label="CLIP score" value={result.vector_score.toFixed(4)} />
+          <Metric label="Visual score" value={result.vector_score.toFixed(4)} />
           <Metric label="pHash distance" value={result.hash_distance ?? "n/a"} />
           {result.ocr_score !== null && result.ocr_score !== undefined ? (
             <Metric label="OCR score" value={result.ocr_score.toFixed(2)} />
@@ -2403,6 +2471,10 @@ function ResultCard({ result }: { result: SearchResult }) {
             />
           ) : null}
           {image.ocr_text ? <Metric label="OCR text" value={image.ocr_text} /> : null}
+          {faces.length ? <Metric label="Faces" value={faces.length} /> : null}
+          {people.length ? (
+            <Metric label="People" value={people.map(personDisplayName).join(", ")} />
+          ) : null}
         </dl>
 
         <VideoSceneLinks image={image} />
@@ -2452,6 +2524,20 @@ function ResultCard({ result }: { result: SearchResult }) {
               {image.audio_analysis.tempo_bpm.toFixed(0)} BPM
             </span>
           ) : null}
+          {faces.length ? (
+            <span className="inline-flex w-fit rounded-md border border-indigo-300 bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-900">
+              Faces {faces.length}
+            </span>
+          ) : null}
+          {people.map((person) => (
+            <span
+              className="inline-flex w-fit rounded-md border border-purple-300 bg-purple-50 px-2 py-1 text-xs font-semibold text-purple-900"
+              key={person.person_id}
+              title={person.person_id}
+            >
+              {personDisplayName(person)}
+            </span>
+          ))}
           {result.query_scene_index !== null && result.query_scene_index !== undefined ? (
             <span className="inline-flex w-fit rounded-md border border-neutral-300 bg-neutral-50 px-2 py-1 text-xs font-semibold text-neutral-700">
               Query scene {result.query_scene_index + 1}
@@ -2493,6 +2579,10 @@ function formatSeconds(seconds: number) {
 
 function formatPercent(value: number) {
   return `${Math.round(value * 100)}%`;
+}
+
+function personDisplayName(person: PersonSummary) {
+  return person.label?.trim() || person.person_id;
 }
 
 function formatFileSize(sizeBytes: number) {

@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use jobs_core::{JobContext, JobProgress};
 use serde::Serialize;
@@ -6,7 +7,7 @@ use sha2::{Digest, Sha256};
 
 use crate::audio::{decode_source_audio_segments, expose_source_audio, SourceAudioSegment};
 use crate::config::Settings;
-use crate::embedder::ImageEmbedder;
+use crate::faces::{analyze_faces_for_media, FaceAnalysis};
 use crate::hashing::phash_image;
 use crate::image_io::{dimensions, image_id_for_uri};
 use crate::media::{DecodedMedia, MediaKind};
@@ -16,16 +17,21 @@ use crate::qdrant::QdrantImageStore;
 use crate::sources::{build_image_sources, SourceImage, SourceUnavailable};
 use crate::thumbnails::{ensure_animated_thumbnail, ensure_thumbnail};
 use crate::video::{decode_source_video_scenes, SourceVideoScene};
+use crate::visual_embedding::VisualEmbeddingBackend;
 
 #[derive(Clone)]
 pub struct ImageIndexer {
     settings: Settings,
     store: QdrantImageStore,
-    embedder: ImageEmbedder,
+    embedder: Arc<dyn VisualEmbeddingBackend>,
 }
 
 impl ImageIndexer {
-    pub fn new(settings: Settings, store: QdrantImageStore, embedder: ImageEmbedder) -> Self {
+    pub fn new(
+        settings: Settings,
+        store: QdrantImageStore,
+        embedder: Arc<dyn VisualEmbeddingBackend>,
+    ) -> Self {
         Self {
             settings,
             store,
@@ -291,7 +297,7 @@ impl ImageIndexer {
         &self,
     ) -> Result<BTreeMap<String, Vec<IndexedSourceRecord>>, String> {
         let mut records = BTreeMap::<String, Vec<IndexedSourceRecord>>::new();
-        for point in self.store.scroll_points().await? {
+        for point in self.store.scroll_media_points().await? {
             let Some(payload) = point.payload else {
                 continue;
             };
@@ -328,11 +334,20 @@ impl ImageIndexer {
         }
 
         let media = source_image.load_media(&self.settings)?;
-        let payload = self.build_payload(source_image, &media, None, None)?;
+        let media_id = image_id_for_uri(&source_image.id_base);
+        let face_analysis = analyze_faces_for_media(
+            &self.settings,
+            &self.store,
+            &media,
+            &media_id,
+            Some(source_image.item_uri.clone()),
+        )
+        .await;
+        let payload = self.build_payload(source_image, &media, None, None, &face_analysis)?;
         let vector = self
             .embedder
-            .encode_media(&media.sampled_frames, self.settings.gif_motion_weight);
-        self.store.upsert_image(&payload, vector).await?;
+            .embed_media(&media.sampled_frames, self.settings.gif_motion_weight)?;
+        self.store.upsert_media(&payload, vector).await?;
         Ok(IndexOneOutcome::single(payload.id))
     }
 
@@ -343,12 +358,28 @@ impl ImageIndexer {
         let scenes = decode_source_video_scenes(path, &source_image.id_base, &self.settings)?;
         let mut outcome = IndexOneOutcome::default();
         for scene in &scenes {
-            let payload = self.build_payload(source_image, &scene.media, Some(scene), None)?;
+            let id_base = format!("{}#scene={}", source_image.id_base, scene.scene_index + 1);
+            let media_id = image_id_for_uri(&id_base);
+            let face_analysis = analyze_faces_for_media(
+                &self.settings,
+                &self.store,
+                &scene.media,
+                &media_id,
+                Some(source_image.item_uri.clone()),
+            )
+            .await;
+            let payload = self.build_payload(
+                source_image,
+                &scene.media,
+                Some(scene),
+                None,
+                &face_analysis,
+            )?;
             let vector = self
                 .embedder
-                .encode_media(&scene.media.sampled_frames, self.settings.gif_motion_weight);
+                .embed_media(&scene.media.sampled_frames, self.settings.gif_motion_weight)?;
             let point_id = payload.id.clone();
-            self.store.upsert_image(&payload, vector).await?;
+            self.store.upsert_media(&payload, vector).await?;
             outcome.insert(point_id);
         }
         Ok(outcome)
@@ -361,13 +392,19 @@ impl ImageIndexer {
         let segments = decode_source_audio_segments(path, &source_image.id_base, &self.settings)?;
         let mut outcome = IndexOneOutcome::default();
         for segment in &segments {
-            let payload = self.build_payload(source_image, &segment.media, None, Some(segment))?;
-            let vector = self.embedder.encode_media(
+            let payload = self.build_payload(
+                source_image,
+                &segment.media,
+                None,
+                Some(segment),
+                &FaceAnalysis::default(),
+            )?;
+            let vector = self.embedder.embed_media(
                 &segment.media.sampled_frames,
                 self.settings.gif_motion_weight,
-            );
+            )?;
             let point_id = payload.id.clone();
-            self.store.upsert_image(&payload, vector).await?;
+            self.store.upsert_media(&payload, vector).await?;
             outcome.insert(point_id);
         }
         Ok(outcome)
@@ -379,6 +416,7 @@ impl ImageIndexer {
         media: &DecodedMedia,
         video_scene: Option<&SourceVideoScene>,
         audio_segment: Option<&SourceAudioSegment>,
+        face_analysis: &FaceAnalysis,
     ) -> Result<ImagePayload, String> {
         let id_base = if let Some(scene) = video_scene {
             format!("{}#scene={}", source_image.id_base, scene.scene_index + 1)
@@ -488,6 +526,9 @@ impl ImageIndexer {
             audio_analysis: media.audio_analysis.clone(),
             ocr_text: ocr_analysis.text,
             ocr_frames: ocr_analysis.frames,
+            visual_embedding_model: Some(self.embedder.model_name().to_string()),
+            faces: face_analysis.faces.clone(),
+            people: face_analysis.person_clusters.clone(),
             scene_clip_url: video_scene.and_then(|scene| scene.clip_url.clone()),
             scene_index: video_scene
                 .map(|scene| scene.scene_index)
@@ -594,9 +635,25 @@ fn payload_analysis_complete(payload: &ImagePayload, settings: &Settings) -> boo
 
 fn indexing_profile(settings: &Settings) -> String {
     let profile = IndexingProfile {
-        version: 1,
+        version: 2,
         clip_model_name: &settings.clip_model_name,
         vector_size: settings.vector_size,
+        visual_embedding_enabled: settings.visual_embedding_enabled,
+        visual_embedding_backend: &settings.visual_embedding_backend,
+        visual_embedding_model_path: settings.visual_embedding_model_path.to_string_lossy(),
+        visual_embedding_preprocessor_path: settings
+            .visual_embedding_preprocessor_path
+            .to_string_lossy(),
+        visual_embedding_vector_size: settings.visual_embedding_vector_size,
+        visual_embedding_batch_size: settings.visual_embedding_batch_size,
+        face_analysis_enabled: settings.face_analysis_enabled,
+        face_detection_model_path: settings.face_detection_model_path.to_string_lossy(),
+        face_embedding_model_path: settings.face_embedding_model_path.to_string_lossy(),
+        face_embedding_vector_size: settings.face_embedding_vector_size,
+        face_detection_min_confidence_bits: settings.face_detection_min_confidence.to_bits(),
+        face_cluster_threshold_bits: settings.face_cluster_threshold.to_bits(),
+        face_min_cluster_images: settings.face_min_cluster_images,
+        face_max_frames_per_media: settings.face_max_frames_per_media,
         gif_sample_frames: settings.gif_sample_frames,
         gif_max_decode_frames: settings.gif_max_decode_frames,
         gif_preview_frames: settings.gif_preview_frames,
@@ -623,6 +680,20 @@ struct IndexingProfile<'a> {
     version: u32,
     clip_model_name: &'a str,
     vector_size: usize,
+    visual_embedding_enabled: bool,
+    visual_embedding_backend: &'a str,
+    visual_embedding_model_path: std::borrow::Cow<'a, str>,
+    visual_embedding_preprocessor_path: std::borrow::Cow<'a, str>,
+    visual_embedding_vector_size: usize,
+    visual_embedding_batch_size: usize,
+    face_analysis_enabled: bool,
+    face_detection_model_path: std::borrow::Cow<'a, str>,
+    face_embedding_model_path: std::borrow::Cow<'a, str>,
+    face_embedding_vector_size: usize,
+    face_detection_min_confidence_bits: u32,
+    face_cluster_threshold_bits: u32,
+    face_min_cluster_images: u32,
+    face_max_frames_per_media: usize,
     gif_sample_frames: usize,
     gif_max_decode_frames: usize,
     gif_preview_frames: usize,

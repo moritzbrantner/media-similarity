@@ -73,6 +73,50 @@ pub struct OcrFrameText {
     pub text: String,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct FaceBoxPayload {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct FaceDetectionPayload {
+    pub face_id: String,
+    pub media_id: String,
+    pub frame_index: usize,
+    pub bbox: FaceBoxPayload,
+    pub confidence: f32,
+    #[serde(default)]
+    pub person_id: Option<String>,
+    #[serde(default)]
+    pub person_label: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct PersonSummary {
+    pub person_id: String,
+    #[serde(default)]
+    pub label: Option<String>,
+    pub face_count: u32,
+    pub media_count: u32,
+    pub confidence: f32,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct FacePointPayload {
+    pub face_id: String,
+    pub media_id: String,
+    pub frame_index: usize,
+    pub bbox: FaceBoxPayload,
+    pub confidence: f32,
+    pub person_id: String,
+    #[serde(default)]
+    pub person_label: Option<String>,
+    pub source_item_uri: Option<String>,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ImagePayload {
     pub id: String,
@@ -103,6 +147,12 @@ pub struct ImagePayload {
     pub ocr_text: String,
     #[serde(default)]
     pub ocr_frames: Vec<OcrFrameText>,
+    #[serde(default)]
+    pub visual_embedding_model: Option<String>,
+    #[serde(default)]
+    pub faces: Vec<FaceDetectionPayload>,
+    #[serde(default)]
+    pub people: Vec<PersonSummary>,
     #[serde(default)]
     pub scene_clip_url: Option<String>,
     #[serde(default)]
@@ -242,6 +292,9 @@ mod tests {
         assert_eq!(payload.audio_analysis, None);
         assert_eq!(payload.ocr_text, "");
         assert!(payload.ocr_frames.is_empty());
+        assert_eq!(payload.visual_embedding_model, None);
+        assert!(payload.faces.is_empty());
+        assert!(payload.people.is_empty());
         assert_eq!(payload.scene_clip_url, None);
         assert_eq!(payload.scene_index, None);
         assert_eq!(payload.source_item_uri, None);
@@ -302,6 +355,9 @@ mod tests {
                 frame_index: 0,
                 text: "SALE 50".to_string(),
             }],
+            visual_embedding_model: Some("clip".to_string()),
+            faces: Vec::new(),
+            people: Vec::new(),
             scene_clip_url: None,
             scene_index: None,
             scene_start_frame: None,
@@ -346,6 +402,9 @@ mod tests {
                 frame_index: 0,
                 text: "Scene title".to_string(),
             }],
+            visual_embedding_model: Some("clip".to_string()),
+            faces: Vec::new(),
+            people: Vec::new(),
             scene_clip_url: Some("/uploads/source-scenes/id/scene-001.mp4".to_string()),
             scene_index: Some(0),
             scene_start_frame: Some(10),
@@ -425,6 +484,9 @@ mod tests {
             }),
             ocr_text: String::new(),
             ocr_frames: Vec::new(),
+            visual_embedding_model: Some("clip".to_string()),
+            faces: Vec::new(),
+            people: Vec::new(),
             scene_clip_url: None,
             scene_index: None,
             scene_start_frame: None,

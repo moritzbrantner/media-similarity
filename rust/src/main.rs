@@ -12,6 +12,7 @@ mod api;
 mod audio;
 mod config;
 mod embedder;
+mod faces;
 mod hashing;
 mod image_io;
 mod indexer;
@@ -19,11 +20,13 @@ mod jobs;
 mod media;
 mod models;
 mod ocr;
+mod persons;
 mod qdrant;
 mod search;
 mod sources;
 mod thumbnails;
 mod video;
+mod visual_embedding;
 mod voice;
 
 use crate::api::{

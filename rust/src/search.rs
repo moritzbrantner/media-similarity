@@ -1,20 +1,26 @@
 use crate::config::Settings;
-use crate::embedder::ImageEmbedder;
 use crate::hashing::{hash_distance, phash_image};
 use crate::media::DecodedMedia;
 use crate::models::{ImagePayload, SearchResponse, SearchResult};
 use crate::ocr::{normalize_ocr_query, ocr_match_score};
 use crate::qdrant::QdrantImageStore;
+use crate::visual_embedding::VisualEmbeddingBackend;
+
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct ImageSearchService {
     settings: Settings,
     store: QdrantImageStore,
-    embedder: ImageEmbedder,
+    embedder: Arc<dyn VisualEmbeddingBackend>,
 }
 
 impl ImageSearchService {
-    pub fn new(settings: Settings, store: QdrantImageStore, embedder: ImageEmbedder) -> Self {
+    pub fn new(
+        settings: Settings,
+        store: QdrantImageStore,
+        embedder: Arc<dyn VisualEmbeddingBackend>,
+    ) -> Self {
         Self {
             settings,
             store,
@@ -27,6 +33,7 @@ impl ImageSearchService {
         media: &DecodedMedia,
         limit: Option<u32>,
         ocr_text: Option<&str>,
+        person_id: Option<&str>,
     ) -> Result<SearchResponse, String> {
         self.store.ensure_collection().await?;
         let query_phash = phash_image(&media.poster);
@@ -42,8 +49,8 @@ impl ImageSearchService {
         };
         let query_vector = self
             .embedder
-            .encode_media(&media.sampled_frames, self.settings.gif_motion_weight);
-        let points = self.store.search(query_vector, search_limit).await?;
+            .embed_media(&media.sampled_frames, self.settings.gif_motion_weight)?;
+        let points = self.store.search_visual(query_vector, search_limit).await?;
 
         let mut results = Vec::new();
         for point in points {
@@ -52,6 +59,15 @@ impl ImageSearchService {
             };
             let image: ImagePayload =
                 serde_json::from_value(payload).map_err(|error| error.to_string())?;
+            if let Some(person_id) = person_id {
+                if !image
+                    .people
+                    .iter()
+                    .any(|person| person.person_id == person_id)
+                {
+                    continue;
+                }
+            }
             let ocr_score = if normalized_ocr_query.is_empty() {
                 None
             } else {

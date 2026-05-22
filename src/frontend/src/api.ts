@@ -104,6 +104,7 @@ export async function searchMedia(
   file: File,
   limit: number,
   ocrText: string,
+  personId: string,
 ): Promise<SearchResponse> {
   const formData = new FormData();
   formData.append("file", file);
@@ -111,6 +112,10 @@ export async function searchMedia(
   const normalizedOcrText = ocrText.trim();
   if (normalizedOcrText) {
     params.set("ocr_text", normalizedOcrText);
+  }
+  const normalizedPersonId = personId.trim();
+  if (normalizedPersonId) {
+    params.set("person_id", normalizedPersonId);
   }
 
   const response = await fetch(`/api/search?${params.toString()}`, {

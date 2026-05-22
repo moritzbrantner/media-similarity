@@ -546,6 +546,8 @@ impl TestApp {
             voice_registry_path: root.path().join("recognized-voices.json"),
             media_sources_file: root.path().join("config/media-sources.txt"),
             vector_size: 32,
+            visual_embedding_vector_size: 32,
+            face_embedding_vector_size: 32,
             default_search_limit: 10,
             duplicate_hash_distance: 8,
             ocr_enabled: false,
@@ -806,20 +808,22 @@ struct FakeUpsertRequest {
 #[derive(Deserialize)]
 struct FakeUpsertPoint {
     id: String,
-    vector: Vec<f32>,
+    vector: Value,
     payload: Value,
 }
 
 #[derive(Deserialize)]
 struct FakeSearchRequest {
-    vector: Vec<f32>,
+    vector: Value,
     limit: u32,
+    filter: Option<Value>,
 }
 
 #[derive(Deserialize)]
 struct FakeScrollRequest {
     limit: u32,
     offset: Option<Value>,
+    filter: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -913,10 +917,11 @@ async fn fake_upsert_points(
         return Err(AxumStatusCode::NOT_FOUND);
     }
     for point in request.points {
+        let vector = named_vector(&point.vector).ok_or(AxumStatusCode::UNPROCESSABLE_ENTITY)?;
         state.points.insert(
             (collection.clone(), point.id),
             FakePoint {
-                vector: point.vector,
+                vector,
                 payload: point.payload,
             },
         );
@@ -952,10 +957,11 @@ async fn fake_search_points(
         .points
         .iter()
         .filter(|((point_collection, _), _)| point_collection == &collection)
+        .filter(|(_, point)| payload_matches_filter(&point.payload, request.filter.as_ref()))
         .map(|((_, id), point)| {
             json!({
                 "id": id,
-                "score": cosine_similarity(&request.vector, &point.vector),
+                "score": cosine_similarity(&named_vector(&request.vector).unwrap_or_default(), &point.vector),
                 "payload": point.payload,
             })
         })
@@ -987,6 +993,7 @@ async fn fake_scroll_points(
             point_collection == &collection
                 && offset.map(|offset| id.as_str() > offset).unwrap_or(true)
         })
+        .filter(|(_, point)| payload_matches_filter(&point.payload, request.filter.as_ref()))
         .map(|((_, id), point)| {
             json!({
                 "id": id,
@@ -1028,6 +1035,46 @@ fn cosine_similarity(left: &[f32], right: &[f32]) -> f32 {
     } else {
         dot / (left_norm.sqrt() * right_norm.sqrt())
     }
+}
+
+fn named_vector(value: &Value) -> Option<Vec<f32>> {
+    if let Some(values) = value.as_array() {
+        return values
+            .iter()
+            .map(|value| value.as_f64().map(|number| number as f32))
+            .collect();
+    }
+    if let Some(vector) = value.get("vector") {
+        return named_vector(vector);
+    }
+    for name in ["visual", "face"] {
+        if let Some(vector) = value.get(name) {
+            return named_vector(vector);
+        }
+    }
+    None
+}
+
+fn payload_matches_filter(payload: &Value, filter: Option<&Value>) -> bool {
+    let Some(filter) = filter else {
+        return true;
+    };
+    let Some(must) = filter.get("must").and_then(Value::as_array) else {
+        return true;
+    };
+    must.iter().all(|condition| {
+        let Some(key) = condition.get("key").and_then(Value::as_str) else {
+            return true;
+        };
+        let expected = condition
+            .get("match")
+            .and_then(|value| value.get("value"))
+            .and_then(Value::as_str);
+        match expected {
+            Some(expected) => payload.get(key).and_then(Value::as_str) == Some(expected),
+            None => true,
+        }
+    })
 }
 
 fn multipart_body(filename: &str, content_type: &str, bytes: Vec<u8>) -> (String, Vec<u8>) {

@@ -22,7 +22,6 @@ use crate::audio::{
     write_audio_upload,
 };
 use crate::config::{parse_media_sources_file, Settings};
-use crate::embedder::ImageEmbedder;
 use crate::image_io::load_media_bytes;
 use crate::indexer::ImageIndexer;
 use crate::jobs::JobManager;
@@ -36,12 +35,13 @@ use crate::video::{
     decode_video_scenes, is_video_content_type, is_video_extension, video_upload_path,
     write_video_upload,
 };
+use crate::visual_embedding::{build_visual_embedder, VisualEmbeddingBackend};
 
 pub struct AppState {
     pub settings: Settings,
     source_specs: RwLock<Vec<String>>,
     pub store: QdrantImageStore,
-    pub embedder: ImageEmbedder,
+    pub embedder: Arc<dyn VisualEmbeddingBackend>,
     pub jobs: JobManager,
 }
 
@@ -50,9 +50,10 @@ impl AppState {
         let store = QdrantImageStore::new(
             settings.qdrant_url.clone(),
             settings.qdrant_collection.clone(),
-            settings.vector_size,
+            settings.visual_embedding_vector_size,
+            settings.face_embedding_vector_size,
         );
-        let embedder = ImageEmbedder::new(settings.clip_model_name.clone(), settings.vector_size);
+        let embedder = build_visual_embedder(&settings);
         let source_specs = RwLock::new(settings.source_specs());
         Self {
             settings,
@@ -82,6 +83,7 @@ impl AppState {
 pub struct SearchQuery {
     limit: Option<u32>,
     ocr_text: Option<String>,
+    person_id: Option<String>,
 }
 
 pub async fn health(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
@@ -174,6 +176,12 @@ pub struct SourceIndexingConfig {
     pub image_extensions: Vec<String>,
     pub audio_extensions: Vec<String>,
     pub video_extensions: Vec<String>,
+    pub visual_embedding_enabled: bool,
+    pub visual_embedding_model: String,
+    pub visual_embedding_vector_size: usize,
+    pub face_analysis_enabled: bool,
+    pub face_detection_min_confidence: f32,
+    pub face_cluster_threshold: f32,
     pub gif_sample_frames: usize,
     pub gif_max_decode_frames: usize,
     pub gif_preview_frames: usize,
@@ -220,6 +228,12 @@ fn source_config_response(state: &AppState) -> SourceConfigResponse {
             image_extensions: settings.image_extensions.into_iter().collect(),
             audio_extensions: settings.audio_extensions.into_iter().collect(),
             video_extensions: video_source_extensions(),
+            visual_embedding_enabled: settings.visual_embedding_enabled,
+            visual_embedding_model: settings.clip_model_name.clone(),
+            visual_embedding_vector_size: settings.visual_embedding_vector_size,
+            face_analysis_enabled: settings.face_analysis_enabled,
+            face_detection_min_confidence: settings.face_detection_min_confidence,
+            face_cluster_threshold: settings.face_cluster_threshold,
             gif_sample_frames: settings.gif_sample_frames,
             gif_max_decode_frames: settings.gif_max_decode_frames,
             gif_preview_frames: settings.gif_preview_frames,
@@ -609,6 +623,7 @@ pub async fn search_upload(
             state,
             query.limit,
             query.ocr_text.as_deref(),
+            query.person_id.as_deref(),
             &raw,
             upload_kind.filename.as_deref(),
         )
@@ -621,6 +636,7 @@ pub async fn search_upload(
             state,
             query.limit,
             query.ocr_text.as_deref(),
+            query.person_id.as_deref(),
             &raw,
             upload_kind.filename.as_deref(),
         )
@@ -636,7 +652,12 @@ pub async fn search_upload(
         state.embedder.clone(),
     );
     service
-        .search_media(&media, query.limit, query.ocr_text.as_deref())
+        .search_media(
+            &media,
+            query.limit,
+            query.ocr_text.as_deref(),
+            query.person_id.as_deref(),
+        )
         .await
         .map(Json)
         .map_err(ApiError::internal)
@@ -652,6 +673,7 @@ async fn search_audio_upload(
     state: Arc<AppState>,
     limit: Option<u32>,
     ocr_text: Option<&str>,
+    person_id: Option<&str>,
     raw: &[u8],
     filename: Option<&str>,
 ) -> Result<SearchResponse, ApiError> {
@@ -677,7 +699,7 @@ async fn search_audio_upload(
 
     for segment in &segments {
         let mut response = service
-            .search_media(&segment.media, limit, ocr_text)
+            .search_media(&segment.media, limit, ocr_text, person_id)
             .await
             .map_err(ApiError::internal)?;
         for result in &mut response.results {
@@ -721,6 +743,7 @@ async fn search_video_upload(
     state: Arc<AppState>,
     limit: Option<u32>,
     ocr_text: Option<&str>,
+    person_id: Option<&str>,
     raw: &[u8],
     filename: Option<&str>,
 ) -> Result<SearchResponse, ApiError> {
@@ -746,7 +769,7 @@ async fn search_video_upload(
 
     for scene in &scenes {
         let mut response = service
-            .search_media(&scene.media, limit, ocr_text)
+            .search_media(&scene.media, limit, ocr_text, person_id)
             .await
             .map_err(ApiError::internal)?;
         for result in &mut response.results {
@@ -828,7 +851,7 @@ fn run_index_job(
     context: JobContext,
     settings: Settings,
     store: QdrantImageStore,
-    embedder: ImageEmbedder,
+    embedder: Arc<dyn VisualEmbeddingBackend>,
 ) -> jobs_core::Result<()> {
     context.info("checking indexed media sources")?;
     let runtime = tokio::runtime::Builder::new_current_thread()
