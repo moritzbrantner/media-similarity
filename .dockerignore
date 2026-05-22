@@ -1,14 +1,7 @@
 .git/
-.pytest_cache/
-.ruff_cache/
-.venv/
 node_modules/
-__pycache__/
-**/__pycache__/
-*.pyc
 benchmarks/results/
 data/
-rust/target/
-src/image_similarity/_rust*.so
+backend/target/
 thumbnails/
 uploads/

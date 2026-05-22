@@ -4,9 +4,12 @@ Native Rust image similarity search service with a React UI and Qdrant vector st
 
 The service indexes configured media folders, generates thumbnails and perceptual hashes, then lets you upload a query image, video, or audio file through the web UI or HTTP API to find visually similar media and near duplicates. Animated GIFs are supported with sampled frame and motion-aware vector search. Uploaded videos are detected and split into scenes with the sibling Rust `video-analysis` crates, then each scene is searched independently. Audio files are rendered to spectrogram images for indexing and search.
 
+The repository is organized as a Rust-only backend plus a conventional React/Vite/Bun/Tailwind frontend. Python support and PyO3 extension packaging have been removed. Worker boundaries are Rust modules inside the single backend process.
+
 ## Features
 
 - Rust backend using Axum for health, indexing, search, thumbnail, and static UI routes.
+- Rust worker modules for indexing, source loading, media decoding/analysis, OCR, face/voice handling, thumbnails, and embeddings.
 - Local folder indexing with deterministic media IDs.
 - Qdrant REST integration for vector upsert and search.
 - Native image loading for JPEG, PNG, GIF, WebP, BMP, and TIFF.
@@ -214,12 +217,12 @@ bun run dev:containers
 | `bun run format:check:rust` | Rust formatting check. |
 | `bun run format` | Write frontend formatting changes. |
 | `bun run format:rust` | Write Rust formatting changes. |
-| `bun run build` | Build the frontend into `src/image_similarity/static`. |
+| `bun run build` | Build the frontend into `frontend/dist`. |
 | `bun run build:rust` | Build Rust service binaries. |
 | `bun run check:hygiene` | Report dirty status, upstream state, and ignored/generated directory issues. |
 | `bun run verify` | Full local confidence check. |
 
-`src/image_similarity/static` is generated Vite output that is intentionally checked in for the Rust service to serve. Update it only by running `bun run build`.
+`frontend/dist` is generated Vite output that is intentionally checked in for the Rust service to serve. Update it only by running `bun run build`.
 
 ### Full Verification
 
@@ -253,13 +256,13 @@ Run the backend locally:
 ```bash
 QDRANT_URL=http://localhost:6333 \
 MEDIA_SOURCES_FILE=config/media-sources.txt \
-cargo run --manifest-path rust/Cargo.toml --bin image-similarity-service
+cargo run --manifest-path backend/Cargo.toml --bin image-similarity-service
 ```
 
 Run the Rust test suite:
 
 ```bash
-cargo test --manifest-path rust/Cargo.toml
+cargo test --manifest-path backend/Cargo.toml
 ```
 
 Build the runtime image:
@@ -283,7 +286,7 @@ docker compose up qdrant
 Download or refresh local sample people images without starting the full stack:
 
 ```bash
-cargo run --manifest-path rust/Cargo.toml --bin seed_dummy_data
+cargo run --manifest-path backend/Cargo.toml --bin seed_dummy_data
 ```
 
 Run the Compose seed job again:
@@ -314,7 +317,7 @@ Start or refresh only the Docker containers used by the dev server:
 bun run dev:containers
 ```
 
-Build the frontend into the backend static directory:
+Build the frontend into the checked-in frontend dist directory:
 
 ```bash
 bun run build

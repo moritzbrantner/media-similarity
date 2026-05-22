@@ -8,10 +8,10 @@ use image_analysis_onnx::{
 };
 
 use crate::config::Settings;
-use crate::media::DecodedMedia;
-use crate::models::{FaceBoxPayload, FaceDetectionPayload, PersonSummary};
-use crate::persons::{assign_person, face_point_payload, summarize_people};
-use crate::qdrant::QdrantImageStore;
+use crate::domain::models::{FaceBoxPayload, FaceDetectionPayload, PersonSummary};
+use crate::storage::qdrant::QdrantImageStore;
+use crate::workers::media::media::DecodedMedia;
+use crate::workers::media::persons::{assign_person, face_point_payload, summarize_people};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct FaceAnalysis {

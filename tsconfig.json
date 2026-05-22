@@ -17,5 +17,5 @@
     "types": ["vite/client"],
     "useDefineForClassFields": true
   },
-  "include": ["src/frontend", "vite.config.ts"]
+  "include": ["frontend", "vite.config.ts"]
 }

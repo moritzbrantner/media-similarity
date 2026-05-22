@@ -9,7 +9,7 @@ use uuid::Uuid;
 use walkdir::WalkDir;
 
 use crate::config::Settings;
-use crate::media::{DecodedMedia, MediaFrame, MediaKind};
+use crate::workers::media::media::{DecodedMedia, MediaFrame, MediaKind};
 
 pub fn iter_image_paths(source_dir: &Path, extensions: &BTreeSet<String>) -> Vec<PathBuf> {
     if !source_dir.exists() {
@@ -197,7 +197,7 @@ mod tests {
 
     use super::{image_id_for_uri, iter_image_paths, load_image, load_media, relative_path};
     use crate::config::parse_extensions;
-    use crate::media::MediaKind;
+    use crate::workers::media::media::MediaKind;
 
     #[test]
     fn iter_image_paths_filters_case_insensitively_and_sorts() {

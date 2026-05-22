@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use url::Url;
 
-use crate::models::{FacePointPayload, ImagePayload};
+use crate::domain::models::{FacePointPayload, ImagePayload};
 
 const EXPECTED_DISTANCE: &str = "Cosine";
 const VISUAL_VECTOR_NAME: &str = "visual";

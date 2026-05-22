@@ -9,8 +9,8 @@ use video_analysis_ffmpeg::FfmpegVideoSource;
 use video_analysis_split::{split_video_ffmpeg, SplitOptions};
 
 use crate::config::Settings;
-use crate::image_io::image_id_for_uri;
-use crate::media::{DecodedMedia, MediaFrame, MediaKind};
+use crate::workers::media::image_io::image_id_for_uri;
+use crate::workers::media::media::{DecodedMedia, MediaFrame, MediaKind};
 
 #[derive(Clone, Debug)]
 pub struct DecodedVideoScene {

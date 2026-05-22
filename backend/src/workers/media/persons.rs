@@ -4,8 +4,8 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::config::Settings;
-use crate::models::{FaceDetectionPayload, FacePointPayload, PersonSummary};
-use crate::qdrant::{QdrantImageStore, ScoredPoint};
+use crate::domain::models::{FaceDetectionPayload, FacePointPayload, PersonSummary};
+use crate::storage::qdrant::{QdrantImageStore, ScoredPoint};
 
 const PERSON_NAMESPACE: Uuid = Uuid::from_u128(0x2f26cf00_2f65_4df1_8a46_9b0d5fc7e4d3);
 
@@ -144,7 +144,7 @@ mod tests {
     use serde_json::json;
 
     use super::assign_person_from_matches;
-    use crate::qdrant::ScoredPoint;
+    use crate::storage::qdrant::ScoredPoint;
 
     #[test]
     fn face_threshold_assignment_reuses_close_person() {

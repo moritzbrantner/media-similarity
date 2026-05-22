@@ -1,10 +1,10 @@
 use crate::config::Settings;
-use crate::hashing::{hash_distance, phash_image};
-use crate::media::DecodedMedia;
-use crate::models::{ImagePayload, SearchResponse, SearchResult};
-use crate::ocr::{normalize_ocr_query, ocr_match_score};
-use crate::qdrant::QdrantImageStore;
-use crate::visual_embedding::VisualEmbeddingBackend;
+use crate::domain::models::{ImagePayload, SearchResponse, SearchResult};
+use crate::storage::qdrant::QdrantImageStore;
+use crate::workers::media::hashing::{hash_distance, phash_image};
+use crate::workers::media::media::DecodedMedia;
+use crate::workers::media::ocr::{normalize_ocr_query, ocr_match_score};
+use crate::workers::media::visual_embedding::VisualEmbeddingBackend;
 
 use std::sync::Arc;
 

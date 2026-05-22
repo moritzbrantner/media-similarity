@@ -8,27 +8,6 @@ use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
-mod api;
-mod audio;
-mod config;
-mod embedder;
-mod faces;
-mod hashing;
-mod image_io;
-mod indexer;
-mod jobs;
-mod media;
-mod models;
-mod ocr;
-mod persons;
-mod qdrant;
-mod search;
-mod sources;
-mod thumbnails;
-mod video;
-mod visual_embedding;
-mod voice;
-
 use crate::api::{
     audio_transcription_models, cancel_job, download_audio_transcription_model,
     enable_audio_transcription_model, get_job, get_job_events, get_source_config, health,
@@ -37,8 +16,7 @@ use crate::api::{
 };
 use crate::config::Settings;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
@@ -81,13 +59,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             post(enable_audio_transcription_model),
         )
         .route("/api/search", post(search_upload))
-        .nest_service("/static", ServeDir::new(static_dir.join("static")))
+        .nest_service("/static", ServeDir::new(static_dir.clone()))
         .nest_service("/thumbnails", ServeDir::new(settings.thumbnail_dir.clone()))
         .nest_service("/uploads", ServeDir::new(settings.upload_dir.clone()))
-        .route_service(
-            "/",
-            ServeFile::new(static_dir.join("static").join("index.html")),
-        )
+        .route_service("/", ServeFile::new(static_dir.join("index.html")))
         .layer(TraceLayer::new_for_http())
         .with_state(app_state);
 
@@ -99,7 +74,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn static_dir() -> PathBuf {
-    std::env::var("STATIC_DIR")
+    std::env::var("FRONTEND_DIST_DIR")
+        .or_else(|_| std::env::var("STATIC_DIR"))
         .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("src/image_similarity"))
+        .unwrap_or_else(|_| PathBuf::from("frontend/dist"))
 }

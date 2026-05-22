@@ -53,7 +53,7 @@ services:
   test:
     image: rust:1-bookworm
     profiles: ["test"]
-    working_dir: /workspace/image-similarity-service/rust
+    working_dir: /workspace/image-similarity-service/backend
     command: ["cargo", "test"]
     volumes:
       - .:/workspace/image-similarity-service

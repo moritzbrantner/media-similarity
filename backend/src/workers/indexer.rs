@@ -5,19 +5,21 @@ use jobs_core::{JobContext, JobProgress};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-use crate::audio::{decode_source_audio_segments, expose_source_audio, SourceAudioSegment};
 use crate::config::Settings;
-use crate::faces::{analyze_faces_for_media, FaceAnalysis};
-use crate::hashing::phash_image;
-use crate::image_io::{dimensions, image_id_for_uri};
-use crate::media::{DecodedMedia, MediaKind};
-use crate::models::{ImagePayload, IndexResponse};
-use crate::ocr::extract_media_ocr;
-use crate::qdrant::QdrantImageStore;
-use crate::sources::{build_image_sources, SourceImage, SourceUnavailable};
-use crate::thumbnails::{ensure_animated_thumbnail, ensure_thumbnail};
-use crate::video::{decode_source_video_scenes, SourceVideoScene};
-use crate::visual_embedding::VisualEmbeddingBackend;
+use crate::domain::models::{ImagePayload, IndexResponse};
+use crate::storage::qdrant::QdrantImageStore;
+use crate::workers::media::audio::{
+    decode_source_audio_segments, expose_source_audio, SourceAudioSegment,
+};
+use crate::workers::media::faces::{analyze_faces_for_media, FaceAnalysis};
+use crate::workers::media::hashing::phash_image;
+use crate::workers::media::image_io::{dimensions, image_id_for_uri};
+use crate::workers::media::media::{DecodedMedia, MediaKind};
+use crate::workers::media::ocr::extract_media_ocr;
+use crate::workers::media::thumbnails::{ensure_animated_thumbnail, ensure_thumbnail};
+use crate::workers::media::video::{decode_source_video_scenes, SourceVideoScene};
+use crate::workers::media::visual_embedding::VisualEmbeddingBackend;
+use crate::workers::sources::{build_image_sources, SourceImage, SourceUnavailable};
 
 #[derive(Clone)]
 pub struct ImageIndexer {

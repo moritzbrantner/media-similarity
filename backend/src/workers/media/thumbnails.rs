@@ -6,7 +6,7 @@ use image::codecs::jpeg::JpegEncoder;
 use image::imageops::FilterType;
 use image::{Delay, DynamicImage, Frame, RgbImage};
 
-use crate::media::MediaFrame;
+use crate::workers::media::media::MediaFrame;
 
 pub fn thumbnail_path(thumbnail_dir: &Path, image_id: &str) -> PathBuf {
     thumbnail_dir.join(format!("{image_id}.jpg"))
@@ -93,7 +93,7 @@ mod tests {
     use image::{ImageBuffer, Rgb};
 
     use super::{ensure_animated_thumbnail, ensure_thumbnail};
-    use crate::media::MediaFrame;
+    use crate::workers::media::media::MediaFrame;
 
     #[test]
     fn ensure_thumbnail_creates_jpeg_and_returns_url() {

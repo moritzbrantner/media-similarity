@@ -1,6 +1,6 @@
 use image::RgbImage;
 
-use crate::media::MediaFrame;
+use crate::workers::media::media::MediaFrame;
 
 #[derive(Clone, Debug)]
 pub struct ImageEmbedder {
@@ -148,7 +148,7 @@ mod tests {
     use image::{ImageBuffer, Rgb};
 
     use super::ImageEmbedder;
-    use crate::media::MediaFrame;
+    use crate::workers::media::media::MediaFrame;
 
     #[test]
     fn embedder_returns_normalized_configured_vector_size() {

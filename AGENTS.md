@@ -6,10 +6,12 @@ Native Rust media similarity service with a React/Vite frontend. The backend ind
 
 ## Repository Map
 
-- `rust/src/`: Rust Axum service, indexing, media decoding, pHash/vector search, Qdrant integration, and thumbnail/upload handling.
-- `rust/tests/`: Rust integration tests.
-- `src/frontend/`: React, TypeScript, Tailwind, and React Query frontend source.
-- `src/image_similarity/static/`: Vite build output served by the Rust backend. This is generated and checked in; update it with `bun run build`, not by manual edits.
+- `backend/src/`: Rust Axum service, indexing, media decoding, pHash/vector search, Qdrant integration, and thumbnail/upload handling.
+- `backend/src/app.rs`: Backend orchestration: settings, shared state, routes, static frontend serving, and Axum startup.
+- `backend/src/workers/`: Rust worker modules for indexing, search, sources, media decoding/analysis, OCR, face/voice handling, thumbnails, and embeddings. These are modules inside the single backend process, not separate containers.
+- `backend/tests/`: Rust integration tests.
+- `frontend/`: React, TypeScript, Tailwind, and React Query frontend source.
+- `frontend/dist/`: Vite build output served by the Rust backend. This is generated and checked in; update it with `bun run build`, not by manual edits.
 - `tests/e2e/`: Playwright UI tests. API and thumbnail routes are mocked in the tests.
 - `.github/workflows/tests.yml`: CI format, frontend build, Rust clippy, and Rust test workflow.
 - `docker-compose.yml`: Local app, Qdrant, seed-data, and Rust test containers.
@@ -49,9 +51,9 @@ CI intentionally keeps frontend and Rust jobs separate. Do not change existing `
 
 ## Files Agents Should Not Edit Manually
 
-- `bun.lock` and `rust/Cargo.lock`: update only through the package manager.
-- `src/image_similarity/static/**`: generated Vite output; update with `bun run build`.
-- `node_modules/`, `rust/target/`, `data/`, `rust/data/`, `sample-images/`, `uploads/`, `thumbnails/`, `playwright-report/`, `test-results/`, `.pytest_cache/`, `.ruff_cache/`, and `benchmarks/results/`: local/generated directories that should stay ignored.
+- `bun.lock` and `backend/Cargo.lock`: update only through the package manager.
+- `frontend/dist/**`: generated Vite output; update with `bun run build`.
+- `node_modules/`, `backend/target/`, `data/`, `backend/data/`, `sample-images/`, `uploads/`, `thumbnails/`, `playwright-report/`, `test-results/`, and `benchmarks/results/`: local/generated directories that should stay ignored.
 - `.env` and `.env.local`: local configuration. Keep `.env.example` checked in.
 
 ## Search And Orientation
@@ -65,9 +67,11 @@ CI intentionally keeps frontend and Rust jobs separate. Do not change existing `
 
 - `bun dev` starts Docker Compose and leaves containers running.
 - `docker compose up --build -d` can rebuild the Rust app image.
-- `cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings` and `cargo test --manifest-path rust/Cargo.toml` depend on `../rust-packages`.
-- `bun run build` rewrites the checked-in static frontend bundle under `src/image_similarity/static`.
+- `cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings` and `cargo test --manifest-path backend/Cargo.toml` depend on `../rust-packages`.
+- `bun run build` rewrites the checked-in static frontend bundle under `frontend/dist`.
 - Seed commands can download sample face images into `sample-images/`.
+
+Python support and PyO3 extension packaging have been removed. Do not add Python package entrypoints or Python benchmark/test harnesses unless the project explicitly reintroduces them.
 
 ## Docker And Codex/T3 Cleanup
 
@@ -91,4 +95,3 @@ Codex/T3 rules:
 - Before finalizing Docker-sensitive work, run `services:ps` or `docker compose ps` and report remaining containers.
 - Use `services:down` after dev sessions. Use `services:clean` only when deleting disposable test data is acceptable.
 - Format touched files only unless the task explicitly asks for a repo-wide format.
-

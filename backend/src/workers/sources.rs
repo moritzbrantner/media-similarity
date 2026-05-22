@@ -4,11 +4,11 @@ use std::time::UNIX_EPOCH;
 
 use url::Url;
 
-use crate::audio::{decode_audio, is_audio_extension};
 use crate::config::Settings;
-use crate::image_io::{iter_image_paths, load_media, relative_path};
-use crate::media::DecodedMedia;
-use crate::video::is_video_extension;
+use crate::workers::media::audio::{decode_audio, is_audio_extension};
+use crate::workers::media::image_io::{iter_image_paths, load_media, relative_path};
+use crate::workers::media::media::DecodedMedia;
+use crate::workers::media::video::is_video_extension;
 
 #[derive(Clone, Debug)]
 pub struct SourceImage {

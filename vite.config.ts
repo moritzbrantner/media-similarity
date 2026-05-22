@@ -5,10 +5,10 @@ import { defineConfig } from "vite";
 export default defineConfig(({ command }) => ({
   base: command === "serve" ? "/" : "/static/",
   plugins: [react(), tailwindcss()],
-  root: "src/frontend",
+  root: "frontend",
   build: {
     emptyOutDir: true,
-    outDir: "../image_similarity/static",
+    outDir: "dist",
   },
   server: {
     proxy: {

@@ -20,13 +20,13 @@ use text_analysis_transcription::WhisperCppModel;
 use tokio::net::TcpListener;
 use uuid::Uuid;
 
-use _rust::api::{
+use image_similarity_service::api::{
     audio_transcription_models, cancel_job, download_audio_transcription_model,
     enable_audio_transcription_model, get_job, get_job_events, get_source_config, health,
     index_images, list_jobs, search_upload, spawn_index_job, update_source_config, AppState,
 };
-use _rust::config::{parse_extensions, Settings};
-use _rust::models::{IndexResponse, SearchResponse};
+use image_similarity_service::config::{parse_extensions, Settings};
+use image_similarity_service::domain::models::{IndexResponse, SearchResponse};
 
 #[tokio::test]
 async fn static_image_recognition_covers_content_type_extension_limits_and_duplicates() {

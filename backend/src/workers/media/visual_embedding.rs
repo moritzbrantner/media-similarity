@@ -4,8 +4,8 @@ use image_analysis_models::ImageEmbedderBackend;
 use image_analysis_onnx::{NativeOnnxRunner, OnnxImageEmbedder};
 
 use crate::config::Settings;
-use crate::embedder::ImageEmbedder;
-use crate::media::MediaFrame;
+use crate::workers::media::embedder::ImageEmbedder;
+use crate::workers::media::media::MediaFrame;
 
 pub trait VisualEmbeddingBackend: Send + Sync {
     fn model_name(&self) -> &str;

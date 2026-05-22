@@ -7,8 +7,8 @@ use text_analysis_core::normalize_whitespace;
 use uuid::Uuid;
 
 use crate::config::Settings;
-use crate::media::DecodedMedia;
-use crate::models::{OcrAnalysis, OcrFrameText};
+use crate::domain::models::{OcrAnalysis, OcrFrameText};
+use crate::workers::media::media::DecodedMedia;
 
 pub fn extract_media_ocr(media: &DecodedMedia, settings: &Settings) -> Result<OcrAnalysis, String> {
     if !settings.ocr_enabled {

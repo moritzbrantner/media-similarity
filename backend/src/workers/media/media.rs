@@ -1,6 +1,6 @@
 use image::RgbImage;
 
-use crate::models::AudioAnalysis;
+use crate::domain::models::AudioAnalysis;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MediaKind {

@@ -16,26 +16,26 @@ use sha2::{Digest, Sha256};
 use text_analysis_transcription::{WhisperCppModel, WhisperCppModelStore};
 use uuid::Uuid;
 
-use crate::audio::{
+use crate::config::{parse_media_sources_file, Settings};
+use crate::domain::models::{HealthResponse, IndexResponse, SearchResponse};
+use crate::domain::models::{SearchResult, SearchSceneResponse};
+use crate::storage::qdrant::QdrantImageStore;
+use crate::workers::indexer::ImageIndexer;
+use crate::workers::jobs::JobManager;
+use crate::workers::media::audio::{
     audio_transcription_model_store, audio_upload_path, decode_audio_segments,
     is_audio_content_type, is_audio_extension, parse_whisper_cpp_model, whisper_model_is_cached,
     write_audio_upload,
 };
-use crate::config::{parse_media_sources_file, Settings};
-use crate::image_io::load_media_bytes;
-use crate::indexer::ImageIndexer;
-use crate::jobs::JobManager;
-use crate::models::{HealthResponse, IndexResponse, SearchResponse};
-use crate::models::{SearchResult, SearchSceneResponse};
-use crate::ocr::normalize_ocr_query;
-use crate::qdrant::QdrantImageStore;
-use crate::search::ImageSearchService;
-use crate::sources::build_image_sources;
-use crate::video::{
+use crate::workers::media::image_io::load_media_bytes;
+use crate::workers::media::ocr::normalize_ocr_query;
+use crate::workers::media::video::{
     decode_video_scenes, is_video_content_type, is_video_extension, video_upload_path,
     write_video_upload,
 };
-use crate::visual_embedding::{build_visual_embedder, VisualEmbeddingBackend};
+use crate::workers::media::visual_embedding::{build_visual_embedder, VisualEmbeddingBackend};
+use crate::workers::search::ImageSearchService;
+use crate::workers::sources::build_image_sources;
 
 pub struct AppState {
     pub settings: Settings,

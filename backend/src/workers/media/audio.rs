@@ -15,13 +15,13 @@ use text_analysis_transcription::{
 use uuid::Uuid;
 
 use crate::config::Settings;
-use crate::image_io::load_image;
-use crate::media::{DecodedMedia, MediaFrame, MediaKind};
-use crate::models::{
+use crate::domain::models::{
     AudioAnalysis, AudioRecognizedVoice, AudioSegmentGuess, AudioSpeechSegment,
     AudioTranscriptSegment,
 };
-use crate::voice::{VoiceRegistry, VoiceRegistryMatch};
+use crate::workers::media::image_io::load_image;
+use crate::workers::media::media::{DecodedMedia, MediaFrame, MediaKind};
+use crate::workers::media::voice::{VoiceRegistry, VoiceRegistryMatch};
 
 const SPECTROGRAM_WIDTH: u32 = 512;
 const SPECTROGRAM_HEIGHT: u32 = 256;
@@ -121,7 +121,7 @@ pub fn decode_source_audio_segments(
     id_base: &str,
     settings: &Settings,
 ) -> Result<Vec<SourceAudioSegment>, String> {
-    let audio_id = crate::image_io::image_id_for_uri(id_base);
+    let audio_id = crate::workers::media::image_io::image_id_for_uri(id_base);
     let full_audio_url = expose_source_audio(path, &audio_id, settings)?;
     let segments = decode_audio_segments(path, settings)?;
     Ok(segments
