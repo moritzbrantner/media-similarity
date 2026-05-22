@@ -9,7 +9,7 @@ use audio_analysis_rhythm::{
 use audio_analysis_speakers::{
     EnergyVadConfig, EnergyVoiceActivityDetector, SpeakerAudio, VoiceActivityDetector,
 };
-use text_analysis_transcription::{
+use text_transcripts::{
     Transcriber, WhisperCppConfig, WhisperCppModel, WhisperCppModelStore, WhisperCppTranscriber,
 };
 use uuid::Uuid;
@@ -21,6 +21,7 @@ use crate::domain::models::{
 };
 use crate::workers::media::image_io::load_image;
 use crate::workers::media::media::{DecodedMedia, MediaFrame, MediaKind};
+use crate::workers::media::models::{audio_transcription_model_store, parse_whisper_cpp_model};
 use crate::workers::media::voice::{VoiceRegistry, VoiceRegistryMatch};
 
 const SPECTROGRAM_WIDTH: u32 = 512;
@@ -516,28 +517,12 @@ fn transcode_for_transcription(input_path: &Path, output_path: &Path) -> Result<
     Err(command_error("ffmpeg", &output.stderr))
 }
 
-pub fn audio_transcription_model_store(settings: &Settings) -> WhisperCppModelStore {
-    settings
-        .audio_transcription_cache_dir
-        .clone()
-        .map(WhisperCppModelStore::new)
-        .unwrap_or_default()
-}
-
 pub fn whisper_model_is_cached(store: &WhisperCppModelStore, model: WhisperCppModel) -> bool {
     store
         .catalog()
         .models
         .into_iter()
         .any(|status| status.model == model && status.cached)
-}
-
-pub fn parse_whisper_cpp_model(value: &str) -> Result<WhisperCppModel, String> {
-    let normalized = value.trim();
-    WhisperCppModel::ALL
-        .into_iter()
-        .find(|model| model.id().eq_ignore_ascii_case(normalized))
-        .ok_or_else(|| format!("Unknown whisper.cpp model `{normalized}`"))
 }
 
 fn attach_voice_registry(

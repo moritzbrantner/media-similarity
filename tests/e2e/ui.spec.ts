@@ -338,6 +338,10 @@ async function resetApiMocks(
     "**/api/jobs",
     "**/api/jobs/*/events",
     "**/api/jobs/*/cancel",
+    "**/api/models",
+    "**/api/models/*/download",
+    "**/api/models/*/enable",
+    "**/api/indexed-media/*",
     "**/api/source-config",
     "**/api/search?**",
     "**/thumbnails/**",
@@ -489,6 +493,19 @@ test("configures media sources from the UI", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("renders model status from the source configuration panel", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Open media configuration" }).click();
+
+  await expect(page.getByRole("heading", { name: "Model Status" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Visual embedding" })).toBeVisible();
+  await expect(
+    page.getByTitle("xenova-clip-vit-base-patch32-onnx"),
+  ).toBeVisible();
+  await expect(page.getByText("Audio transcription")).toBeVisible();
+});
+
 test("configures indexing behavior from the UI", async ({ page }) => {
   await page.goto("/");
 
@@ -538,6 +555,20 @@ test("uploads query media and renders search results", async ({ page }) => {
   await expect(
     page.getByRole("complementary").getByRole("button", { name: /query\.png/ }),
   ).toBeVisible();
+});
+
+test("deletes a search result from the index", async ({ page }) => {
+  const mocks = await resetApiMocks(page);
+  await page.goto("/");
+  await uploadAndSearch(page);
+
+  page.on("dialog", (dialog) => dialog.accept());
+  await resultCard(page, "sunrise.jpg")
+    .getByRole("button", { name: /Delete sunrise\.jpg/ })
+    .click();
+
+  await expect.poll(() => mocks.deletedMediaIds).toEqual(["local-sunrise"]);
+  await expect(page.getByRole("heading", { name: "sunrise.jpg" })).toHaveCount(0);
 });
 
 test("keeps search disabled until media is selected and clears the selected media", async ({

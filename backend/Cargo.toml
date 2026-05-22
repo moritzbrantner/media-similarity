@@ -22,7 +22,7 @@ image-analysis-onnx = { path = "../../rust-packages/crates/image/image-analysis-
 image-analysis-processing = { path = "../../rust-packages/crates/image/image-analysis-processing" }
 jobs-core = { path = "../../rust-packages/crates/jobs/jobs-core" }
 text-analysis-core = { path = "shims/text-analysis-core" }
-text-analysis-transcription = { path = "shims/text-analysis-transcription" }
+text-transcripts = { path = "../../rust-packages/crates/text/text-transcripts", features = ["native"] }
 async-trait = "0.1"
 axum = { version = "0.7", features = ["multipart"] }
 dotenvy = "0.15"
@@ -40,6 +40,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
 vector-analysis-core = { path = "../../rust-packages/crates/vector/vector-analysis-core" }
+video-analysis-models = { path = "../../rust-packages/crates/video/video-analysis-models" }
 video-analysis-core = { path = "../../rust-packages/crates/video/video-analysis-core" }
 video-analysis-detectors = { path = "../../rust-packages/crates/video/video-analysis-detectors" }
 video-analysis-ffmpeg = { path = "../../rust-packages/crates/video/video-analysis-ffmpeg" }

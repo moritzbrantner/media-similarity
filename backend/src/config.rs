@@ -20,6 +20,9 @@ pub struct Settings {
     pub thumbnail_dir: PathBuf,
     pub upload_dir: PathBuf,
     pub voice_registry_path: PathBuf,
+    pub model_bundle_dir: PathBuf,
+    pub model_hf_cache_dir: Option<PathBuf>,
+    pub model_hf_token: Option<String>,
     pub image_extensions: BTreeSet<String>,
     pub audio_extensions: BTreeSet<String>,
     pub pdf_extensions: BTreeSet<String>,
@@ -86,6 +89,9 @@ impl Default for Settings {
             thumbnail_dir: PathBuf::from("data/thumbnails"),
             upload_dir: PathBuf::from("data/uploads"),
             voice_registry_path: PathBuf::from("data/recognized-voices.json"),
+            model_bundle_dir: PathBuf::from("data/models/bundles"),
+            model_hf_cache_dir: None,
+            model_hf_token: None,
             image_extensions: parse_extensions(".jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.gif")
                 .expect("default extensions are valid"),
             audio_extensions: parse_extensions(".mp3,.wav,.flac,.m4a,.aac,.ogg,.opus")
@@ -182,6 +188,11 @@ impl Settings {
             thumbnail_dir: path_var("THUMBNAIL_DIR", defaults.thumbnail_dir),
             upload_dir: path_var("UPLOAD_DIR", defaults.upload_dir),
             voice_registry_path: path_var("VOICE_REGISTRY_PATH", defaults.voice_registry_path),
+            model_bundle_dir: path_var("MODEL_BUNDLE_DIR", defaults.model_bundle_dir),
+            model_hf_cache_dir: optional_string_var("MODEL_HF_CACHE_DIR")
+                .map(PathBuf::from)
+                .or(defaults.model_hf_cache_dir),
+            model_hf_token: optional_string_var("MODEL_HF_TOKEN").or(defaults.model_hf_token),
             image_extensions: match env::var("IMAGE_EXTENSIONS") {
                 Ok(value) => parse_extensions(&value)?,
                 Err(_) => defaults.image_extensions,

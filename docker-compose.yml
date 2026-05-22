@@ -11,10 +11,15 @@ x-app-environment: &app-environment
   QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
   QDRANT_COLLECTION: ${QDRANT_COLLECTION:-image_similarity}
   CLIP_MODEL_NAME: ${CLIP_MODEL_NAME:-sentence-transformers/clip-ViT-B-32}
+  VISUAL_EMBEDDING_BACKEND: ${VISUAL_EMBEDDING_BACKEND:-onnx}
+  VISUAL_EMBEDDING_ENABLED: ${VISUAL_EMBEDDING_ENABLED:-true}
   VECTOR_SIZE: ${VECTOR_SIZE:-512}
   THUMBNAIL_DIR: ${THUMBNAIL_DIR:-/app/data/thumbnails}
   UPLOAD_DIR: ${UPLOAD_DIR:-/app/data/uploads}
   VOICE_REGISTRY_PATH: ${VOICE_REGISTRY_PATH:-/app/data/recognized-voices.json}
+  MODEL_BUNDLE_DIR: ${MODEL_BUNDLE_DIR:-/app/data/models/bundles}
+  MODEL_HF_CACHE_DIR: ${MODEL_HF_CACHE_DIR:-/app/data/models/hf-cache}
+  MODEL_HF_TOKEN: ${MODEL_HF_TOKEN:-}
   IMAGE_EXTENSIONS: ${IMAGE_EXTENSIONS:-.jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.gif}
   AUDIO_EXTENSIONS: ${AUDIO_EXTENSIONS:-.mp3,.wav,.flac,.m4a,.aac,.ogg,.opus}
   PDF_EXTENSIONS: ${PDF_EXTENSIONS:-.pdf}

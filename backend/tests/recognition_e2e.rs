@@ -16,14 +16,16 @@ use jobs_core::{JobProgress, JobSpec};
 use reqwest::header::CONTENT_TYPE;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use text_analysis_transcription::WhisperCppModel;
+use text_transcripts::WhisperCppModel;
 use tokio::net::TcpListener;
 use uuid::Uuid;
 
 use image_similarity_service::api::{
-    audio_transcription_models, cancel_job, download_audio_transcription_model,
-    enable_audio_transcription_model, get_job, get_job_events, get_source_config, health,
-    index_images, list_jobs, search_upload, spawn_index_job, update_source_config, AppState,
+    audio_transcription_models, cancel_job, delete_indexed_media_route,
+    delete_indexed_sources_route, download_audio_transcription_model, download_model,
+    enable_audio_transcription_model, enable_model, get_job, get_job_events, get_models,
+    get_source_config, health, index_images, list_jobs, search_upload, spawn_index_job,
+    update_source_config, AppState,
 };
 use image_similarity_service::config::{parse_extensions, Settings};
 use image_similarity_service::domain::models::{IndexResponse, SearchResponse};
@@ -142,6 +144,52 @@ async fn index_prunes_records_for_removed_source_files() {
         .await;
     assert_eq!(response.count, 1);
     assert_eq!(response.results[0].image.filename, "keep.png");
+}
+
+#[tokio::test]
+async fn deletes_indexed_media_records_and_generated_artifacts() {
+    let app = TestApp::new(|settings| {
+        settings.image_extensions = parse_extensions(".png").unwrap();
+    })
+    .await;
+
+    let source = app.source_path("delete-me.png");
+    write_pattern_image(&source, 64, 40, [220, 20, 20], [20, 20, 20]);
+    let indexed = app.index().await;
+    assert_eq!(indexed.indexed, 1);
+
+    let before = app
+        .search_upload(
+            "query.png",
+            "application/octet-stream",
+            fs::read(&source).unwrap(),
+            None,
+        )
+        .await;
+    assert_eq!(before.count, 1);
+    let media_id = before.results[0].image.id.clone();
+
+    let deleted: Value = app
+        .client
+        .delete(format!("{}/api/indexed-media/{media_id}", app.base_url))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(deleted["deleted_points"], 1);
+    assert!(deleted["deleted_artifacts"].as_u64().unwrap_or_default() >= 1);
+
+    let after = app
+        .search_upload(
+            "query.png",
+            "application/octet-stream",
+            fs::read(&source).unwrap(),
+            None,
+        )
+        .await;
+    assert_eq!(after.count, 0);
 }
 
 #[tokio::test]
@@ -651,6 +699,24 @@ async fn audio_transcription_model_endpoints_report_cache_and_spawn_cached_jobs(
     assert_eq!(body["detail"], "Unknown whisper.cpp model `unknown-model`");
 }
 
+#[tokio::test]
+async fn generic_model_catalog_reports_runtime_roles() {
+    let app = TestApp::new(|_| {}).await;
+
+    let catalog = app.get_json("/api/models").await;
+    let roles = catalog["models"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|model| model["role"].as_str().unwrap().to_string())
+        .collect::<Vec<_>>();
+
+    assert!(roles.contains(&"visual_embedding".to_string()));
+    assert!(roles.contains(&"face_detection".to_string()));
+    assert!(roles.contains(&"face_embedding".to_string()));
+    assert!(roles.contains(&"audio_transcription".to_string()));
+}
+
 struct TestApp {
     base_url: String,
     client: reqwest::Client,
@@ -680,6 +746,7 @@ impl TestApp {
             voice_registry_path: root.path().join("recognized-voices.json"),
             media_sources_file: root.path().join("config/media-sources.txt"),
             vector_size: 32,
+            visual_embedding_backend: "legacy".to_string(),
             visual_embedding_vector_size: 32,
             face_embedding_vector_size: 32,
             default_search_limit: 10,
@@ -705,6 +772,9 @@ impl TestApp {
             .route("/api/jobs/:job_id", get(get_job))
             .route("/api/jobs/:job_id/events", get(get_job_events))
             .route("/api/jobs/:job_id/cancel", post(cancel_job))
+            .route("/api/models", get(get_models))
+            .route("/api/models/:role/download", post(download_model))
+            .route("/api/models/:role/enable", post(enable_model))
             .route(
                 "/api/models/audio-transcription",
                 get(audio_transcription_models),
@@ -716,6 +786,14 @@ impl TestApp {
             .route(
                 "/api/models/audio-transcription/enable",
                 post(enable_audio_transcription_model),
+            )
+            .route(
+                "/api/indexed-media/:id",
+                axum::routing::delete(delete_indexed_media_route),
+            )
+            .route(
+                "/api/indexed-sources",
+                axum::routing::delete(delete_indexed_sources_route),
             )
             .route("/api/search", post(search_upload))
             .with_state(state.clone());

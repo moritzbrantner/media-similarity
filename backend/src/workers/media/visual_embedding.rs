@@ -6,6 +6,7 @@ use image_analysis_onnx::{NativeOnnxRunner, OnnxImageEmbedder};
 use crate::config::Settings;
 use crate::workers::media::embedder::ImageEmbedder;
 use crate::workers::media::media::MediaFrame;
+use crate::workers::media::models::{load_role_bundle, ModelRole};
 
 pub trait VisualEmbeddingBackend: Send + Sync {
     fn model_name(&self) -> &str;
@@ -90,6 +91,7 @@ pub struct OnnxVisualEmbedder {
     model_path: std::path::PathBuf,
     preprocessor_path: std::path::PathBuf,
     vector_size: usize,
+    settings: Settings,
     runner:
         std::sync::OnceLock<std::sync::Mutex<Result<OnnxImageEmbedder<NativeOnnxRunner>, String>>>,
 }
@@ -101,12 +103,14 @@ impl OnnxVisualEmbedder {
             model_path: settings.visual_embedding_model_path.clone(),
             preprocessor_path: settings.visual_embedding_preprocessor_path.clone(),
             vector_size: settings.visual_embedding_vector_size,
+            settings: settings.clone(),
             runner: std::sync::OnceLock::new(),
         }
     }
 
     pub fn is_available(&self) -> bool {
-        self.model_path.is_file() && self.preprocessor_path.is_file()
+        load_role_bundle(ModelRole::VisualEmbedding, &self.settings).is_ok()
+            || (self.model_path.is_file() && self.preprocessor_path.is_file())
     }
 
     fn unavailable_error(&self) -> String {
@@ -126,12 +130,27 @@ impl OnnxVisualEmbedder {
         let model_path = self.model_path.clone();
         let preprocessor_path = self.preprocessor_path.clone();
         let vector_size = self.vector_size;
+        let settings = self.settings.clone();
         self.runner
             .get_or_init(|| {
-                std::sync::Mutex::new(
-                    OnnxImageEmbedder::from_paths(model_path, preprocessor_path, Some(vector_size))
-                        .map_err(|error| error.to_string()),
-                )
+                let runner = load_role_bundle(ModelRole::VisualEmbedding, &settings)
+                    .and_then(|bundle| {
+                        OnnxImageEmbedder::<NativeOnnxRunner>::from_bundle(bundle)
+                            .map_err(|error| error.to_string())
+                    })
+                    .or_else(|bundle_error| {
+                        if model_path.is_file() && preprocessor_path.is_file() {
+                            OnnxImageEmbedder::from_paths(
+                                model_path,
+                                preprocessor_path,
+                                Some(vector_size),
+                            )
+                            .map_err(|error| error.to_string())
+                        } else {
+                            Err(bundle_error)
+                        }
+                    });
+                std::sync::Mutex::new(runner)
             })
             .lock()
             .map_err(|_| "visual ONNX runner mutex was poisoned".to_string())
@@ -215,7 +234,7 @@ pub fn build_visual_embedder(settings: &Settings) -> std::sync::Arc<dyn VisualEm
             .visual_embedding_backend
             .eq_ignore_ascii_case("onnx")
     {
-        std::sync::Arc::new(FallbackVisualEmbedder::new(settings))
+        std::sync::Arc::new(OnnxVisualEmbedder::new(settings))
     } else {
         std::sync::Arc::new(LegacyColorEmbedder::new(
             "legacy-disabled",
@@ -263,7 +282,7 @@ mod tests {
     }
 
     #[test]
-    fn onnx_visual_embedder_falls_back_when_model_files_are_missing() {
+    fn onnx_visual_embedder_reports_missing_model_files() {
         let settings = Settings {
             visual_embedding_model_path: std::env::temp_dir().join("missing-clip-model.onnx"),
             visual_embedding_preprocessor_path: std::env::temp_dir()
@@ -274,9 +293,8 @@ mod tests {
         let image = ImageBuffer::from_pixel(4, 4, Rgb([10, 20, 30]));
         let embedder = build_visual_embedder(&settings);
 
-        let vector = embedder.embed_image(&image).unwrap();
+        let error = embedder.embed_image(&image).unwrap_err();
 
-        assert_eq!(vector.len(), 16);
-        assert!(vector.iter().all(|value| value.is_finite()));
+        assert!(error.contains("visual ONNX model is not available"));
     }
 }

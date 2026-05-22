@@ -3,6 +3,8 @@ import type {
   IndexResponse,
   JobEvent,
   JobSnapshot,
+  DeleteIndexResponse,
+  ModelsResponse,
   SearchResponse,
   SourceConfigResponse,
   SourceIndexingConfig,
@@ -75,6 +77,53 @@ export async function startIndexJob(): Promise<JobSnapshot> {
 export async function fetchJobs(): Promise<JobSnapshot[]> {
   const response = await fetch("/api/jobs");
   return parseResponse<JobSnapshot[]>(response);
+}
+
+export async function fetchModels(): Promise<ModelsResponse> {
+  const response = await fetch("/api/models");
+  return parseResponse<ModelsResponse>(response);
+}
+
+export async function downloadModel(role: string, model?: string | null): Promise<JobSnapshot> {
+  const response = await fetch(`/api/models/${encodeURIComponent(role)}/download`, {
+    body: JSON.stringify({ model: model ?? null }),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
+  return parseResponse<JobSnapshot>(response);
+}
+
+export async function enableModel(role: string, model?: string | null): Promise<JobSnapshot> {
+  const response = await fetch(`/api/models/${encodeURIComponent(role)}/enable`, {
+    body: JSON.stringify({ model: model ?? null }),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
+  return parseResponse<JobSnapshot>(response);
+}
+
+export async function deleteIndexedMedia(id: string): Promise<DeleteIndexResponse> {
+  const response = await fetch(`/api/indexed-media/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  return parseResponse<DeleteIndexResponse>(response);
+}
+
+export async function deleteIndexedSource(filter: {
+  source_item_uri?: string;
+  source_uri?: string;
+}): Promise<DeleteIndexResponse> {
+  const params = new URLSearchParams();
+  if (filter.source_uri) {
+    params.set("source_uri", filter.source_uri);
+  }
+  if (filter.source_item_uri) {
+    params.set("source_item_uri", filter.source_item_uri);
+  }
+  const response = await fetch(`/api/indexed-sources?${params.toString()}`, {
+    method: "DELETE",
+  });
+  return parseResponse<DeleteIndexResponse>(response);
 }
 
 export async function fetchJobEvents(jobId: string): Promise<JobEvent[]> {

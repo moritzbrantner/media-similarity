@@ -68,6 +68,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "audio-analysis-io"
+version = "0.1.0"
+dependencies = [
+ "audio-analysis-core",
+ "hound",
+ "video-analysis-core",
+ "video-analysis-ffmpeg",
+ "video-analysis-ingest",
+]
+
+[[package]]
 name = "audio-analysis-recognition"
 version = "0.1.0"
 dependencies = [
@@ -242,6 +253,15 @@ dependencies = [
  "num-traits",
  "serde",
  "windows-link",
+]
+
+[[package]]
+name = "cmake"
+version = "0.1.58"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0f78a02292a74a88ac736019ab962ece0bc380e3f977bf72e376c5d78ff0678"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
@@ -620,9 +640,15 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
- "ureq",
+ "ureq 3.3.0",
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "hound"
+version = "3.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62adaabb884c94955b19907d60019f4e145d091c75345379e70d1ee696f7854f"
 
 [[package]]
 name = "http"
@@ -709,7 +735,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
- "webpki-roots",
+ "webpki-roots 1.0.7",
 ]
 
 [[package]]
@@ -979,7 +1005,7 @@ dependencies = [
  "serde_json",
  "sha2",
  "text-analysis-core",
- "text-analysis-transcription",
+ "text-transcripts",
  "thiserror",
  "tokio",
  "tower-http",
@@ -991,6 +1017,7 @@ dependencies = [
  "video-analysis-core",
  "video-analysis-detectors",
  "video-analysis-ffmpeg",
+ "video-analysis-models",
  "video-analysis-split",
  "walkdir",
 ]
@@ -1639,7 +1666,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "webpki-roots",
+ "webpki-roots 1.0.7",
 ]
 
 [[package]]
@@ -1654,6 +1681,32 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "runtime-artifacts"
+version = "0.1.0"
+dependencies = [
+ "runtime-contracts",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "runtime-contracts"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "runtime-jobs"
+version = "0.1.0"
+dependencies = [
+ "runtime-artifacts",
+ "runtime-contracts",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1945,8 +1998,34 @@ name = "text-analysis-core"
 version = "0.1.0"
 
 [[package]]
-name = "text-analysis-transcription"
+name = "text-core"
 version = "0.1.0"
+dependencies = [
+ "runtime-contracts",
+ "runtime-jobs",
+ "serde",
+ "unicode-normalization",
+ "unicode-segmentation",
+ "video-analysis-core",
+]
+
+[[package]]
+name = "text-transcripts"
+version = "0.1.0"
+dependencies = [
+ "audio-analysis-core",
+ "audio-analysis-io",
+ "cmake",
+ "hound",
+ "serde",
+ "serde_json",
+ "sha2",
+ "text-core",
+ "thiserror",
+ "ureq 2.12.1",
+ "video-analysis-core",
+ "video-analysis-ingest",
+]
 
 [[package]]
 name = "thiserror"
@@ -2257,6 +2336,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
+name = "unicode-normalization"
+version = "0.1.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5fd4f6878c9cb28d874b009da9e8d183b5abc80117c40bbd187a1fde336be6e8"
+dependencies = [
+ "tinyvec",
+]
+
+[[package]]
+name = "unicode-segmentation"
+version = "1.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9629274872b2bfaf8d66f5f15725007f635594914870f65218920345aa11aa8c"
+
+[[package]]
 name = "unicode-width"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2282,6 +2376,22 @@ checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
 name = "ureq"
+version = "2.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02d1a66277ed75f640d608235660df48c8e3c19f3b4edb6a263315626cc3c01d"
+dependencies = [
+ "base64",
+ "flate2",
+ "log",
+ "once_cell",
+ "rustls",
+ "rustls-pki-types",
+ "url",
+ "webpki-roots 0.26.11",
+]
+
+[[package]]
+name = "ureq"
 version = "3.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dea7109cdcd5864d4eeb1b58a1648dc9bf520360d7af16ec26d0a9354bafcfc0"
@@ -2298,7 +2408,7 @@ dependencies = [
  "socks",
  "ureq-proto",
  "utf8-zero",
- "webpki-roots",
+ "webpki-roots 1.0.7",
 ]
 
 [[package]]
@@ -2583,6 +2693,15 @@ checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "webpki-roots"
+version = "0.26.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
+dependencies = [
+ "webpki-roots 1.0.7",
 ]
 
 [[package]]

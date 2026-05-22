@@ -12,6 +12,8 @@ The repository is organized as a Rust-only backend plus a conventional React/Vit
 - Rust worker modules for indexing, source loading, media decoding/analysis, OCR, face/voice handling, thumbnails, and embeddings.
 - Local folder indexing with deterministic media IDs.
 - Qdrant REST integration for vector upsert and search.
+- Model status and download jobs for visual, face, and audio transcription model roles through the sibling Rust model crates.
+- Explicit index deletion APIs for removing indexed records and generated thumbnails/uploads without deleting original source files.
 - Native image loading for JPEG, PNG, GIF, WebP, BMP, and TIFF.
 - Uploaded video query support for MP4, MOV, M4V, WebM, MKV, and AVI when `ffmpeg`/`ffprobe` are available.
 - Local source video indexing: videos in configured local source folders are cut into scenes and indexed as individual searchable scene records.
@@ -105,6 +107,26 @@ The response includes:
 
 GIF vector search uses sampled frame content plus frame-to-frame motion deltas. `query_phash`, `hash_distance`, and `near_duplicate` remain based on the representative poster frame so the duplicate contract stays compatible with static images.
 
+### Model Status
+
+```bash
+curl http://localhost:8000/api/models
+curl -X POST http://localhost:8000/api/models/visual_embedding/download \
+  -H 'Content-Type: application/json' \
+  -d '{"model": null}'
+```
+
+Model roles are `visual_embedding`, `face_detection`, `face_embedding`, and `audio_transcription`. The service delegates model specs, bundle storage, and native runtime adapters to the sibling `../rust-packages` crates.
+
+### Delete From Index
+
+```bash
+curl -X DELETE http://localhost:8000/api/indexed-media/<media-id>
+curl -X DELETE 'http://localhost:8000/api/indexed-sources?source_uri=/media/pictures'
+```
+
+Deletion removes Qdrant media/face points and generated files under `THUMBNAIL_DIR` and `UPLOAD_DIR`. It does not delete original source files.
+
 Video query search and source video indexing use the Rust scene detection crates with the content detector defaults from the `vanalyze` CLI. The service writes per-scene MP4 clips under `UPLOAD_DIR`, samples scene frames according to `VIDEO_FRAME_STRIDE` and `VIDEO_MAX_FRAMES`, and searches/indexes each scene independently. The Rust crates are sufficient for this workflow, but their command-backed FFmpeg runtime requires `ffmpeg` and `ffprobe` on `PATH`.
 
 Audio query search and source audio indexing use FFmpeg to render deterministic spectrogram images, then reuse the same thumbnail, pHash, and vector search pipeline as image media. Audio duration metadata is read with `ffprobe`. Speech activity uses a deterministic RMS voice-activity detector, tempo uses onset detection plus BPM estimation over mono 16 kHz PCM extracted with FFmpeg, and audio bit boundaries are guessed from speech spans, speaker labels, onsets, and maximum bit duration. Recognized voices are stored in a persistent spectral speaker registry; this is a deterministic baseline suitable for matching recurring voices, not a biometric identity guarantee.
@@ -139,6 +161,9 @@ Set these values in `.env`:
 | `PDF_SUMMARY_PAGES` | `8` | Maximum rendered pages sampled into the document summary vector. |
 | `AUDIO_TRANSCRIPTION_ENABLED` | `false` | Compatibility switch for transcript analysis. The repository-local text compatibility layer does not bundle a native transcription backend. |
 | `VOICE_REGISTRY_PATH` | `/app/data/recognized-voices.json` | Persistent speaker registry used to recognize recurring voices across audio files. |
+| `MODEL_BUNDLE_DIR` | `/app/data/models/bundles` | Local model bundle directory used by rust-packages model stores. |
+| `MODEL_HF_CACHE_DIR` | `/app/data/models/hf-cache` | Optional Hugging Face cache directory for model downloads. |
+| `MODEL_HF_TOKEN` | empty | Optional Hugging Face token forwarded to model downloads. |
 | `DEFAULT_SEARCH_LIMIT` | `12` | Default result count. |
 | `DUPLICATE_HASH_DISTANCE` | `8` | Max pHash distance for near-duplicate flag. |
 | `MAX_UPLOAD_MB` | `20` | Maximum uploaded query image, video, or audio size. |

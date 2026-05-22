@@ -6,8 +6,9 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use crate::config::Settings;
-use crate::domain::models::{ImagePayload, IndexResponse, OcrAnalysis};
+use crate::domain::models::{GeneratedArtifactPayload, ImagePayload, IndexResponse, OcrAnalysis};
 use crate::storage::qdrant::QdrantImageStore;
+use crate::workers::deletion::delete_indexed_media;
 use crate::workers::media::audio::{
     decode_source_audio_segments, expose_source_audio, SourceAudioSegment,
 };
@@ -88,9 +89,9 @@ impl ImageIndexer {
                     "pruning {prune_count} stale Qdrant record(s) before indexing"
                 ));
             }
-            match self.store.delete_points(&plan.prune_point_ids).await {
-                Ok(()) => {
-                    pruned += prune_count;
+            match self.delete_generated_records(&plan.prune_point_ids).await {
+                Ok(deleted) => {
+                    pruned += deleted;
                     if let Some(context) = context {
                         let _ = context.metadata("pruned", pruned.to_string());
                     }
@@ -151,9 +152,9 @@ impl ImageIndexer {
                         .cloned()
                         .collect::<Vec<_>>();
                     if !stale_point_ids.is_empty() {
-                        match self.store.delete_points(&stale_point_ids).await {
-                            Ok(()) => {
-                                pruned += stale_point_ids.len();
+                        match self.delete_generated_records(&stale_point_ids).await {
+                            Ok(deleted) => {
+                                pruned += deleted;
                                 if let Some(context) = context {
                                     let _ = context.info(format!(
                                         "pruned {} stale record(s) for {}",
@@ -346,6 +347,7 @@ impl ImageIndexer {
             &self.store,
             &media,
             &media_id,
+            Some(source_image.source_uri.clone()),
             Some(source_image.item_uri.clone()),
         )
         .await;
@@ -359,6 +361,21 @@ impl ImageIndexer {
             .embed_media(&media.sampled_frames, self.settings.gif_motion_weight)?;
         self.store.upsert_media(&payload, vector).await?;
         Ok(IndexOneOutcome::single(payload.id))
+    }
+
+    async fn delete_generated_records(&self, point_ids: &[String]) -> Result<usize, String> {
+        let mut deleted = 0;
+        let mut errors = Vec::new();
+        for point_id in point_ids {
+            let response = delete_indexed_media(&self.settings, &self.store, point_id).await;
+            deleted += response.deleted_points;
+            errors.extend(response.errors);
+        }
+        if errors.is_empty() {
+            Ok(deleted)
+        } else {
+            Err(errors.join("; "))
+        }
     }
 
     async fn index_video(&self, source_image: &SourceImage) -> Result<IndexOneOutcome, String> {
@@ -375,6 +392,7 @@ impl ImageIndexer {
                 &self.store,
                 &scene.media,
                 &media_id,
+                Some(source_image.source_uri.clone()),
                 Some(source_image.item_uri.clone()),
             )
             .await;
@@ -614,6 +632,19 @@ impl ImageIndexer {
         } else {
             source_image.display_path.clone()
         };
+        let full_video_url = video_scene.and_then(|scene| scene.full_video_url.clone());
+        let full_pdf_url = pdf_context.and_then(|pdf| pdf.full_pdf_url.clone());
+        let pdf_page_url = pdf_context.and_then(|pdf| pdf.pdf_page_url.clone());
+        let scene_clip_url = video_scene.and_then(|scene| scene.clip_url.clone());
+        let artifacts = generated_artifacts(
+            Some(&thumbnail_url),
+            animated_thumbnail_url.as_deref(),
+            full_video_url.as_deref(),
+            full_audio_url.as_deref(),
+            full_pdf_url.as_deref(),
+            pdf_page_url.as_deref(),
+            scene_clip_url.as_deref(),
+        );
         Ok(ImagePayload {
             id: image_id,
             path,
@@ -629,10 +660,10 @@ impl ImageIndexer {
             media_kind: media.kind.as_str().to_string(),
             frame_count: media.frame_count,
             duration_ms: media.duration_ms,
-            full_video_url: video_scene.and_then(|scene| scene.full_video_url.clone()),
+            full_video_url,
             full_audio_url,
-            full_pdf_url: pdf_context.and_then(|pdf| pdf.full_pdf_url.clone()),
-            pdf_page_url: pdf_context.and_then(|pdf| pdf.pdf_page_url.clone()),
+            full_pdf_url,
+            pdf_page_url,
             pdf_document_id: pdf_context.and_then(|pdf| pdf.pdf_document_id.clone()),
             pdf_page_index: pdf_context.and_then(|pdf| pdf.pdf_page_index),
             pdf_page_number: pdf_context.and_then(|pdf| pdf.pdf_page_number),
@@ -643,7 +674,8 @@ impl ImageIndexer {
             visual_embedding_model: Some(self.embedder.model_name().to_string()),
             faces: options.face_analysis.faces.clone(),
             people: options.face_analysis.person_clusters.clone(),
-            scene_clip_url: video_scene.and_then(|scene| scene.clip_url.clone()),
+            artifacts,
+            scene_clip_url,
             scene_index: video_scene
                 .map(|scene| scene.scene_index)
                 .or_else(|| audio_segment.map(|segment| segment.scene_index)),
@@ -798,6 +830,36 @@ fn payload_analysis_complete(payload: &ImagePayload, settings: &Settings) -> boo
     }
 
     true
+}
+
+fn generated_artifacts(
+    thumbnail_url: Option<&str>,
+    animated_thumbnail_url: Option<&str>,
+    full_video_url: Option<&str>,
+    full_audio_url: Option<&str>,
+    full_pdf_url: Option<&str>,
+    pdf_page_url: Option<&str>,
+    scene_clip_url: Option<&str>,
+) -> Vec<GeneratedArtifactPayload> {
+    [
+        ("thumbnail", thumbnail_url),
+        ("animated_thumbnail", animated_thumbnail_url),
+        ("source_video", full_video_url),
+        ("source_audio", full_audio_url),
+        ("source_pdf", full_pdf_url),
+        ("pdf_page", pdf_page_url),
+        ("video_scene", scene_clip_url),
+    ]
+    .into_iter()
+    .filter_map(|(kind, maybe_url)| {
+        let raw = maybe_url?;
+        let url = raw.split_once('#').map_or(raw, |(base, _)| base);
+        (!url.is_empty()).then(|| GeneratedArtifactPayload {
+            kind: kind.to_string(),
+            url: url.to_string(),
+        })
+    })
+    .collect()
 }
 
 fn indexing_profile(settings: &Settings) -> String {

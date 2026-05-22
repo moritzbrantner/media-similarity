@@ -11,6 +11,7 @@ use crate::config::Settings;
 use crate::domain::models::{FaceBoxPayload, FaceDetectionPayload, PersonSummary};
 use crate::storage::qdrant::QdrantImageStore;
 use crate::workers::media::media::DecodedMedia;
+use crate::workers::media::models::{load_role_bundle, ModelRole};
 use crate::workers::media::persons::{assign_person, face_point_payload, summarize_people};
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -43,6 +44,7 @@ pub async fn analyze_faces_for_media(
     store: &QdrantImageStore,
     media: &DecodedMedia,
     media_id: &str,
+    source_uri: Option<String>,
     source_item_uri: Option<String>,
 ) -> FaceAnalysis {
     if !settings.face_analysis_enabled || media.kind.as_str() == "audio" {
@@ -75,7 +77,12 @@ pub async fn analyze_faces_for_media(
             person_id: face.person_id.clone(),
             person_label: face.person_label.clone(),
         };
-        let point = face_point_payload(&payload, &assignment, source_item_uri.clone());
+        let point = face_point_payload(
+            &payload,
+            &assignment,
+            source_uri.clone(),
+            source_item_uri.clone(),
+        );
         if let Err(error) = store.upsert_face(&point, face.embedding.clone()).await {
             tracing::warn!(%error, face_id = %face.face_id, "could not upsert face point");
         }
@@ -136,6 +143,7 @@ impl FaceAnalyzer {
 
 pub struct FaceDetector {
     model_path: std::path::PathBuf,
+    settings: Settings,
     min_confidence: f32,
     max_frames: usize,
     cluster_threshold: f32,
@@ -147,6 +155,7 @@ impl FaceDetector {
     pub fn new(settings: &Settings) -> Self {
         Self {
             model_path: settings.face_detection_model_path.clone(),
+            settings: settings.clone(),
             min_confidence: settings.face_detection_min_confidence,
             max_frames: settings.face_max_frames_per_media,
             cluster_threshold: settings.face_cluster_threshold,
@@ -155,7 +164,8 @@ impl FaceDetector {
     }
 
     pub fn detect(&self, image: &RgbImage) -> Result<Vec<SharedFaceDetection>, String> {
-        if !self.model_path.is_file() {
+        let bundle = load_role_bundle(ModelRole::FaceDetection, &self.settings).ok();
+        if bundle.is_none() && !self.model_path.is_file() {
             return Err(format!(
                 "face detection model is not available at {}",
                 self.model_path.display()
@@ -164,6 +174,7 @@ impl FaceDetector {
 
         let model_path = self.model_path.clone();
         let min_confidence = self.min_confidence;
+        let settings = self.settings.clone();
         let mut runner = self
             .runner
             .get_or_init(|| {
@@ -171,11 +182,21 @@ impl FaceDetector {
                     score_threshold: min_confidence,
                     ..OnnxFaceDetectionOptions::default()
                 };
-                std::sync::Mutex::new(
-                    NativeOnnxRunner::new(model_path)
-                        .and_then(|runner| OnnxFaceDetector::with_options(options, runner))
-                        .map_err(|error| error.to_string()),
-                )
+                let runner = load_role_bundle(ModelRole::FaceDetection, &settings)
+                    .and_then(|bundle| {
+                        OnnxFaceDetector::<NativeOnnxRunner>::from_bundle(bundle)
+                            .map_err(|error| error.to_string())
+                    })
+                    .or_else(|bundle_error| {
+                        if model_path.is_file() {
+                            NativeOnnxRunner::new(model_path)
+                                .and_then(|runner| OnnxFaceDetector::with_options(options, runner))
+                                .map_err(|error| error.to_string())
+                        } else {
+                            Err(bundle_error)
+                        }
+                    });
+                std::sync::Mutex::new(runner)
             })
             .lock()
             .map_err(|_| "face detection runner mutex was poisoned".to_string())?;
@@ -189,6 +210,7 @@ impl FaceDetector {
 
 pub struct FaceEmbedder {
     model_path: std::path::PathBuf,
+    settings: Settings,
     vector_size: usize,
     runner:
         std::sync::OnceLock<std::sync::Mutex<Result<OnnxFaceEmbedder<NativeOnnxRunner>, String>>>,
@@ -198,6 +220,7 @@ impl FaceEmbedder {
     pub fn new(settings: &Settings) -> Self {
         Self {
             model_path: settings.face_embedding_model_path.clone(),
+            settings: settings.clone(),
             vector_size: settings.face_embedding_vector_size,
             runner: std::sync::OnceLock::new(),
         }
@@ -208,7 +231,8 @@ impl FaceEmbedder {
         image: &RgbImage,
         detection: &SharedFaceDetection,
     ) -> Result<Vec<f32>, String> {
-        if !self.model_path.is_file() {
+        let bundle = load_role_bundle(ModelRole::FaceEmbedding, &self.settings).ok();
+        if bundle.is_none() && !self.model_path.is_file() {
             return Err(format!(
                 "face embedding model is not available at {}",
                 self.model_path.display()
@@ -217,13 +241,24 @@ impl FaceEmbedder {
 
         let model_path = self.model_path.clone();
         let vector_size = self.vector_size;
+        let settings = self.settings.clone();
         let mut runner = self
             .runner
             .get_or_init(|| {
-                std::sync::Mutex::new(
-                    OnnxFaceEmbedder::from_model_path(model_path, Some(vector_size))
-                        .map_err(|error| error.to_string()),
-                )
+                let runner = load_role_bundle(ModelRole::FaceEmbedding, &settings)
+                    .and_then(|bundle| {
+                        OnnxFaceEmbedder::<NativeOnnxRunner>::from_bundle(bundle)
+                            .map_err(|error| error.to_string())
+                    })
+                    .or_else(|bundle_error| {
+                        if model_path.is_file() {
+                            OnnxFaceEmbedder::from_model_path(model_path, Some(vector_size))
+                                .map_err(|error| error.to_string())
+                        } else {
+                            Err(bundle_error)
+                        }
+                    });
+                std::sync::Mutex::new(runner)
             })
             .lock()
             .map_err(|_| "face embedding runner mutex was poisoned".to_string())?;

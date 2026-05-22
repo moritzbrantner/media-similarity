@@ -30,9 +30,13 @@ import {
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   cancelJob,
+  deleteIndexedMedia,
+  downloadModel,
+  enableModel,
   fetchHealth,
   fetchJobEvents,
   fetchJobs,
+  fetchModels,
   fetchSourceConfig,
   searchMedia,
   startIndexJob,
@@ -43,6 +47,8 @@ import type {
   IndexResponse,
   JobEvent,
   JobSnapshot,
+  ModelRuntimeStatus,
+  ModelsResponse,
   PersonSummary,
   SearchResponse,
   SearchResult,
@@ -174,6 +180,11 @@ export function App() {
     queryFn: fetchSourceConfig,
   });
 
+  const modelsQuery = useQuery({
+    queryKey: ["models"],
+    queryFn: fetchModels,
+  });
+
   const jobsQuery = useQuery({
     queryKey: ["jobs"],
     queryFn: fetchJobs,
@@ -205,6 +216,34 @@ export function App() {
       setSelectedJobId(job.spec.id);
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["job-events", job.spec.id] });
+    },
+  });
+
+  const downloadModelMutation = useMutation({
+    mutationFn: ({ model, role }: { model?: string | null; role: string }) =>
+      downloadModel(role, model),
+    onSuccess: (job) => {
+      setSelectedJobId(job.spec.id);
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["models"] });
+    },
+  });
+
+  const enableModelMutation = useMutation({
+    mutationFn: ({ model, role }: { model?: string | null; role: string }) =>
+      enableModel(role, model),
+    onSuccess: (job) => {
+      setSelectedJobId(job.spec.id);
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["models"] });
+    },
+  });
+
+  const deleteMediaMutation = useMutation({
+    mutationFn: deleteIndexedMedia,
+    onSuccess: (_response, id) => {
+      removeMediaFromSearchHistory(id);
+      queryClient.invalidateQueries({ queryKey: ["health"] });
     },
   });
 
@@ -316,6 +355,15 @@ export function App() {
 
     updateSearchHistory((history) =>
       history.map((item) => (item.id === activeSearchId ? updater(item) : item)),
+    );
+  }
+
+  function removeMediaFromSearchHistory(id: string) {
+    updateSearchHistory((history) =>
+      history.map((item) => ({
+        ...item,
+        response: removeResultFromResponse(item.response, id),
+      })),
     );
   }
 
@@ -681,7 +729,13 @@ export function App() {
 
                 {activeResponse?.scenes.length ? (
                   <SceneResultsList
+                    deletingId={
+                      deleteMediaMutation.isPending
+                        ? (deleteMediaMutation.variables as string | undefined)
+                        : undefined
+                    }
                     filters={metadataFilters}
+                    onDelete={(id) => deleteMediaMutation.mutate(id)}
                     onSelectScene={setSelectedQuerySceneIndex}
                     scenes={activeResponse.scenes}
                     selectedSceneIndex={selectedQuerySceneIndex}
@@ -693,6 +747,12 @@ export function App() {
                     pending={searchMutation.isPending}
                     results={results}
                     searched={Boolean(activeResponse)}
+                    deletingId={
+                      deleteMediaMutation.isPending
+                        ? (deleteMediaMutation.variables as string | undefined)
+                        : undefined
+                    }
+                    onDelete={(id) => deleteMediaMutation.mutate(id)}
                   />
                 )}
               </div>
@@ -706,6 +766,21 @@ export function App() {
             indexPending={indexMutation.isPending || indexActive}
             lastIndex={lastIndex}
             loading={sourceConfigQuery.isLoading}
+            modelActionPending={
+              downloadModelMutation.isPending || enableModelMutation.isPending
+                ? (
+                    (downloadModelMutation.variables ?? enableModelMutation.variables) as
+                      | { role: string }
+                      | undefined
+                  )?.role
+                : undefined
+            }
+            modelError={downloadModelMutation.error ?? enableModelMutation.error}
+            models={modelsQuery.data ?? null}
+            modelsError={modelsQuery.error}
+            modelsLoading={modelsQuery.isLoading}
+            onDownloadModel={(role, model) => downloadModelMutation.mutate({ role, model })}
+            onEnableModel={(role, model) => enableModelMutation.mutate({ role, model })}
             onIndex={() => indexMutation.mutate()}
             onSave={(sources) => sourceConfigMutation.mutate(sources)}
             saveError={sourceConfigMutation.error}
@@ -941,6 +1016,13 @@ function SourceConfigurationPage({
   indexPending,
   lastIndex,
   loading,
+  modelActionPending,
+  modelError,
+  models,
+  modelsError,
+  modelsLoading,
+  onDownloadModel,
+  onEnableModel,
   onIndex,
   onSave,
   saveError,
@@ -953,6 +1035,13 @@ function SourceConfigurationPage({
   indexPending: boolean;
   lastIndex: IndexResponse | null;
   loading: boolean;
+  modelActionPending?: string;
+  modelError: Error | null;
+  models: ModelsResponse | null;
+  modelsError: Error | null;
+  modelsLoading: boolean;
+  onDownloadModel: (role: string, model?: string | null) => void;
+  onEnableModel: (role: string, model?: string | null) => void;
   onIndex: () => void;
   onSave: (sources: string[]) => void;
   saveError: Error | null;
@@ -1159,6 +1248,15 @@ function SourceConfigurationPage({
       </div>
 
       <aside className="flex h-fit flex-col gap-5">
+        <ModelStatusPanel
+          actionPendingRole={modelActionPending}
+          error={modelError ?? modelsError}
+          loading={modelsLoading}
+          models={models?.models ?? []}
+          onDownload={onDownloadModel}
+          onEnable={onEnableModel}
+        />
+
         <section className="rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
           <h2 className="text-sm font-semibold text-neutral-950">Source Types</h2>
           <div className="mt-3 grid gap-2">
@@ -1803,6 +1901,101 @@ function SourceStatusCard({ source }: { source: SourceConfigSource }) {
         </div>
       </div>
     </article>
+  );
+}
+
+function ModelStatusPanel({
+  actionPendingRole,
+  error,
+  loading,
+  models,
+  onDownload,
+  onEnable,
+}: {
+  actionPendingRole?: string;
+  error: Error | null;
+  loading: boolean;
+  models: ModelRuntimeStatus[];
+  onDownload: (role: string, model?: string | null) => void;
+  onEnable: (role: string, model?: string | null) => void;
+}) {
+  return (
+    <section className="rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
+      <h2 className="text-sm font-semibold text-neutral-950">Model Status</h2>
+      {loading ? (
+        <div className="mt-3 flex items-center gap-2 text-sm text-neutral-600">
+          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+          <span>Checking models.</span>
+        </div>
+      ) : error ? (
+        <div className="mt-3">
+          <Message icon={<AlertCircle className="size-4" />} text={error.message} tone="error" />
+        </div>
+      ) : (
+        <div className="mt-3 grid gap-3">
+          {models.map((model) => {
+            const pending = actionPendingRole === model.role;
+            return (
+              <article
+                className="rounded-md border border-neutral-200 bg-neutral-50 p-3"
+                key={model.role}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold text-neutral-950">{model.label}</h3>
+                    <p className="mt-1 truncate text-xs text-neutral-600" title={model.configured}>
+                      {model.configured}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 rounded-md border px-2 py-1 text-xs font-semibold ${
+                      model.active
+                        ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                        : model.cached
+                          ? "border-sky-200 bg-sky-50 text-sky-800"
+                          : "border-amber-200 bg-amber-50 text-amber-800"
+                    }`}
+                  >
+                    {model.active ? "active" : model.cached ? "cached" : "missing"}
+                  </span>
+                </div>
+                {model.detail ? (
+                  <p className="mt-2 text-xs text-neutral-600">{model.detail}</p>
+                ) : null}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-neutral-300 bg-white px-2 text-xs font-semibold text-neutral-800 transition hover:border-neutral-500 hover:bg-neutral-50 disabled:cursor-wait disabled:opacity-60"
+                    disabled={pending || model.cached}
+                    onClick={() => onDownload(model.role, model.configured)}
+                    type="button"
+                  >
+                    {pending && !model.cached ? (
+                      <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Cloud className="size-3.5" aria-hidden="true" />
+                    )}
+                    <span>Download</span>
+                  </button>
+                  <button
+                    className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-neutral-300 bg-white px-2 text-xs font-semibold text-neutral-800 transition hover:border-neutral-500 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={pending || !model.cached}
+                    onClick={() => onEnable(model.role, model.configured)}
+                    type="button"
+                  >
+                    {pending && model.cached ? (
+                      <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <CheckCircle2 className="size-3.5" aria-hidden="true" />
+                    )}
+                    <span>Enable</span>
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -2572,6 +2765,23 @@ function normalizeSearchResponse(response: SearchHistoryItem["response"]): Searc
   };
 }
 
+function removeResultFromResponse(response: SearchResponse, id: string): SearchResponse {
+  const results = response.results.filter((result) => result.image.id !== id);
+  return {
+    ...response,
+    count: results.length,
+    results,
+    scenes: response.scenes.map((scene) => {
+      const sceneResults = scene.results.filter((result) => result.image.id !== id);
+      return {
+        ...scene,
+        count: sceneResults.length,
+        results: sceneResults,
+      };
+    }),
+  };
+}
+
 function normalizeSearchResult(result: SearchResult): SearchResult {
   return {
     ...result,
@@ -2586,6 +2796,7 @@ function normalizeSearchResult(result: SearchResult): SearchResult {
       pdf_page_number: result.image.pdf_page_number ?? null,
       pdf_page_count: result.image.pdf_page_count ?? null,
       visual_embedding_model: result.image.visual_embedding_model ?? null,
+      artifacts: Array.isArray(result.image.artifacts) ? result.image.artifacts : [],
     },
   };
 }
@@ -2807,10 +3018,14 @@ function Message({
 }
 
 function ResultsGrid({
+  deletingId,
+  onDelete,
   pending,
   results,
   searched,
 }: {
+  deletingId?: string;
+  onDelete?: (id: string) => void;
   pending: boolean;
   results: SearchResult[];
   searched: boolean;
@@ -2834,21 +3049,30 @@ function ResultsGrid({
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
       {results.map((result) => (
-        <ResultCard key={result.image.id} result={result} />
+        <ResultCard
+          deleting={deletingId === result.image.id}
+          key={result.image.id}
+          onDelete={onDelete}
+          result={result}
+        />
       ))}
     </div>
   );
 }
 
 function SceneResultsList({
+  deletingId,
   filters,
+  onDelete,
   onSelectScene,
   resultLimit,
   scenes,
   selectedSceneIndex,
   sortMode,
 }: {
+  deletingId?: string;
   filters: MetadataFilters;
+  onDelete?: (id: string) => void;
   onSelectScene: (sceneIndex: number) => void;
   resultLimit: number;
   scenes: SearchSceneResponse[];
@@ -2931,7 +3155,13 @@ function SceneResultsList({
               </a>
             ) : null}
           </div>
-          <ResultsGrid pending={false} results={selectedResults} searched />
+          <ResultsGrid
+            deletingId={deletingId}
+            onDelete={onDelete}
+            pending={false}
+            results={selectedResults}
+            searched
+          />
         </section>
       ) : null}
     </div>
@@ -3080,7 +3310,15 @@ function EmptyResults({ text }: { text: string }) {
   );
 }
 
-function ResultCard({ result }: { result: SearchResult }) {
+function ResultCard({
+  deleting = false,
+  onDelete,
+  result,
+}: {
+  deleting?: boolean;
+  onDelete?: (id: string) => void;
+  result: SearchResult;
+}) {
   const image = result.image;
   const faces = image.faces ?? [];
   const people = image.people ?? [];
@@ -3096,13 +3334,35 @@ function ResultCard({ result }: { result: SearchResult }) {
         )}
       </div>
       <div className="flex flex-col gap-3 p-4">
-        <div className="min-w-0">
-          <h3 className="truncate text-sm font-semibold text-neutral-950" title={image.filename}>
-            {image.filename}
-          </h3>
-          <p className="mt-1 truncate text-xs text-neutral-600" title={image.relative_path}>
-            {image.relative_path}
-          </p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="truncate text-sm font-semibold text-neutral-950" title={image.filename}>
+              {image.filename}
+            </h3>
+            <p className="mt-1 truncate text-xs text-neutral-600" title={image.relative_path}>
+              {image.relative_path}
+            </p>
+          </div>
+          {onDelete ? (
+            <button
+              aria-label={`Delete ${image.filename} from index`}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-neutral-300 bg-white text-neutral-700 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:cursor-wait disabled:opacity-60"
+              disabled={deleting}
+              onClick={() => {
+                if (window.confirm(`Delete ${image.filename} from the index?`)) {
+                  onDelete(image.id);
+                }
+              }}
+              title="Delete from index"
+              type="button"
+            >
+              {deleting ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <Trash2 className="size-4" aria-hidden="true" />
+              )}
+            </button>
+          ) : null}
         </div>
 
         <dl className="grid gap-2 text-sm">

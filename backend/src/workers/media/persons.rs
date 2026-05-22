@@ -117,6 +117,7 @@ pub fn summarize_people(faces: &[FaceDetectionPayload]) -> Vec<PersonSummary> {
 pub fn face_point_payload(
     face: &FaceDetectionPayload,
     person: &PersonAssignment,
+    source_uri: Option<String>,
     source_item_uri: Option<String>,
 ) -> FacePointPayload {
     FacePointPayload {
@@ -127,6 +128,7 @@ pub fn face_point_payload(
         confidence: face.confidence,
         person_id: person.person_id.clone(),
         person_label: person.person_label.clone(),
+        source_uri,
         source_item_uri,
     }
 }

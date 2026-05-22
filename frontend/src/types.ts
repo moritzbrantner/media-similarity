@@ -114,6 +114,35 @@ export type SourceIndexingConfig = {
   audio_transcription_enabled: boolean;
 };
 
+export type ModelOption = {
+  id: string;
+  label: string;
+  cached: boolean;
+  configured: boolean;
+};
+
+export type ModelRuntimeStatus = {
+  role: string;
+  label: string;
+  configured: string;
+  cached: boolean;
+  active: boolean;
+  bundle_path: string | null;
+  detail: string | null;
+  options: ModelOption[];
+};
+
+export type ModelsResponse = {
+  models: ModelRuntimeStatus[];
+};
+
+export type DeleteIndexResponse = {
+  deleted_points: number;
+  deleted_faces: number;
+  deleted_artifacts: number;
+  errors: string[];
+};
+
 export type AudioAnalysis = {
   speech_detected: boolean;
   speech_ratio: number;
@@ -225,6 +254,7 @@ export type ImagePayload = {
   visual_embedding_model: string | null;
   faces: FaceDetectionPayload[];
   people: PersonSummary[];
+  artifacts: { kind: string; url: string }[];
   scene_clip_url: string | null;
   scene_index: number | null;
   scene_start_frame: number | null;

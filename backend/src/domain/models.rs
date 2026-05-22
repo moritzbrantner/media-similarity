@@ -114,7 +114,16 @@ pub struct FacePointPayload {
     pub person_id: String,
     #[serde(default)]
     pub person_label: Option<String>,
+    #[serde(default)]
+    pub source_uri: Option<String>,
+    #[serde(default)]
     pub source_item_uri: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct GeneratedArtifactPayload {
+    pub kind: String,
+    pub url: String,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -165,6 +174,8 @@ pub struct ImagePayload {
     pub faces: Vec<FaceDetectionPayload>,
     #[serde(default)]
     pub people: Vec<PersonSummary>,
+    #[serde(default)]
+    pub artifacts: Vec<GeneratedArtifactPayload>,
     #[serde(default)]
     pub scene_clip_url: Option<String>,
     #[serde(default)]
@@ -388,6 +399,7 @@ mod tests {
             visual_embedding_model: Some("clip".to_string()),
             faces: Vec::new(),
             people: Vec::new(),
+            artifacts: Vec::new(),
             scene_clip_url: None,
             scene_index: None,
             scene_start_frame: None,
@@ -441,6 +453,7 @@ mod tests {
             visual_embedding_model: Some("clip".to_string()),
             faces: Vec::new(),
             people: Vec::new(),
+            artifacts: Vec::new(),
             scene_clip_url: Some("/uploads/source-scenes/id/scene-001.mp4".to_string()),
             scene_index: Some(0),
             scene_start_frame: Some(10),
@@ -529,6 +542,7 @@ mod tests {
             visual_embedding_model: Some("clip".to_string()),
             faces: Vec::new(),
             people: Vec::new(),
+            artifacts: Vec::new(),
             scene_clip_url: None,
             scene_index: None,
             scene_start_frame: None,

@@ -11,6 +11,7 @@ import {
 
 export type ApiMockOptions = {
   health?: unknown;
+  models?: unknown;
   sourceConfig?: typeof sourceConfigResponse;
   jobs?: unknown[];
   jobEvents?: unknown[];
@@ -27,6 +28,7 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
   let jobs = options.jobs ?? [];
   let currentSourceConfig = options.sourceConfig ?? sourceConfigResponse;
   const cancelledJobIds: string[] = [];
+  const deletedMediaIds: string[] = [];
   const sourceConfigPuts: unknown[] = [];
   const indexingConfigPuts: unknown[] = [];
 
@@ -70,6 +72,45 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
     });
   });
 
+  await page.route("**/api/models", async (route) => {
+    await route.fulfill({
+      json: options.models ?? {
+        models: [
+          {
+            active: true,
+            bundle_path: "/models/visual",
+            cached: true,
+            configured: "xenova-clip-vit-base-patch32-onnx",
+            detail: "Using model bundle `xenova-clip-vit-base-patch32-onnx`",
+            label: "Visual embedding",
+            options: [],
+            role: "visual_embedding",
+          },
+          {
+            active: false,
+            bundle_path: null,
+            cached: false,
+            configured: "base.en",
+            detail: "Role is disabled by configuration",
+            label: "Audio transcription",
+            options: [],
+            role: "audio_transcription",
+          },
+        ],
+      },
+    });
+  });
+
+  await page.route("**/api/models/*/download", async (route) => {
+    jobs = [completedIndexJob];
+    await route.fulfill({ json: completedIndexJob });
+  });
+
+  await page.route("**/api/models/*/enable", async (route) => {
+    jobs = [completedIndexJob];
+    await route.fulfill({ json: completedIndexJob });
+  });
+
   await page.route("**/api/source-config", async (route) => {
     if (route.request().method() === "PUT") {
       const request = route.request().postDataJSON() as {
@@ -107,6 +148,19 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
     await route.fulfill({ json: options.searchResponse ?? searchResponse });
   });
 
+  await page.route("**/api/indexed-media/*", async (route) => {
+    const match = route
+      .request()
+      .url()
+      .match(/\/api\/indexed-media\/([^/?]+)/);
+    if (match) {
+      deletedMediaIds.push(decodeURIComponent(match[1]));
+    }
+    await route.fulfill({
+      json: { deleted_artifacts: 1, deleted_faces: 0, deleted_points: 1, errors: [] },
+    });
+  });
+
   await page.route("**/thumbnails/**", async (route) => {
     await route.fulfill({
       body: pngPixel,
@@ -116,6 +170,7 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
 
   return {
     cancelledJobIds,
+    deletedMediaIds,
     indexingConfigPuts,
     sourceConfigPuts,
   };

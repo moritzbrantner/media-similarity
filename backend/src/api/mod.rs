@@ -13,21 +13,27 @@ use jobs_core::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
-use text_analysis_transcription::{WhisperCppModel, WhisperCppModelStore};
+use text_transcripts::{WhisperCppModel, WhisperCppModelStore};
 use uuid::Uuid;
 
 use crate::config::{parse_extensions, parse_media_sources_file, Settings};
 use crate::domain::models::{HealthResponse, IndexResponse, SearchResponse};
 use crate::domain::models::{SearchResult, SearchSceneResponse};
 use crate::storage::qdrant::QdrantImageStore;
+use crate::workers::deletion::{
+    delete_indexed_media, delete_indexed_source, DeleteIndexResponse, DeleteIndexedSourceFilter,
+};
 use crate::workers::indexer::ImageIndexer;
 use crate::workers::jobs::JobManager;
 use crate::workers::media::audio::{
-    audio_transcription_model_store, audio_upload_path, decode_audio_segments,
-    is_audio_content_type, is_audio_extension, parse_whisper_cpp_model, whisper_model_is_cached,
-    write_audio_upload,
+    audio_upload_path, decode_audio_segments, is_audio_content_type, is_audio_extension,
+    whisper_model_is_cached, write_audio_upload,
 };
 use crate::workers::media::image_io::load_media_bytes;
+use crate::workers::media::models::{
+    audio_transcription_model_store, download_role_bundle, model_statuses, parse_whisper_cpp_model,
+    ModelRole, ModelRuntimeStatus,
+};
 use crate::workers::media::ocr::normalize_ocr_query;
 use crate::workers::media::pdf::{
     decode_pdf, is_pdf_content_type, is_pdf_extension, pdf_upload_path, write_pdf_upload,
@@ -688,6 +694,27 @@ pub async fn cancel_job(
         .ok_or_else(|| ApiError::not_found(format!("Unknown job `{job_id}`")))
 }
 
+pub async fn delete_indexed_media_route(
+    State(state): State<Arc<AppState>>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Json<DeleteIndexResponse>, ApiError> {
+    let response = delete_indexed_media(&state.indexing_settings(), &state.store, &id).await;
+    Ok(Json(response))
+}
+
+pub async fn delete_indexed_sources_route(
+    State(state): State<Arc<AppState>>,
+    Query(filter): Query<DeleteIndexedSourceFilter>,
+) -> Result<Json<DeleteIndexResponse>, ApiError> {
+    if filter.source_uri.is_none() && filter.source_item_uri.is_none() {
+        return Err(ApiError::bad_request(
+            "source_uri or source_item_uri is required",
+        ));
+    }
+    let response = delete_indexed_source(&state.indexing_settings(), &state.store, filter).await;
+    Ok(Json(response))
+}
+
 #[derive(Debug, Serialize)]
 pub struct AudioTranscriptionModelsResponse {
     pub enabled: bool,
@@ -702,6 +729,17 @@ pub struct AudioTranscriptionModelResponse {
     pub id: String,
     pub cached: bool,
     pub configured: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ModelsResponse {
+    pub models: Vec<ModelRuntimeStatus>,
+}
+
+pub async fn get_models(State(state): State<Arc<AppState>>) -> Json<ModelsResponse> {
+    Json(ModelsResponse {
+        models: model_statuses(&state.indexing_settings()),
+    })
 }
 
 pub async fn audio_transcription_models(
@@ -741,11 +779,117 @@ pub struct AudioTranscriptionModelJobRequest {
     pub model: Option<String>,
 }
 
+pub async fn download_model(
+    State(state): State<Arc<AppState>>,
+    AxumPath(role): AxumPath<String>,
+    Json(request): Json<AudioTranscriptionModelJobRequest>,
+) -> Result<Json<JobSnapshot>, ApiError> {
+    let role = role.parse::<ModelRole>().map_err(ApiError::bad_request)?;
+    if role == ModelRole::AudioTranscription {
+        return spawn_audio_transcription_download(state, request.model).map(Json);
+    }
+
+    let settings = state.indexing_settings();
+    let spec = crate::workers::media::models::role_spec(role).map_err(ApiError::bad_request)?;
+    if let Some(requested) = request.model.as_deref() {
+        if requested != spec.name {
+            return Err(ApiError::bad_request(format!(
+                "Model role `{}` supports configured model `{}`",
+                role.as_str(),
+                spec.name
+            )));
+        }
+    }
+    let spec_for_job = spec.clone();
+    let model_name = spec.name.clone();
+    let spec = JobSpec::new(
+        format!("model.download.{}.{}", role.as_str(), Uuid::new_v4()),
+        format!("Download {}", role.label()),
+    )
+    .and_then(|job_spec| job_spec.with_kind("model.download"))
+    .and_then(|job_spec| job_spec.with_metadata("role", role.as_str()))
+    .and_then(|job_spec| job_spec.with_metadata("model", model_name))
+    .map_err(ApiError::from_job)?;
+    state
+        .jobs
+        .spawn(spec, move |context| {
+            context.info(format!("downloading model bundle `{}`", spec_for_job.name))?;
+            context.progress(
+                JobProgress::new(0, Some(1))?
+                    .unit("steps")?
+                    .message("downloading model bundle"),
+            )?;
+            let bundle = download_role_bundle(role, &settings).map_err(job_failed)?;
+            context.artifact(
+                JobArtifact::new("manifest", format!("model bundle {}", bundle.manifest.name))
+                    .kind("model-bundle")
+                    .path(bundle.manifest_path()),
+            )?;
+            context.progress(
+                JobProgress::new(1, Some(1))?
+                    .unit("steps")?
+                    .message("model bundle ready"),
+            )?;
+            Ok(())
+        })
+        .map(Json)
+        .map_err(ApiError::from_job)
+}
+
+pub async fn enable_model(
+    State(state): State<Arc<AppState>>,
+    AxumPath(role): AxumPath<String>,
+    Json(request): Json<AudioTranscriptionModelJobRequest>,
+) -> Result<Json<JobSnapshot>, ApiError> {
+    let role = role.parse::<ModelRole>().map_err(ApiError::bad_request)?;
+    if role == ModelRole::AudioTranscription {
+        return spawn_audio_transcription_enable(state, request.model).map(Json);
+    }
+
+    let settings = state.indexing_settings();
+    let status = crate::workers::media::models::model_status(role, &settings);
+    if !status.cached {
+        return Err(ApiError::bad_request(format!(
+            "model `{}` is not cached; download it before enabling",
+            status.configured
+        )));
+    }
+    let spec = JobSpec::new(
+        format!("model.enable.{}.{}", role.as_str(), Uuid::new_v4()),
+        format!("Enable {}", role.label()),
+    )
+    .and_then(|spec| spec.with_kind("model.enable"))
+    .and_then(|spec| spec.with_metadata("role", role.as_str()))
+    .and_then(|spec| spec.with_metadata("model", status.configured.clone()))
+    .map_err(ApiError::from_job)?;
+    state
+        .jobs
+        .spawn(spec, move |context| {
+            context.info(format!("model role `{}` is ready", role.as_str()))?;
+            context.metadata("enabled", "true")?;
+            context.progress(
+                JobProgress::new(1, Some(1))?
+                    .unit("steps")?
+                    .message("model enable check complete"),
+            )?;
+            Ok(())
+        })
+        .map(Json)
+        .map_err(ApiError::from_job)
+}
+
 pub async fn download_audio_transcription_model(
     State(state): State<Arc<AppState>>,
     Json(request): Json<AudioTranscriptionModelJobRequest>,
 ) -> Result<Json<JobSnapshot>, ApiError> {
-    let model = requested_audio_transcription_model(&state.settings, request.model.as_deref())?;
+    spawn_audio_transcription_download(state, request.model).map(Json)
+}
+
+fn spawn_audio_transcription_download(
+    state: Arc<AppState>,
+    requested: Option<String>,
+) -> Result<JobSnapshot, ApiError> {
+    let model = requested_audio_transcription_model(&state.settings, requested.as_deref())?;
     let store = audio_transcription_model_store(&state.settings);
     let spec = model_job_spec("model.download", "Download whisper.cpp model", model)?;
     state
@@ -754,7 +898,6 @@ pub async fn download_audio_transcription_model(
             download_whisper_cpp_model(context, store, model)?;
             Ok(())
         })
-        .map(Json)
         .map_err(ApiError::from_job)
 }
 
@@ -762,7 +905,14 @@ pub async fn enable_audio_transcription_model(
     State(state): State<Arc<AppState>>,
     Json(request): Json<AudioTranscriptionModelJobRequest>,
 ) -> Result<Json<JobSnapshot>, ApiError> {
-    let model = requested_audio_transcription_model(&state.settings, request.model.as_deref())?;
+    spawn_audio_transcription_enable(state, request.model).map(Json)
+}
+
+fn spawn_audio_transcription_enable(
+    state: Arc<AppState>,
+    requested: Option<String>,
+) -> Result<JobSnapshot, ApiError> {
+    let model = requested_audio_transcription_model(&state.settings, requested.as_deref())?;
     let store = audio_transcription_model_store(&state.settings);
     let settings = state.settings.clone();
     let spec = model_job_spec("model.enable", "Enable whisper.cpp model", model)?;
@@ -772,7 +922,6 @@ pub async fn enable_audio_transcription_model(
             enable_whisper_cpp_model(context, &settings, &store, model)?;
             Ok(())
         })
-        .map(Json)
         .map_err(ApiError::from_job)
 }
 
@@ -906,7 +1055,7 @@ pub async fn search_upload(
         )
         .await
         .map(Json)
-        .map_err(ApiError::internal)
+        .map_err(search_error)
 }
 
 struct UploadedFileKind {
@@ -948,7 +1097,7 @@ async fn search_pdf_upload(
         let mut response = service
             .search_media(&page.media, limit, ocr_text, person_id)
             .await
-            .map_err(ApiError::internal)?;
+            .map_err(search_error)?;
         for result in &mut response.results {
             result.query_scene_index = Some(page.page_index);
         }
@@ -1019,7 +1168,7 @@ async fn search_audio_upload(
         let mut response = service
             .search_media(&segment.media, limit, ocr_text, person_id)
             .await
-            .map_err(ApiError::internal)?;
+            .map_err(search_error)?;
         for result in &mut response.results {
             result.query_scene_index = Some(segment.scene_index);
         }
@@ -1092,7 +1241,7 @@ async fn search_video_upload(
         let mut response = service
             .search_media(&scene.media, limit, ocr_text, person_id)
             .await
-            .map_err(ApiError::internal)?;
+            .map_err(search_error)?;
         for result in &mut response.results {
             result.query_scene_index = Some(scene.scene_index);
         }
@@ -1350,6 +1499,14 @@ fn job_failed(error: impl std::fmt::Display) -> JobError {
     JobError::Failed(error.to_string())
 }
 
+fn search_error(error: String) -> ApiError {
+    if error.contains("model is not available") || error.contains("model unavailable") {
+        ApiError::service_unavailable(error)
+    } else {
+        ApiError::internal(error)
+    }
+}
+
 pub struct ApiError {
     status: StatusCode,
     detail: String,
@@ -1373,6 +1530,13 @@ impl ApiError {
     fn not_found(detail: impl Into<String>) -> Self {
         Self {
             status: StatusCode::NOT_FOUND,
+            detail: detail.into(),
+        }
+    }
+
+    fn service_unavailable(detail: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::SERVICE_UNAVAILABLE,
             detail: detail.into(),
         }
     }

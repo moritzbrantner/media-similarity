@@ -2,17 +2,18 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::Router;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
 use crate::api::{
-    audio_transcription_models, cancel_job, download_audio_transcription_model,
-    enable_audio_transcription_model, get_job, get_job_events, get_source_config, health,
-    index_images, list_jobs, search_upload, spawn_index_job, spawn_startup_index_job,
-    update_source_config, AppState,
+    audio_transcription_models, cancel_job, delete_indexed_media_route,
+    delete_indexed_sources_route, download_audio_transcription_model, download_model,
+    enable_audio_transcription_model, enable_model, get_job, get_job_events, get_models,
+    get_source_config, health, index_images, list_jobs, search_upload, spawn_index_job,
+    spawn_startup_index_job, update_source_config, AppState,
 };
 use crate::config::Settings;
 
@@ -46,6 +47,9 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/jobs/:job_id", get(get_job))
         .route("/api/jobs/:job_id/events", get(get_job_events))
         .route("/api/jobs/:job_id/cancel", post(cancel_job))
+        .route("/api/models", get(get_models))
+        .route("/api/models/:role/download", post(download_model))
+        .route("/api/models/:role/enable", post(enable_model))
         .route(
             "/api/models/audio-transcription",
             get(audio_transcription_models),
@@ -58,6 +62,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             "/api/models/audio-transcription/enable",
             post(enable_audio_transcription_model),
         )
+        .route("/api/indexed-media/:id", delete(delete_indexed_media_route))
+        .route("/api/indexed-sources", delete(delete_indexed_sources_route))
         .route("/api/search", post(search_upload))
         .nest_service("/static", ServeDir::new(static_dir.clone()))
         .nest_service("/thumbnails", ServeDir::new(settings.thumbnail_dir.clone()))

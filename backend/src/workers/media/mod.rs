@@ -5,6 +5,7 @@ pub mod hashing;
 pub mod image_io;
 #[allow(clippy::module_inception)]
 pub mod media;
+pub mod models;
 pub mod ocr;
 pub mod pdf;
 pub mod persons;

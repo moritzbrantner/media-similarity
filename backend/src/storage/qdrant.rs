@@ -188,6 +188,10 @@ impl QdrantImageStore {
         Ok(())
     }
 
+    pub async fn delete_points_by_ids(&self, ids: &[String]) -> Result<(), String> {
+        self.delete_points(ids).await
+    }
+
     pub async fn search_visual(
         &self,
         vector: Vec<f32>,
@@ -258,14 +262,68 @@ impl QdrantImageStore {
         self.scroll_points(Some("media")).await
     }
 
-    #[allow(dead_code)]
     pub async fn scroll_face_points(&self) -> Result<Vec<StoredPoint>, String> {
         self.scroll_points(Some("face")).await
+    }
+
+    pub async fn scroll_media_points_by_filter(
+        &self,
+        id: Option<&str>,
+        source_uri: Option<&str>,
+        source_item_uri: Option<&str>,
+    ) -> Result<Vec<StoredPoint>, String> {
+        let mut conditions = vec![field_condition("point_kind", "media")];
+        if let Some(id) = id {
+            conditions.push(field_condition("id", id));
+        }
+        if let Some(source_uri) = source_uri {
+            conditions.push(field_condition("source_uri", source_uri));
+        }
+        if let Some(source_item_uri) = source_item_uri {
+            conditions.push(field_condition("source_item_uri", source_item_uri));
+        }
+        self.scroll_points_with_filter(Some(Filter { must: conditions }))
+            .await
+    }
+
+    pub async fn scroll_face_points_by_media_ids(
+        &self,
+        media_ids: &[String],
+    ) -> Result<Vec<StoredPoint>, String> {
+        if media_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let media_ids = media_ids
+            .iter()
+            .map(String::as_str)
+            .collect::<std::collections::BTreeSet<_>>();
+        Ok(self
+            .scroll_face_points()
+            .await?
+            .into_iter()
+            .filter(|point| {
+                point
+                    .payload
+                    .as_ref()
+                    .and_then(|payload| payload.get("media_id"))
+                    .and_then(Value::as_str)
+                    .map(|media_id| media_ids.contains(media_id))
+                    .unwrap_or(false)
+            })
+            .collect())
     }
 
     async fn scroll_points(
         &self,
         point_kind: Option<&'static str>,
+    ) -> Result<Vec<StoredPoint>, String> {
+        self.scroll_points_with_filter(point_kind.map(kind_filter))
+            .await
+    }
+
+    async fn scroll_points_with_filter(
+        &self,
+        filter: Option<Filter>,
     ) -> Result<Vec<StoredPoint>, String> {
         let mut offset = None;
         let mut points = Vec::new();
@@ -276,7 +334,7 @@ impl QdrantImageStore {
                 with_payload: true,
                 with_vector: false,
                 offset: offset.clone(),
-                filter: point_kind.map(kind_filter),
+                filter: filter.clone(),
             };
             let response = self
                 .send_with_fallback(|base_url| {
@@ -619,29 +677,35 @@ fn legacy_collection_schema_error(collection: &str) -> String {
     )
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct Filter {
     must: Vec<FieldCondition>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct FieldCondition {
-    key: &'static str,
+    key: String,
     #[serde(rename = "match")]
     condition_match: MatchValue,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct MatchValue {
-    value: &'static str,
+    value: String,
 }
 
 fn kind_filter(kind: &'static str) -> Filter {
     Filter {
-        must: vec![FieldCondition {
-            key: "point_kind",
-            condition_match: MatchValue { value: kind },
-        }],
+        must: vec![field_condition("point_kind", kind)],
+    }
+}
+
+fn field_condition(key: impl Into<String>, value: impl Into<String>) -> FieldCondition {
+    FieldCondition {
+        key: key.into(),
+        condition_match: MatchValue {
+            value: value.into(),
+        },
     }
 }
 
