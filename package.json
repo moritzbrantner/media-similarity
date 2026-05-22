@@ -26,6 +26,7 @@
     "test:with-services": "COMPOSE_SERVICES=\"qdrant\" bash scripts/run-with-compose-services.sh bun run test"
   },
   "dependencies": {
+    "@moritzbrantner/ui": "^0.5.4",
     "@tanstack/react-query": "^5.100.11",
     "lucide-react": "^0.511.0",
     "react": "^19.2.0",

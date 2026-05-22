@@ -1,3 +1,19 @@
+import {
+  Alert,
+  AlertDescription,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Checkbox,
+  Input,
+  Label,
+  NativeSelect,
+  Progress,
+  Textarea,
+} from "@moritzbrantner/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -494,7 +510,7 @@ export function App() {
 
           <div className="flex flex-col gap-2 sm:flex-row lg:items-center">
             <div className="flex min-h-10 flex-wrap rounded-md border border-neutral-300 bg-white p-1 shadow-sm">
-              <button
+              <Button
                 aria-label="Open query page"
                 aria-pressed={activeView === "search"}
                 className={`inline-flex items-center justify-center gap-2 rounded px-3 text-sm font-semibold transition ${
@@ -507,8 +523,8 @@ export function App() {
               >
                 <Search className="size-4" aria-hidden="true" />
                 <span>Search</span>
-              </button>
-              <button
+              </Button>
+              <Button
                 aria-label="Open inverse index"
                 aria-pressed={activeView === "inverse-index"}
                 className={`inline-flex items-center justify-center gap-2 rounded px-3 text-sm font-semibold transition ${
@@ -521,8 +537,8 @@ export function App() {
               >
                 <Users className="size-4" aria-hidden="true" />
                 <span>Registry</span>
-              </button>
-              <button
+              </Button>
+              <Button
                 aria-label="Open media configuration"
                 aria-pressed={activeView === "configure"}
                 className={`inline-flex items-center justify-center gap-2 rounded px-3 text-sm font-semibold transition ${
@@ -535,8 +551,8 @@ export function App() {
               >
                 <Settings className="size-4" aria-hidden="true" />
                 <span>Sources</span>
-              </button>
-              <button
+              </Button>
+              <Button
                 aria-label="Open indexing configuration"
                 aria-pressed={activeView === "indexing"}
                 className={`inline-flex items-center justify-center gap-2 rounded px-3 text-sm font-semibold transition ${
@@ -549,9 +565,10 @@ export function App() {
               >
                 <SlidersHorizontal className="size-4" aria-hidden="true" />
                 <span>Indexing</span>
-              </button>
+              </Button>
             </div>
-            <button
+            <Button
+              variant="outline"
               className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-neutral-400 bg-white px-4 text-sm font-semibold text-neutral-900 shadow-sm transition hover:border-neutral-500 hover:bg-neutral-50 disabled:cursor-wait disabled:opacity-60"
               disabled={indexMutation.isPending || indexActive}
               onClick={() => indexMutation.mutate()}
@@ -563,7 +580,7 @@ export function App() {
                 <Database className="size-4" aria-hidden="true" />
               )}
               <span>Index Sources</span>
-            </button>
+            </Button>
           </div>
         </header>
 
@@ -585,10 +602,10 @@ export function App() {
                 onSubmit={handleSubmit}
               >
                 <div>
-                  <label className="text-sm font-semibold text-neutral-900" htmlFor="query-image">
+                  <Label className="text-sm font-semibold text-neutral-900" htmlFor="query-image">
                     Query media
-                  </label>
-                  <label
+                  </Label>
+                  <Label
                     className="mt-2 flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-md border border-dashed border-neutral-400 bg-neutral-50 px-4 py-5 text-center transition hover:border-emerald-600 hover:bg-emerald-50"
                     htmlFor="query-image"
                   >
@@ -600,8 +617,8 @@ export function App() {
                       PNG, JPEG, GIF, WebP, BMP, TIFF, MP4, MOV, WebM, MKV, AVI, MP3, WAV, FLAC,
                       M4A, AAC, OGG, Opus, or PDF
                     </span>
-                  </label>
-                  <input
+                  </Label>
+                  <Input
                     accept="image/*,video/*,audio/*,application/pdf,.pdf"
                     className="sr-only"
                     id="query-image"
@@ -611,10 +628,10 @@ export function App() {
                 </div>
 
                 <div>
-                  <label className="text-sm font-semibold text-neutral-900" htmlFor="limit">
+                  <Label className="text-sm font-semibold text-neutral-900" htmlFor="limit">
                     Result limit
-                  </label>
-                  <input
+                  </Label>
+                  <Input
                     className="mt-2 h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
                     id="limit"
                     max={100}
@@ -626,15 +643,15 @@ export function App() {
                 </div>
 
                 <div>
-                  <label
+                  <Label
                     className="text-sm font-semibold text-neutral-900"
                     htmlFor="ocr-text-query"
                   >
                     Text in media
-                  </label>
+                  </Label>
                   <div className="mt-2 flex h-10 items-center gap-2 rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-950 transition focus-within:border-emerald-700 focus-within:ring-2 focus-within:ring-emerald-200">
                     <FileText className="size-4 shrink-0 text-neutral-500" aria-hidden="true" />
-                    <input
+                    <Input
                       className="min-w-0 flex-1 bg-transparent outline-none"
                       id="ocr-text-query"
                       onChange={(event) => setOcrTextQuery(event.target.value)}
@@ -646,7 +663,7 @@ export function App() {
                 </div>
 
                 <div className="flex gap-2">
-                  <button
+                  <Button
                     className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
                     disabled={!file || searchMutation.isPending}
                     type="submit"
@@ -657,17 +674,18 @@ export function App() {
                       <Search className="size-4" aria-hidden="true" />
                     )}
                     <span>Search</span>
-                  </button>
+                  </Button>
                   {file ? (
-                    <button
+                    <Button
                       aria-label="Clear selected media"
+                      variant="outline"
                       className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-neutral-300 bg-white text-neutral-700 transition hover:border-neutral-500 hover:bg-neutral-50"
                       onClick={() => handleFileChange(null)}
                       title="Clear selected media"
                       type="button"
                     >
                       <X className="size-4" aria-hidden="true" />
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
 
@@ -930,12 +948,18 @@ function JobsPanel({
   }
 
   return (
-    <section className="rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+    <Card className="rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
+      <CardHeader className="flex flex-col gap-3 p-0 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <Database className="size-4 text-neutral-600" aria-hidden="true" />
-            <h2 className="text-sm font-semibold text-neutral-950">Background Jobs</h2>
+            <CardTitle
+              aria-level={2}
+              className="text-sm font-semibold text-neutral-950"
+              role="heading"
+            >
+              Background Jobs
+            </CardTitle>
           </div>
           <p className="mt-1 text-sm text-neutral-600">
             {selectedJob
@@ -944,7 +968,8 @@ function JobsPanel({
           </p>
         </div>
         {selectedJob && jobIsActive(selectedJob) ? (
-          <button
+          <Button
+            variant="outline"
             className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-red-200 bg-white px-3 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
             disabled={cancelPendingJobId === selectedJob.spec.id}
             onClick={() => onCancel(selectedJob.spec.id)}
@@ -956,12 +981,12 @@ function JobsPanel({
               <X className="size-4" aria-hidden="true" />
             )}
             <span>Cancel</span>
-          </button>
+          </Button>
         ) : null}
-      </div>
+      </CardHeader>
 
       {selectedJob ? (
-        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)]">
+        <CardContent className="mt-4 grid gap-4 p-0 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)]">
           <div className="min-w-0">
             <div className="flex items-center justify-between gap-3 text-sm">
               <span className={`font-semibold ${jobStatusClass(selectedJob.status)}`}>
@@ -972,7 +997,8 @@ function JobsPanel({
             <JobProgressBar progress={selectedJob.progress} />
             <div className="mt-3 flex flex-wrap gap-2">
               {jobs.slice(0, 6).map((job) => (
-                <button
+                <Button
+                  variant={job.spec.id === selectedJob.spec.id ? "default" : "outline"}
                   className={`max-w-full rounded-md border px-2 py-1 text-left text-xs transition ${
                     job.spec.id === selectedJob.spec.id
                       ? "border-neutral-900 bg-neutral-900 text-white"
@@ -985,7 +1011,7 @@ function JobsPanel({
                 >
                   <span className="block max-w-44 truncate font-semibold">{job.spec.name}</span>
                   <span className="block">{job.status}</span>
-                </button>
+                </Button>
               ))}
             </div>
           </div>
@@ -1013,9 +1039,9 @@ function JobsPanel({
               )}
             </ol>
           </div>
-        </div>
+        </CardContent>
       ) : null}
-    </section>
+    </Card>
   );
 }
 
@@ -1034,12 +1060,7 @@ function JobProgressBar({ progress }: { progress: JobSnapshot["progress"] }) {
         <span className="min-w-0 truncate">{progress?.message ?? value}</span>
         <span className="shrink-0">{percent === null ? value : `${percent}%`}</span>
       </div>
-      <div className="mt-2 h-2 overflow-hidden rounded bg-neutral-200">
-        <div
-          className="h-full bg-emerald-700 transition-all"
-          style={{ width: `${percent ?? (progress ? 45 : 0)}%` }}
-        />
-      </div>
+      <Progress className="mt-2 h-2 bg-neutral-200" value={percent ?? (progress ? 45 : 0)} />
     </div>
   );
 }
@@ -1082,7 +1103,8 @@ function InverseIndexPage({
               Key findings grouped by identity with the indexed media locations where they occur.
             </p>
           </div>
-          <button
+          <Button
+            variant="outline"
             className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-neutral-300 bg-white px-3 text-sm font-semibold text-neutral-800 transition hover:border-neutral-500 hover:bg-neutral-50 disabled:cursor-wait disabled:opacity-60"
             disabled={refreshing}
             onClick={onRefresh}
@@ -1094,7 +1116,7 @@ function InverseIndexPage({
               <RotateCw className="size-4" aria-hidden="true" />
             )}
             <span>Refresh</span>
-          </button>
+          </Button>
         </div>
 
         <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1406,14 +1428,15 @@ function SourceConfigurationPage({
                 Stored in {config.media_sources_file}
               </p>
             </div>
-            <button
+            <Button
+              variant="outline"
               className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-neutral-300 bg-white px-3 text-sm font-semibold text-neutral-800 transition hover:border-neutral-500 hover:bg-neutral-50"
               onClick={() => addSource()}
               type="button"
             >
               <Plus className="size-4" aria-hidden="true" />
               <span>Add Source</span>
-            </button>
+            </Button>
           </div>
 
           <div className="mt-4 flex flex-col gap-3">
@@ -1463,7 +1486,8 @@ function SourceConfigurationPage({
               )}
             </div>
             <div className="flex gap-2">
-              <button
+              <Button
+                variant="outline"
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-neutral-300 bg-white px-3 text-sm font-semibold text-neutral-800 transition hover:border-neutral-500 hover:bg-neutral-50 disabled:cursor-wait disabled:opacity-60"
                 disabled={indexPending}
                 onClick={onIndex}
@@ -1475,8 +1499,8 @@ function SourceConfigurationPage({
                   <Database className="size-4" aria-hidden="true" />
                 )}
                 <span>Index Sources</span>
-              </button>
-              <button
+              </Button>
+              <Button
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={!canSave}
                 onClick={saveSources}
@@ -1488,7 +1512,7 @@ function SourceConfigurationPage({
                   <Save className="size-4" aria-hidden="true" />
                 )}
                 <span>Save</span>
-              </button>
+              </Button>
             </div>
           </div>
           {indexError || lastIndex ? (
@@ -1671,7 +1695,8 @@ function IndexingConfigurationPage({
               </p>
             </div>
             <div className="flex gap-2">
-              <button
+              <Button
+                variant="outline"
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-neutral-300 bg-white px-3 text-sm font-semibold text-neutral-800 transition hover:border-neutral-500 hover:bg-neutral-50 disabled:cursor-wait disabled:opacity-60"
                 disabled={indexPending}
                 onClick={onIndex}
@@ -1683,8 +1708,8 @@ function IndexingConfigurationPage({
                   <Database className="size-4" aria-hidden="true" />
                 )}
                 <span>Index Sources</span>
-              </button>
-              <button
+              </Button>
+              <Button
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={!canSave}
                 onClick={saveDraft}
@@ -1696,7 +1721,7 @@ function IndexingConfigurationPage({
                   <Save className="size-4" aria-hidden="true" />
                 )}
                 <span>Save</span>
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -1966,10 +1991,10 @@ function ExtensionsField({
 }) {
   return (
     <div>
-      <label className="text-xs font-semibold text-neutral-700" htmlFor={id}>
+      <Label className="text-xs font-semibold text-neutral-700" htmlFor={id}>
         {label}
-      </label>
-      <textarea
+      </Label>
+      <Textarea
         className="mt-1 min-h-24 w-full resize-y rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
         id={id}
         onChange={(event) => onChange(splitExtensionDraft(event.target.value))}
@@ -1990,15 +2015,14 @@ function ToggleField({
   onChange: (value: boolean) => void;
 }) {
   return (
-    <label className="flex h-12 items-center justify-between gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-3 text-sm font-semibold text-neutral-800">
+    <Label className="flex h-12 items-center justify-between gap-3 rounded-md border border-neutral-200 bg-neutral-50 px-3 text-sm font-semibold text-neutral-800">
       <span>{label}</span>
-      <input
+      <Checkbox
         checked={checked}
         className="size-4 accent-emerald-700"
-        onChange={(event) => onChange(event.target.checked)}
-        type="checkbox"
+        onCheckedChange={(value) => onChange(value === true)}
       />
-    </label>
+    </Label>
   );
 }
 
@@ -2021,10 +2045,10 @@ function NumberField({
 }) {
   return (
     <div>
-      <label className="text-xs font-semibold text-neutral-700" htmlFor={id}>
+      <Label className="text-xs font-semibold text-neutral-700" htmlFor={id}>
         {label}
-      </label>
-      <input
+      </Label>
+      <Input
         className="mt-1 h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
         id={id}
         max={max}
@@ -2053,10 +2077,10 @@ function OptionalNumberField({
 }) {
   return (
     <div>
-      <label className="text-xs font-semibold text-neutral-700" htmlFor={id}>
+      <Label className="text-xs font-semibold text-neutral-700" htmlFor={id}>
         {label}
-      </label>
-      <input
+      </Label>
+      <Input
         className="mt-1 h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
         id={id}
         min={min}
@@ -2093,10 +2117,10 @@ function SourceDraftRow({
   return (
     <div className="grid gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-3 md:grid-cols-[180px_minmax(0,1fr)_40px]">
       <div>
-        <label className="text-xs font-semibold text-neutral-700" htmlFor={selectId}>
+        <Label className="text-xs font-semibold text-neutral-700" htmlFor={selectId}>
           Source {index + 1}
-        </label>
-        <select
+        </Label>
+        <NativeSelect
           className="mt-1 h-10 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500"
           disabled={plannedReadOnly}
           id={selectId}
@@ -2115,13 +2139,13 @@ function SourceDraftRow({
           ))}
           {!hasKnownType ? <option value={source.kind}>{source.kind}</option> : null}
           <option value="custom">Custom</option>
-        </select>
+        </NativeSelect>
       </div>
       <div className="min-w-0">
-        <label className="text-xs font-semibold text-neutral-700" htmlFor={inputId}>
+        <Label className="text-xs font-semibold text-neutral-700" htmlFor={inputId}>
           Source spec
-        </label>
-        <input
+        </Label>
+        <Input
           className="mt-1 h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200 read-only:cursor-not-allowed read-only:bg-neutral-100 read-only:text-neutral-500"
           id={inputId}
           onChange={(event) => onUpdate({ spec: event.target.value })}
@@ -2131,15 +2155,16 @@ function SourceDraftRow({
         />
       </div>
       <div className="flex items-end">
-        <button
+        <Button
           aria-label={`Remove source ${index + 1}`}
+          variant="outline"
           className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-neutral-300 bg-white text-neutral-700 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700"
           onClick={onRemove}
           title="Remove source"
           type="button"
         >
           <Trash2 className="size-4" aria-hidden="true" />
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -2239,7 +2264,8 @@ function ModelStatusPanel({
                   <p className="mt-2 text-xs text-neutral-600">{model.detail}</p>
                 ) : null}
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <button
+                  <Button
+                    variant="outline"
                     className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-neutral-300 bg-white px-2 text-xs font-semibold text-neutral-800 transition hover:border-neutral-500 hover:bg-neutral-50 disabled:cursor-wait disabled:opacity-60"
                     disabled={pending || model.cached}
                     onClick={() => onDownload(model.role, model.configured)}
@@ -2251,8 +2277,9 @@ function ModelStatusPanel({
                       <Cloud className="size-3.5" aria-hidden="true" />
                     )}
                     <span>Download</span>
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="outline"
                     className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-neutral-300 bg-white px-2 text-xs font-semibold text-neutral-800 transition hover:border-neutral-500 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"
                     disabled={pending || !model.cached}
                     onClick={() => onEnable(model.role, model.configured)}
@@ -2264,7 +2291,7 @@ function ModelStatusPanel({
                       <CheckCircle2 className="size-3.5" aria-hidden="true" />
                     )}
                     <span>Enable</span>
-                  </button>
+                  </Button>
                 </div>
               </article>
             );
@@ -2319,6 +2346,42 @@ function sourceKindIcon(kind: string) {
   }
 }
 
+type FieldInputProps = React.ComponentProps<typeof Input> & {
+  label: string;
+};
+
+function FieldInput({ className = "", id, label, ...props }: FieldInputProps) {
+  return (
+    <div>
+      <Label className="text-xs font-semibold text-neutral-700" htmlFor={id}>
+        {label}
+      </Label>
+      <Input
+        className={`mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200 ${className}`}
+        id={id}
+        {...props}
+      />
+    </div>
+  );
+}
+
+type FieldSelectProps = React.ComponentProps<typeof NativeSelect> & {
+  label: string;
+};
+
+function FieldSelect({ children, className = "", id, label, ...props }: FieldSelectProps) {
+  return (
+    <div>
+      <Label className="text-xs font-semibold text-neutral-700" htmlFor={id}>
+        {label}
+      </Label>
+      <NativeSelect className={`mt-1 w-full ${className}`} id={id} {...props}>
+        {children}
+      </NativeSelect>
+    </div>
+  );
+}
+
 function MetadataFiltersPanel({
   filters,
   onChange,
@@ -2342,252 +2405,180 @@ function MetadataFiltersPanel({
           <span>Metadata filters</span>
         </span>
         {activeFilterCount > 0 ? (
-          <button
+          <Button
+            variant="ghost"
             className="text-xs font-semibold text-emerald-800 transition hover:text-emerald-950"
             onClick={() => onChange(DEFAULT_METADATA_FILTERS)}
             type="button"
           >
             Clear {activeFilterCount}
-          </button>
+          </Button>
         ) : null}
       </legend>
 
       <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <div>
-          <label className="text-xs font-semibold text-neutral-700" htmlFor="name-query">
-            Name or path
-          </label>
-          <input
-            className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
-            id="name-query"
-            onChange={(event) => updateFilter("nameQuery", event.target.value)}
-            placeholder="Filename or folder"
-            type="search"
-            value={filters.nameQuery}
-          />
-        </div>
+        <FieldInput
+          id="name-query"
+          label="Name or path"
+          onChange={(event) => updateFilter("nameQuery", event.target.value)}
+          placeholder="Filename or folder"
+          type="search"
+          value={filters.nameQuery}
+        />
 
-        <div>
-          <label className="text-xs font-semibold text-neutral-700" htmlFor="source-type">
-            Source type
-          </label>
-          <select
-            className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
-            id="source-type"
-            onChange={(event) => updateFilter("sourceType", event.target.value)}
-            value={filters.sourceType}
-          >
-            <option value="all">All sources</option>
-            {sourceTypeOptions.map((sourceType) => (
-              <option key={sourceType} value={sourceType}>
-                {sourceType}
-              </option>
-            ))}
-          </select>
-        </div>
+        <FieldSelect
+          id="source-type"
+          label="Source type"
+          onChange={(event) => updateFilter("sourceType", event.target.value)}
+          value={filters.sourceType}
+        >
+          <option value="all">All sources</option>
+          {sourceTypeOptions.map((sourceType) => (
+            <option key={sourceType} value={sourceType}>
+              {sourceType}
+            </option>
+          ))}
+        </FieldSelect>
 
-        <div>
-          <label className="text-xs font-semibold text-neutral-700" htmlFor="person-id">
-            Person ID
-          </label>
-          <input
-            className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
-            id="person-id"
-            onChange={(event) => updateFilter("personId", event.target.value)}
-            placeholder="person-..."
-            type="search"
-            value={filters.personId}
-          />
-        </div>
+        <FieldInput
+          id="person-id"
+          label="Person ID"
+          onChange={(event) => updateFilter("personId", event.target.value)}
+          placeholder="person-..."
+          type="search"
+          value={filters.personId}
+        />
 
-        <div>
-          <label className="text-xs font-semibold text-neutral-700" htmlFor="media-kind">
-            Media type
-          </label>
-          <select
-            className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
-            id="media-kind"
+        <FieldSelect
+          id="media-kind"
+          label="Media type"
+          onChange={(event) =>
+            updateFilter("mediaKind", event.target.value as MetadataFilters["mediaKind"])
+          }
+          value={filters.mediaKind}
+        >
+          <option value="all">All media</option>
+          <option value="static_image">Images only</option>
+          <option value="animated_gif">GIFs only</option>
+          <option value="video_scene">Video scenes only</option>
+          <option value="audio">Audio only</option>
+          <option value="pdf_document">PDF documents only</option>
+          <option value="pdf_page">PDF pages only</option>
+        </FieldSelect>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <FieldSelect
+            id="near-duplicate"
+            label="Duplicate status"
             onChange={(event) =>
-              updateFilter("mediaKind", event.target.value as MetadataFilters["mediaKind"])
+              updateFilter("nearDuplicate", event.target.value as MetadataFilters["nearDuplicate"])
             }
-            value={filters.mediaKind}
+            value={filters.nearDuplicate}
           >
-            <option value="all">All media</option>
-            <option value="static_image">Images only</option>
-            <option value="animated_gif">GIFs only</option>
-            <option value="video_scene">Video scenes only</option>
-            <option value="audio">Audio only</option>
-            <option value="pdf_document">PDF documents only</option>
-            <option value="pdf_page">PDF pages only</option>
-          </select>
+            <option value="all">All matches</option>
+            <option value="only">Near duplicates only</option>
+            <option value="exclude">Exclude near duplicates</option>
+          </FieldSelect>
+
+          <FieldSelect
+            id="orientation"
+            label="Orientation"
+            onChange={(event) =>
+              updateFilter("orientation", event.target.value as MetadataFilters["orientation"])
+            }
+            value={filters.orientation}
+          >
+            <option value="all">Any orientation</option>
+            <option value="landscape">Landscape</option>
+            <option value="portrait">Portrait</option>
+            <option value="square">Square</option>
+          </FieldSelect>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="text-xs font-semibold text-neutral-700" htmlFor="near-duplicate">
-              Duplicate status
-            </label>
-            <select
-              className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
-              id="near-duplicate"
-              onChange={(event) =>
-                updateFilter(
-                  "nearDuplicate",
-                  event.target.value as MetadataFilters["nearDuplicate"],
-                )
-              }
-              value={filters.nearDuplicate}
-            >
-              <option value="all">All matches</option>
-              <option value="only">Near duplicates only</option>
-              <option value="exclude">Exclude near duplicates</option>
-            </select>
-          </div>
+          <FieldInput
+            id="date-from"
+            label="Modified after"
+            onChange={(event) => updateFilter("dateFrom", event.target.value)}
+            type="date"
+            value={filters.dateFrom}
+          />
 
-          <div>
-            <label className="text-xs font-semibold text-neutral-700" htmlFor="orientation">
-              Orientation
-            </label>
-            <select
-              className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
-              id="orientation"
-              onChange={(event) =>
-                updateFilter("orientation", event.target.value as MetadataFilters["orientation"])
-              }
-              value={filters.orientation}
-            >
-              <option value="all">Any orientation</option>
-              <option value="landscape">Landscape</option>
-              <option value="portrait">Portrait</option>
-              <option value="square">Square</option>
-            </select>
-          </div>
+          <FieldInput
+            id="date-to"
+            label="Modified before"
+            onChange={(event) => updateFilter("dateTo", event.target.value)}
+            type="date"
+            value={filters.dateTo}
+          />
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="text-xs font-semibold text-neutral-700" htmlFor="date-from">
-              Modified after
-            </label>
-            <input
-              className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
-              id="date-from"
-              onChange={(event) => updateFilter("dateFrom", event.target.value)}
-              type="date"
-              value={filters.dateFrom}
-            />
-          </div>
+          <FieldInput
+            id="min-size"
+            label="Min file size (MB)"
+            min={0}
+            onChange={(event) => updateFilter("minSizeMb", event.target.value)}
+            placeholder="Any"
+            step="0.1"
+            type="number"
+            value={filters.minSizeMb}
+          />
 
-          <div>
-            <label className="text-xs font-semibold text-neutral-700" htmlFor="date-to">
-              Modified before
-            </label>
-            <input
-              className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
-              id="date-to"
-              onChange={(event) => updateFilter("dateTo", event.target.value)}
-              type="date"
-              value={filters.dateTo}
-            />
-          </div>
+          <FieldInput
+            id="max-size"
+            label="Max file size (MB)"
+            min={0}
+            onChange={(event) => updateFilter("maxSizeMb", event.target.value)}
+            placeholder="Any"
+            step="0.1"
+            type="number"
+            value={filters.maxSizeMb}
+          />
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="text-xs font-semibold text-neutral-700" htmlFor="min-size">
-              Min file size (MB)
-            </label>
-            <input
-              className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
-              id="min-size"
-              min={0}
-              onChange={(event) => updateFilter("minSizeMb", event.target.value)}
-              placeholder="Any"
-              step="0.1"
-              type="number"
-              value={filters.minSizeMb}
-            />
-          </div>
+          <FieldInput
+            id="min-width"
+            label="Minimum width"
+            min={0}
+            onChange={(event) => updateFilter("minWidth", event.target.value)}
+            placeholder="Any"
+            type="number"
+            value={filters.minWidth}
+          />
 
-          <div>
-            <label className="text-xs font-semibold text-neutral-700" htmlFor="max-size">
-              Max file size (MB)
-            </label>
-            <input
-              className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
-              id="max-size"
-              min={0}
-              onChange={(event) => updateFilter("maxSizeMb", event.target.value)}
-              placeholder="Any"
-              step="0.1"
-              type="number"
-              value={filters.maxSizeMb}
-            />
-          </div>
+          <FieldInput
+            id="min-height"
+            label="Minimum height"
+            min={0}
+            onChange={(event) => updateFilter("minHeight", event.target.value)}
+            placeholder="Any"
+            type="number"
+            value={filters.minHeight}
+          />
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="text-xs font-semibold text-neutral-700" htmlFor="min-width">
-              Minimum width
-            </label>
-            <input
-              className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
-              id="min-width"
-              min={0}
-              onChange={(event) => updateFilter("minWidth", event.target.value)}
-              placeholder="Any"
-              type="number"
-              value={filters.minWidth}
-            />
-          </div>
+          <FieldInput
+            id="max-width"
+            label="Maximum width"
+            min={0}
+            onChange={(event) => updateFilter("maxWidth", event.target.value)}
+            placeholder="Any"
+            type="number"
+            value={filters.maxWidth}
+          />
 
-          <div>
-            <label className="text-xs font-semibold text-neutral-700" htmlFor="min-height">
-              Minimum height
-            </label>
-            <input
-              className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
-              id="min-height"
-              min={0}
-              onChange={(event) => updateFilter("minHeight", event.target.value)}
-              placeholder="Any"
-              type="number"
-              value={filters.minHeight}
-            />
-          </div>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="text-xs font-semibold text-neutral-700" htmlFor="max-width">
-              Maximum width
-            </label>
-            <input
-              className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
-              id="max-width"
-              min={0}
-              onChange={(event) => updateFilter("maxWidth", event.target.value)}
-              placeholder="Any"
-              type="number"
-              value={filters.maxWidth}
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-neutral-700" htmlFor="max-height">
-              Maximum height
-            </label>
-            <input
-              className="mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
-              id="max-height"
-              min={0}
-              onChange={(event) => updateFilter("maxHeight", event.target.value)}
-              placeholder="Any"
-              type="number"
-              value={filters.maxHeight}
-            />
-          </div>
+          <FieldInput
+            id="max-height"
+            label="Maximum height"
+            min={0}
+            onChange={(event) => updateFilter("maxHeight", event.target.value)}
+            placeholder="Any"
+            type="number"
+            value={filters.maxHeight}
+          />
         </div>
       </div>
     </fieldset>
@@ -2602,13 +2593,13 @@ function ResultSortSelect({
   value: ResultSortMode;
 }) {
   return (
-    <label className="flex w-full items-center gap-2 sm:w-auto">
+    <Label className="flex w-full items-center gap-2 sm:w-auto">
       <span className="flex shrink-0 items-center gap-2 text-sm font-semibold text-neutral-800">
         <ArrowUpDown className="size-4 text-neutral-600" aria-hidden="true" />
         Sort
       </span>
-      <select
-        className="h-9 min-w-48 flex-1 rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200 sm:flex-none"
+      <NativeSelect
+        className="min-w-48 flex-1 sm:flex-none"
         onChange={(event) => onChange(event.target.value as ResultSortMode)}
         value={value}
       >
@@ -2617,8 +2608,8 @@ function ResultSortSelect({
         <option value="modified_newest">Newest modified</option>
         <option value="size_largest">Largest file</option>
         <option value="filename">Filename</option>
-      </select>
-    </label>
+      </NativeSelect>
+    </Label>
   );
 }
 
@@ -3115,8 +3106,9 @@ function SearchHistoryList({
         <ol className="flex flex-col gap-2">
           {history.map((item) => (
             <li key={item.id}>
-              <button
+              <Button
                 aria-pressed={item.id === activeSearchId}
+                variant={item.id === activeSearchId ? "default" : "outline"}
                 className={`flex w-full min-w-0 flex-col gap-1 rounded-md border px-3 py-2 text-left transition ${
                   item.id === activeSearchId
                     ? "border-emerald-700 bg-emerald-50 text-emerald-950"
@@ -3141,7 +3133,7 @@ function SearchHistoryList({
                     Text: {item.ocrTextQuery}
                   </span>
                 ) : null}
-              </button>
+              </Button>
             </li>
           ))}
         </ol>
@@ -3282,14 +3274,15 @@ function Message({
   }[tone];
 
   return (
-    <p
+    <Alert
+      variant={tone === "error" ? "destructive" : "default"}
       className={`flex min-h-11 items-start gap-2 rounded-md border px-3 py-2 text-sm ${toneClass}`}
     >
       <span className="mt-0.5 shrink-0" aria-hidden="true">
         {icon}
       </span>
-      <span>{text}</span>
-    </p>
+      <AlertDescription>{text}</AlertDescription>
+    </Alert>
   );
 }
 
@@ -3374,8 +3367,9 @@ function SceneResultsList({
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
           {scenes.map((scene) => (
-            <button
+            <Button
               aria-pressed={scene.scene_index === selectedScene?.scene_index}
+              variant={scene.scene_index === selectedScene?.scene_index ? "default" : "outline"}
               className={`inline-flex h-10 shrink-0 items-center justify-center rounded-md border px-3 text-sm font-semibold transition ${
                 scene.scene_index === selectedScene?.scene_index
                   ? "border-emerald-700 bg-emerald-50 text-emerald-950"
@@ -3390,7 +3384,7 @@ function SceneResultsList({
                 ? ` · ${formatSeconds(scene.start_seconds)}-${formatSeconds(scene.end_seconds)}`
                 : ""}
               {scene.speaker_label ? ` · ${scene.speaker_label}` : ""}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
@@ -3620,8 +3614,9 @@ function ResultCard({
             </p>
           </div>
           {onDelete ? (
-            <button
+            <Button
               aria-label={`Delete ${image.filename} from index`}
+              variant="outline"
               className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-neutral-300 bg-white text-neutral-700 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700 disabled:cursor-wait disabled:opacity-60"
               disabled={deleting}
               onClick={() => {
@@ -3637,7 +3632,7 @@ function ResultCard({
               ) : (
                 <Trash2 className="size-4" aria-hidden="true" />
               )}
-            </button>
+            </Button>
           ) : null}
         </div>
 
@@ -3712,85 +3707,84 @@ function ResultCard({
 
         <div className="flex flex-wrap gap-2">
           {image.media_kind === "animated_gif" ? (
-            <span className="inline-flex w-fit rounded-md border border-sky-300 bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-900">
-              GIF
-            </span>
+            <Tag className="border-sky-300 bg-sky-50 text-sky-900">GIF</Tag>
           ) : null}
           {image.media_kind === "video_scene" ? (
-            <span className="inline-flex w-fit rounded-md border border-violet-300 bg-violet-50 px-2 py-1 text-xs font-semibold text-violet-900">
-              Video scene
-            </span>
+            <Tag className="border-violet-300 bg-violet-50 text-violet-900">Video scene</Tag>
           ) : null}
           {image.media_kind === "audio" ? (
-            <span className="inline-flex w-fit rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-900">
-              Audio
-            </span>
+            <Tag className="border-emerald-300 bg-emerald-50 text-emerald-900">Audio</Tag>
           ) : null}
           {image.media_kind === "pdf_document" ? (
-            <span className="inline-flex w-fit rounded-md border border-red-300 bg-red-50 px-2 py-1 text-xs font-semibold text-red-900">
-              PDF document
-            </span>
+            <Tag className="border-red-300 bg-red-50 text-red-900">PDF document</Tag>
           ) : null}
           {image.media_kind === "pdf_page" ? (
-            <span className="inline-flex w-fit rounded-md border border-orange-300 bg-orange-50 px-2 py-1 text-xs font-semibold text-orange-900">
-              PDF page
-            </span>
+            <Tag className="border-orange-300 bg-orange-50 text-orange-900">PDF page</Tag>
           ) : null}
           {image.ocr_text ? (
-            <span className="inline-flex w-fit rounded-md border border-cyan-300 bg-cyan-50 px-2 py-1 text-xs font-semibold text-cyan-900">
-              OCR
-            </span>
+            <Tag className="border-cyan-300 bg-cyan-50 text-cyan-900">OCR</Tag>
           ) : null}
           {image.audio_analysis?.speech_detected ? (
-            <span className="inline-flex w-fit rounded-md border border-teal-300 bg-teal-50 px-2 py-1 text-xs font-semibold text-teal-900">
-              Speech
-            </span>
+            <Tag className="border-teal-300 bg-teal-50 text-teal-900">Speech</Tag>
           ) : null}
           {image.audio_analysis?.recognized_voices?.map((voice) => (
-            <span
-              className="inline-flex w-fit rounded-md border border-lime-300 bg-lime-50 px-2 py-1 text-xs font-semibold text-lime-900"
-              key={voice.id}
-            >
+            <Tag className="border-lime-300 bg-lime-50 text-lime-900" key={voice.id}>
               {voice.label}
-            </span>
+            </Tag>
           ))}
           {image.audio_analysis?.transcript_text ? (
-            <span className="inline-flex w-fit rounded-md border border-fuchsia-300 bg-fuchsia-50 px-2 py-1 text-xs font-semibold text-fuchsia-900">
-              Transcript
-            </span>
+            <Tag className="border-fuchsia-300 bg-fuchsia-50 text-fuchsia-900">Transcript</Tag>
           ) : null}
           {image.audio_analysis?.tempo_bpm ? (
-            <span className="inline-flex w-fit rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-900">
+            <Tag className="border-rose-300 bg-rose-50 text-rose-900">
               {image.audio_analysis.tempo_bpm.toFixed(0)} BPM
-            </span>
+            </Tag>
           ) : null}
           {faces.length ? (
-            <span className="inline-flex w-fit rounded-md border border-indigo-300 bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-900">
+            <Tag className="border-indigo-300 bg-indigo-50 text-indigo-900">
               Faces {faces.length}
-            </span>
+            </Tag>
           ) : null}
           {people.map((person) => (
-            <span
-              className="inline-flex w-fit rounded-md border border-purple-300 bg-purple-50 px-2 py-1 text-xs font-semibold text-purple-900"
+            <Tag
+              className="border-purple-300 bg-purple-50 text-purple-900"
               key={person.person_id}
               title={person.person_id}
             >
               {personDisplayName(person)}
-            </span>
+            </Tag>
           ))}
           {result.query_scene_index !== null && result.query_scene_index !== undefined ? (
-            <span className="inline-flex w-fit rounded-md border border-neutral-300 bg-neutral-50 px-2 py-1 text-xs font-semibold text-neutral-700">
+            <Tag className="border-neutral-300 bg-neutral-50 text-neutral-700">
               Query scene {result.query_scene_index + 1}
-            </span>
+            </Tag>
           ) : null}
           {result.near_duplicate ? (
-            <span className="inline-flex w-fit rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-900">
-              Near duplicate
-            </span>
+            <Tag className="border-amber-300 bg-amber-50 text-amber-900">Near duplicate</Tag>
           ) : null}
         </div>
       </div>
     </article>
+  );
+}
+
+function Tag({
+  children,
+  className = "",
+  title,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  title?: string;
+}) {
+  return (
+    <Badge
+      className={`inline-flex w-fit rounded-md border px-2 py-1 text-xs font-semibold ${className}`}
+      title={title}
+      variant="outline"
+    >
+      {children}
+    </Badge>
   );
 }
 
