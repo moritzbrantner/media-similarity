@@ -126,6 +126,52 @@ pub struct GeneratedArtifactPayload {
     pub url: String,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct PhotoMetadataPayload {
+    #[serde(default)]
+    pub capture_time: Option<String>,
+    #[serde(default)]
+    pub camera_make: Option<String>,
+    #[serde(default)]
+    pub camera_model: Option<String>,
+    #[serde(default)]
+    pub lens_model: Option<String>,
+    #[serde(default)]
+    pub orientation: Option<String>,
+    #[serde(default)]
+    pub gps: Option<PhotoGpsPayload>,
+    #[serde(default)]
+    pub rating: Option<f32>,
+    #[serde(default)]
+    pub keywords: Vec<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub creator: Option<String>,
+    #[serde(default)]
+    pub copyright: Option<String>,
+    #[serde(default)]
+    pub raw: Vec<PhotoMetadataEntryPayload>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct PhotoGpsPayload {
+    pub latitude: f64,
+    pub longitude: f64,
+    #[serde(default)]
+    pub altitude_meters: Option<f64>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct PhotoMetadataEntryPayload {
+    pub namespace: String,
+    pub key: String,
+    pub label: String,
+    pub value: String,
+}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ImagePayload {
     pub id: String,
@@ -176,6 +222,8 @@ pub struct ImagePayload {
     pub people: Vec<PersonSummary>,
     #[serde(default)]
     pub artifacts: Vec<GeneratedArtifactPayload>,
+    #[serde(default)]
+    pub photo_metadata: Option<PhotoMetadataPayload>,
     #[serde(default)]
     pub scene_clip_url: Option<String>,
     #[serde(default)]
@@ -400,6 +448,7 @@ mod tests {
             faces: Vec::new(),
             people: Vec::new(),
             artifacts: Vec::new(),
+            photo_metadata: None,
             scene_clip_url: None,
             scene_index: None,
             scene_start_frame: None,
@@ -454,6 +503,7 @@ mod tests {
             faces: Vec::new(),
             people: Vec::new(),
             artifacts: Vec::new(),
+            photo_metadata: None,
             scene_clip_url: Some("/uploads/source-scenes/id/scene-001.mp4".to_string()),
             scene_index: Some(0),
             scene_start_frame: Some(10),
@@ -543,6 +593,7 @@ mod tests {
             faces: Vec::new(),
             people: Vec::new(),
             artifacts: Vec::new(),
+            photo_metadata: None,
             scene_clip_url: None,
             scene_index: None,
             scene_start_frame: None,
@@ -577,5 +628,25 @@ mod tests {
         assert_eq!(response.query_media_kind, "static_image");
         assert!(response.scenes.is_empty());
         assert!(response.query_audio_analysis.is_none());
+    }
+
+    #[test]
+    fn image_payload_defaults_missing_photo_metadata() {
+        let json = serde_json::json!({
+            "id": "id",
+            "path": "/images/photo.jpg",
+            "relative_path": "photo.jpg",
+            "filename": "photo.jpg",
+            "width": 10,
+            "height": 20,
+            "size_bytes": 30,
+            "modified_at": 40.5,
+            "phash": "0000000000000000",
+            "thumbnail_url": "/thumbnails/id.jpg",
+            "media_kind": "static_image",
+            "source_uri": "/images"
+        });
+        let payload: super::ImagePayload = serde_json::from_value(json).unwrap();
+        assert!(payload.photo_metadata.is_none());
     }
 }

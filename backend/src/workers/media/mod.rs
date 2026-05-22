@@ -9,6 +9,7 @@ pub mod models;
 pub mod ocr;
 pub mod pdf;
 pub mod persons;
+pub mod photo_metadata;
 pub mod thumbnails;
 pub mod video;
 pub mod visual_embedding;

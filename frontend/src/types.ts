@@ -265,6 +265,35 @@ export type PersonSummary = {
   confidence: number;
 };
 
+export type PhotoGpsPayload = {
+  latitude: number;
+  longitude: number;
+  altitude_meters: number | null;
+};
+
+export type PhotoMetadataEntryPayload = {
+  namespace: string;
+  key: string;
+  label: string;
+  value: string;
+};
+
+export type PhotoMetadataPayload = {
+  capture_time: string | null;
+  camera_make: string | null;
+  camera_model: string | null;
+  lens_model: string | null;
+  orientation: string | null;
+  gps: PhotoGpsPayload | null;
+  rating: number | null;
+  keywords: string[];
+  title: string | null;
+  description: string | null;
+  creator: string | null;
+  copyright: string | null;
+  raw: PhotoMetadataEntryPayload[];
+};
+
 export type ImagePayload = {
   id: string;
   path: string;
@@ -301,6 +330,7 @@ export type ImagePayload = {
   faces: FaceDetectionPayload[];
   people: PersonSummary[];
   artifacts: { kind: string; url: string }[];
+  photo_metadata: PhotoMetadataPayload | null;
   scene_clip_url: string | null;
   scene_index: number | null;
   scene_start_frame: number | null;

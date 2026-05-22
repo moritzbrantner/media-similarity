@@ -1175,6 +1175,108 @@ test("applies date, dimension, person, max-size, and duplicate-exclusion filters
   ]);
 });
 
+test("displays and filters photo metadata", async ({ page }) => {
+  const photoSearchResponse = makeSearchResponse({
+    count: 3,
+    results: [
+      makeResult({
+        hash_distance: 1,
+        image: {
+          filename: "camera-sunrise.jpg",
+          id: "camera-sunrise",
+          photo_metadata: {
+            camera_make: "Acme",
+            camera_model: "Pocket 7",
+            capture_time: "2024-03-12T10:30:00Z",
+            copyright: "Acme Studio",
+            creator: "Mira",
+            description: "Morning ridge",
+            gps: { altitude_meters: 42.4, latitude: 52.5, longitude: 13.4 },
+            keywords: ["Travel", "Sunrise"],
+            lens_model: "35mm Prime",
+            orientation: "Horizontal",
+            rating: 4,
+            raw: [
+              {
+                key: "CreateDate",
+                label: "CreateDate",
+                namespace: "xmp",
+                value: "2024-03-12T10:30:00Z",
+              },
+            ],
+            title: "Camera sunrise",
+          },
+          relative_path: "photos/camera-sunrise.jpg",
+        },
+      }),
+      makeResult({
+        hash_distance: 2,
+        image: {
+          filename: "older-canon.jpg",
+          id: "older-canon",
+          photo_metadata: {
+            camera_make: "Canon",
+            camera_model: "R6",
+            capture_time: "2023-01-05T08:00:00Z",
+            copyright: null,
+            creator: null,
+            description: null,
+            gps: null,
+            keywords: ["Portrait"],
+            lens_model: "85mm",
+            orientation: null,
+            rating: null,
+            raw: [],
+            title: null,
+          },
+          relative_path: "photos/older-canon.jpg",
+        },
+      }),
+      makeResult({
+        hash_distance: 3,
+        image: {
+          filename: "missing-metadata.jpg",
+          id: "missing-metadata",
+          photo_metadata: null,
+          relative_path: "photos/missing-metadata.jpg",
+        },
+      }),
+    ],
+  });
+  await mockSearchResponseRoute(page, photoSearchResponse);
+  await page.goto("/");
+
+  await uploadAndSearch(page);
+
+  const card = resultCard(page, "camera-sunrise.jpg");
+  await expect(card.getByText("Captured")).toBeVisible();
+  await expect(card.getByText("Acme Pocket 7")).toBeVisible();
+  await expect(card.getByText("35mm Prime")).toBeVisible();
+  await expect(card.getByText("52.50000, 13.40000, 42.4 m")).toBeVisible();
+  await expect(card.getByText("Travel, Sunrise")).toBeVisible();
+  await card.getByText("Photo metadata").click();
+  await expect(card.getByText("xmp · CreateDate")).toBeVisible();
+
+  await page.getByLabel("Camera/lens").fill("pocket");
+  await expectResultOrder(page, ["camera-sunrise.jpg"]);
+
+  await page.getByRole("button", { name: "Clear 1" }).click();
+  await page.getByLabel("Keyword").fill("portrait");
+  await expectResultOrder(page, ["older-canon.jpg"]);
+
+  await page.getByRole("button", { name: "Clear 1" }).click();
+  await page.getByLabel("GPS metadata").selectOption("yes");
+  await expectResultOrder(page, ["camera-sunrise.jpg"]);
+
+  await page.getByRole("button", { name: "Clear 1" }).click();
+  await page.getByLabel("Captured after").fill("2024-01-01");
+  await expectResultOrder(page, ["camera-sunrise.jpg"]);
+
+  await page.getByRole("button", { name: "Clear 1" }).click();
+  await page.getByLabel("Sort").selectOption("captured_newest");
+  await expectResultOrder(page, ["camera-sunrise.jpg", "older-canon.jpg", "missing-metadata.jpg"]);
+});
+
 test("sends OCR and person search parameters and caps filtered candidate limit", async ({
   page,
 }) => {
@@ -1376,7 +1478,10 @@ test("renders source save failures and non-ready source statuses", async ({ page
   await page.unroute("**/api/source-config");
   await page.route("**/api/source-config", async (route) => {
     if (route.request().method() === "PUT") {
-      await route.fulfill({ json: { detail: "source save failed" }, status: 500 });
+      await route.fulfill({
+        json: { detail: "source save failed" },
+        status: 500,
+      });
       return;
     }
 
@@ -1442,7 +1547,10 @@ test("renders indexing configuration save failures", async ({ page }) => {
   await page.unroute("**/api/source-config");
   await page.route("**/api/source-config", async (route) => {
     if (route.request().method() === "PUT") {
-      await route.fulfill({ json: { detail: "indexing save failed" }, status: 500 });
+      await route.fulfill({
+        json: { detail: "indexing save failed" },
+        status: 500,
+      });
       return;
     }
 

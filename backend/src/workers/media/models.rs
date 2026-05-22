@@ -2,11 +2,9 @@ use std::path::PathBuf;
 use std::str::FromStr;
 
 use image_analysis_models::{FaceDetectionPreset, FaceEmbeddingPreset, ImageEmbeddingPreset};
+use model_runtime::{HuggingFaceDownloader, HuggingFaceModelSpec, ModelBundle, ModelBundleStore};
 use serde::Serialize;
 use text_transcripts::{WhisperCppModel, WhisperCppModelStore};
-use video_analysis_models::{
-    HuggingFaceDownloader, HuggingFaceModelSpec, ModelBundle, ModelBundleStore,
-};
 
 use crate::config::Settings;
 
@@ -144,8 +142,9 @@ pub fn model_downloader(settings: &Settings) -> HuggingFaceDownloader {
 
 pub fn load_role_bundle(role: ModelRole, settings: &Settings) -> Result<ModelBundle, String> {
     let spec = role_spec(role)?;
+    let revision = spec.revision_value().unwrap_or("main");
     bundle_store(settings)
-        .load(&spec.name, &spec.revision)
+        .load(&spec.name, revision)
         .map_err(|error| error.to_string())
 }
 
@@ -191,7 +190,8 @@ fn bundle_model_status(
     fallback_path: Option<PathBuf>,
 ) -> ModelRuntimeStatus {
     let store = bundle_store(settings);
-    let bundle = store.load(&spec.name, &spec.revision).ok();
+    let revision = spec.revision_value().unwrap_or("main");
+    let bundle = store.load(&spec.name, revision).ok();
     let fallback_cached = fallback_path
         .as_ref()
         .map(|path| path.is_file())
@@ -225,7 +225,7 @@ fn bundle_model_status(
         detail,
         options: vec![ModelOption {
             id: spec.name.clone(),
-            label: spec.repo_id.clone(),
+            label: spec.repo_id_value().unwrap_or(&spec.name).to_string(),
             cached,
             configured: true,
         }],

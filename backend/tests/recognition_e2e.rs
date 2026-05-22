@@ -45,6 +45,7 @@ async fn static_image_recognition_covers_content_type_extension_limits_and_dupli
     write_pattern_image(&red, 64, 40, [220, 20, 20], [20, 20, 20]);
     write_pattern_image(&green, 48, 48, [20, 180, 80], [20, 20, 20]);
     write_pattern_image(&blue, 40, 64, [30, 70, 220], [20, 20, 20]);
+    inject_xmp_metadata(&blue, test_photo_xmp());
 
     let indexed = app.index().await;
     assert_eq!(indexed.indexed, 3);
@@ -82,6 +83,27 @@ async fn static_image_recognition_covers_content_type_extension_limits_and_dupli
         extension_detected.results[0].image.filename,
         "green-square.png"
     );
+
+    let blue_bytes = fs::read(&blue).unwrap();
+    let photo_metadata = app
+        .search_upload("blue-portrait.jpg", "image/jpeg", blue_bytes, Some(1))
+        .await
+        .results[0]
+        .image
+        .photo_metadata
+        .clone()
+        .expect("photo metadata should be indexed");
+    assert_eq!(
+        photo_metadata.capture_time.as_deref(),
+        Some("2024-03-12T10:30:00Z")
+    );
+    assert_eq!(photo_metadata.camera_make.as_deref(), Some("Acme"));
+    assert_eq!(photo_metadata.camera_model.as_deref(), Some("Pocket 7"));
+    assert_eq!(photo_metadata.keywords, vec!["Travel", "Sunrise"]);
+    assert!(photo_metadata
+        .raw
+        .iter()
+        .any(|entry| entry.namespace == "xmp"));
 }
 
 #[tokio::test]
@@ -1312,6 +1334,32 @@ fn write_pattern_image(path: &Path, width: u32, height: u32, a: [u8; 3], b: [u8;
         }
     }
     image.save(path).unwrap();
+}
+
+fn inject_xmp_metadata(path: &Path, xmp: &str) {
+    let original = fs::read(path).unwrap();
+    assert_eq!(&original[..2], &[0xff, 0xd8]);
+    let mut payload = b"http://ns.adobe.com/xap/1.0/\0".to_vec();
+    payload.extend_from_slice(xmp.as_bytes());
+    let length = payload.len() + 2;
+    let mut metadata_segment = vec![0xff, 0xe1];
+    metadata_segment.extend_from_slice(&(length as u16).to_be_bytes());
+    metadata_segment.extend_from_slice(&payload);
+
+    let mut updated = original[..2].to_vec();
+    updated.extend_from_slice(&metadata_segment);
+    updated.extend_from_slice(&original[2..]);
+    fs::write(path, updated).unwrap();
+}
+
+fn test_photo_xmp() -> &'static str {
+    r#"<x:xmpmeta xmlns:x="adobe:ns:meta/">
+<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns:xmp="http://ns.adobe.com/xap/1.0/" xmlns:tiff="http://ns.adobe.com/tiff/1.0/" xmlns:dc="http://purl.org/dc/elements/1.1/">
+<rdf:Description xmp:CreateDate="2024-03-12T10:30:00Z" tiff:Make="Acme" tiff:Model="Pocket 7">
+<dc:subject><rdf:Bag><rdf:li>Travel</rdf:li><rdf:li>Sunrise</rdf:li></rdf:Bag></dc:subject>
+</rdf:Description>
+</rdf:RDF>
+</x:xmpmeta>"#
 }
 
 fn write_test_gif(path: &Path, colors: &[[u8; 3]], delay_ms: u32) {

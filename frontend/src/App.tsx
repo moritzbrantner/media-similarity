@@ -91,8 +91,13 @@ const AUDIO_EXTENSIONS = [".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".opu
 const PDF_EXTENSIONS = [".pdf"];
 
 const DEFAULT_METADATA_FILTERS = {
+  cameraQuery: "",
+  captureDateFrom: "",
+  captureDateTo: "",
   dateFrom: "",
   dateTo: "",
+  hasGps: "all",
+  keywordQuery: "",
   maxHeight: "",
   maxSizeMb: "",
   maxWidth: "",
@@ -108,8 +113,13 @@ const DEFAULT_METADATA_FILTERS = {
 } satisfies MetadataFilters;
 
 type MetadataFilters = {
+  cameraQuery: string;
+  captureDateFrom: string;
+  captureDateTo: string;
   dateFrom: string;
   dateTo: string;
+  hasGps: "all" | "yes" | "no";
+  keywordQuery: string;
   maxHeight: string;
   maxSizeMb: string;
   maxWidth: string;
@@ -132,6 +142,7 @@ type MetadataFilters = {
 };
 
 type ResultSortMode =
+  | "captured_newest"
   | "filename"
   | "modified_newest"
   | "phash_distance"
@@ -2495,6 +2506,37 @@ function MetadataFiltersPanel({
           </FieldSelect>
         </div>
 
+        <FieldInput
+          id="camera-query"
+          label="Camera/lens"
+          onChange={(event) => updateFilter("cameraQuery", event.target.value)}
+          placeholder="Make, model, or lens"
+          type="search"
+          value={filters.cameraQuery}
+        />
+
+        <FieldInput
+          id="keyword-query"
+          label="Keyword"
+          onChange={(event) => updateFilter("keywordQuery", event.target.value)}
+          placeholder="Tag or subject"
+          type="search"
+          value={filters.keywordQuery}
+        />
+
+        <FieldSelect
+          id="has-gps"
+          label="GPS metadata"
+          onChange={(event) =>
+            updateFilter("hasGps", event.target.value as MetadataFilters["hasGps"])
+          }
+          value={filters.hasGps}
+        >
+          <option value="all">Any GPS metadata</option>
+          <option value="yes">Has GPS</option>
+          <option value="no">No GPS</option>
+        </FieldSelect>
+
         <div className="grid gap-3 sm:grid-cols-2">
           <FieldInput
             id="date-from"
@@ -2510,6 +2552,24 @@ function MetadataFiltersPanel({
             onChange={(event) => updateFilter("dateTo", event.target.value)}
             type="date"
             value={filters.dateTo}
+          />
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <FieldInput
+            id="capture-date-from"
+            label="Captured after"
+            onChange={(event) => updateFilter("captureDateFrom", event.target.value)}
+            type="date"
+            value={filters.captureDateFrom}
+          />
+
+          <FieldInput
+            id="capture-date-to"
+            label="Captured before"
+            onChange={(event) => updateFilter("captureDateTo", event.target.value)}
+            type="date"
+            value={filters.captureDateTo}
           />
         </div>
 
@@ -2605,6 +2665,7 @@ function ResultSortSelect({
       >
         <option value="phash_distance">pHash distance</option>
         <option value="vector_score">Visual score</option>
+        <option value="captured_newest">Newest captured</option>
         <option value="modified_newest">Newest modified</option>
         <option value="size_largest">Largest file</option>
         <option value="filename">Filename</option>
@@ -2614,6 +2675,8 @@ function ResultSortSelect({
 }
 
 function filterResults(results: SearchResult[], filters: MetadataFilters) {
+  const cameraQuery = filters.cameraQuery.trim().toLocaleLowerCase();
+  const keywordQuery = filters.keywordQuery.trim().toLocaleLowerCase();
   const nameQuery = filters.nameQuery.trim().toLocaleLowerCase();
   const personId = filters.personId.trim();
   const minSizeBytes = megabytesToBytes(positiveNumber(filters.minSizeMb));
@@ -2622,11 +2685,14 @@ function filterResults(results: SearchResult[], filters: MetadataFilters) {
   const minHeight = positiveNumber(filters.minHeight);
   const maxWidth = positiveNumber(filters.maxWidth);
   const maxHeight = positiveNumber(filters.maxHeight);
+  const capturedFrom = dateBoundary(filters.captureDateFrom, "start");
+  const capturedTo = dateBoundary(filters.captureDateTo, "end");
   const modifiedFrom = dateBoundary(filters.dateFrom, "start");
   const modifiedTo = dateBoundary(filters.dateTo, "end");
 
   return results.filter((result) => {
     const image = result.image;
+    const photoMetadata = image.photo_metadata;
 
     if (nameQuery && !imageMatchesNameQuery(image, nameQuery)) {
       return false;
@@ -2637,6 +2703,22 @@ function filterResults(results: SearchResult[], filters: MetadataFilters) {
     }
 
     if (filters.mediaKind !== "all" && image.media_kind !== filters.mediaKind) {
+      return false;
+    }
+
+    if (cameraQuery && !photoMetadataMatchesCamera(photoMetadata, cameraQuery)) {
+      return false;
+    }
+
+    if (keywordQuery && !photoMetadataMatchesKeyword(photoMetadata, keywordQuery)) {
+      return false;
+    }
+
+    if (filters.hasGps === "yes" && !photoMetadata?.gps) {
+      return false;
+    }
+
+    if (filters.hasGps === "no" && photoMetadata?.gps) {
       return false;
     }
 
@@ -2683,6 +2765,19 @@ function filterResults(results: SearchResult[], filters: MetadataFilters) {
       return false;
     }
 
+    if (capturedFrom !== null || capturedTo !== null) {
+      const capturedAt = captureTimeMs(photoMetadata?.capture_time ?? null);
+      if (capturedAt === null) {
+        return false;
+      }
+      if (capturedFrom !== null && capturedAt < capturedFrom) {
+        return false;
+      }
+      if (capturedTo !== null && capturedAt > capturedTo) {
+        return false;
+      }
+    }
+
     if (modifiedFrom !== null && image.modified_at * 1000 < modifiedFrom) {
       return false;
     }
@@ -2707,6 +2802,8 @@ function sortResults(results: SearchResult[], sortMode: ResultSortMode) {
 
 function compareResults(left: SearchResult, right: SearchResult, sortMode: ResultSortMode) {
   switch (sortMode) {
+    case "captured_newest":
+      return compareCapturedNewest(left, right);
     case "filename":
       return compareFilenames(left, right);
     case "modified_newest":
@@ -2718,6 +2815,25 @@ function compareResults(left: SearchResult, right: SearchResult, sortMode: Resul
     case "phash_distance":
       return compareHashDistance(left, right);
   }
+}
+
+function compareCapturedNewest(left: SearchResult, right: SearchResult) {
+  const leftCaptured = captureTimeMs(left.image.photo_metadata?.capture_time ?? null);
+  const rightCaptured = captureTimeMs(right.image.photo_metadata?.capture_time ?? null);
+
+  if (leftCaptured === null && rightCaptured === null) {
+    return compareHashDistanceForTie(left, right);
+  }
+
+  if (leftCaptured === null) {
+    return 1;
+  }
+
+  if (rightCaptured === null) {
+    return -1;
+  }
+
+  return rightCaptured - leftCaptured || compareHashDistanceForTie(left, right);
 }
 
 function compareHashDistance(left: SearchResult, right: SearchResult) {
@@ -2821,6 +2937,36 @@ function imageMatchesNameQuery(image: SearchResult["image"], nameQuery: string) 
   return [image.filename, image.relative_path, image.path, image.source_uri ?? ""].some((value) =>
     value.toLocaleLowerCase().includes(nameQuery),
   );
+}
+
+function photoMetadataMatchesCamera(
+  metadata: SearchResult["image"]["photo_metadata"],
+  cameraQuery: string,
+) {
+  if (!metadata) {
+    return false;
+  }
+
+  return [metadata.camera_make, metadata.camera_model, metadata.lens_model].some((value) =>
+    (value ?? "").toLocaleLowerCase().includes(cameraQuery),
+  );
+}
+
+function photoMetadataMatchesKeyword(
+  metadata: SearchResult["image"]["photo_metadata"],
+  keywordQuery: string,
+) {
+  return (metadata?.keywords ?? []).some((keyword) =>
+    keyword.toLocaleLowerCase().includes(keywordQuery),
+  );
+}
+
+function captureTimeMs(value: string | null) {
+  if (!value) {
+    return null;
+  }
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? null : parsed;
 }
 
 function imageOrientation(width: number, height: number): MetadataFilters["orientation"] {
@@ -2958,8 +3104,13 @@ function normalizeMetadataFilters(filters: unknown): MetadataFilters {
   const partial = filters as Partial<MetadataFilters>;
   return {
     ...DEFAULT_METADATA_FILTERS,
+    cameraQuery: stringFilter(partial.cameraQuery),
+    captureDateFrom: stringFilter(partial.captureDateFrom),
+    captureDateTo: stringFilter(partial.captureDateTo),
     dateFrom: stringFilter(partial.dateFrom),
     dateTo: stringFilter(partial.dateTo),
+    hasGps: isHasGpsFilter(partial.hasGps) ? partial.hasGps : DEFAULT_METADATA_FILTERS.hasGps,
+    keywordQuery: stringFilter(partial.keywordQuery),
     maxHeight: stringFilter(partial.maxHeight),
     maxSizeMb: stringFilter(partial.maxSizeMb),
     maxWidth: stringFilter(partial.maxWidth),
@@ -3013,6 +3164,10 @@ function isOrientationFilter(value: unknown): value is MetadataFilters["orientat
   return value === "all" || value === "landscape" || value === "portrait" || value === "square";
 }
 
+function isHasGpsFilter(value: unknown): value is MetadataFilters["hasGps"] {
+  return value === "all" || value === "yes" || value === "no";
+}
+
 function normalizeSearchResponse(response: SearchHistoryItem["response"]): SearchResponse {
   return {
     ...response,
@@ -3064,7 +3219,26 @@ function normalizeSearchResult(result: SearchResult): SearchResult {
       pdf_page_count: result.image.pdf_page_count ?? null,
       visual_embedding_model: result.image.visual_embedding_model ?? null,
       artifacts: Array.isArray(result.image.artifacts) ? result.image.artifacts : [],
+      photo_metadata: normalizePhotoMetadata(result.image.photo_metadata),
     },
+  };
+}
+
+function normalizePhotoMetadata(metadata: SearchResult["image"]["photo_metadata"]) {
+  if (!metadata || typeof metadata !== "object") {
+    return null;
+  }
+
+  return {
+    ...metadata,
+    gps: metadata.gps
+      ? {
+          ...metadata.gps,
+          altitude_meters: metadata.gps.altitude_meters ?? null,
+        }
+      : null,
+    keywords: Array.isArray(metadata.keywords) ? metadata.keywords : [],
+    raw: Array.isArray(metadata.raw) ? metadata.raw : [],
   };
 }
 
@@ -3074,6 +3248,7 @@ function normalizeResultSortMode(value: unknown): ResultSortMode {
 
 function isResultSortMode(value: unknown): value is ResultSortMode {
   return (
+    value === "captured_newest" ||
     value === "filename" ||
     value === "modified_newest" ||
     value === "phash_distance" ||
@@ -3485,6 +3660,28 @@ function VideoSceneLinks({ image }: { image: SearchResult["image"] }) {
   );
 }
 
+function PhotoMetadataDetails({
+  metadata,
+}: {
+  metadata: NonNullable<SearchResult["image"]["photo_metadata"]>;
+}) {
+  return (
+    <details className="rounded-md border border-neutral-200 bg-neutral-50 p-3 text-sm">
+      <summary className="cursor-pointer font-semibold text-neutral-800">Photo metadata</summary>
+      <dl className="mt-3 grid gap-2">
+        {metadata.raw.map((entry, index) => (
+          <div className="grid gap-1" key={`${entry.namespace}-${entry.key}-${index}`}>
+            <dt className="text-xs font-semibold uppercase text-neutral-500">
+              {entry.namespace} · {entry.label || entry.key}
+            </dt>
+            <dd className="break-words text-neutral-900">{entry.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
+  );
+}
+
 function AudioLinks({ image }: { image: SearchResult["image"] }) {
   if (image.media_kind !== "audio" || !image.full_audio_url) {
     return null;
@@ -3592,6 +3789,8 @@ function ResultCard({
   const image = result.image;
   const faces = image.faces ?? [];
   const people = image.people ?? [];
+  const photoMetadata = image.photo_metadata;
+  const cameraLabel = photoMetadata ? photoCameraLabel(photoMetadata) : null;
   const previewUrl = image.animated_thumbnail_url ?? image.thumbnail_url;
 
   return (
@@ -3694,12 +3893,32 @@ function ResultCard({
               value={formatPercent(image.audio_analysis.tempo_confidence)}
             />
           ) : null}
+          {photoMetadata?.capture_time ? (
+            <Metric label="Captured" value={formatCaptureTime(photoMetadata.capture_time)} />
+          ) : null}
+          {cameraLabel ? <Metric label="Camera" value={cameraLabel} /> : null}
+          {photoMetadata?.lens_model ? (
+            <Metric label="Lens" value={photoMetadata.lens_model} />
+          ) : null}
+          {photoMetadata?.gps ? <Metric label="GPS" value={formatGps(photoMetadata.gps)} /> : null}
+          {photoMetadata?.rating !== null && photoMetadata?.rating !== undefined ? (
+            <Metric label="Rating" value={photoMetadata.rating} />
+          ) : null}
+          {photoMetadata?.keywords?.length ? (
+            <Metric label="Keywords" value={photoMetadata.keywords.join(", ")} />
+          ) : null}
+          {photoMetadata?.creator ? <Metric label="Creator" value={photoMetadata.creator} /> : null}
+          {photoMetadata?.copyright ? (
+            <Metric label="Copyright" value={photoMetadata.copyright} />
+          ) : null}
           {image.ocr_text ? <Metric label="OCR text" value={image.ocr_text} /> : null}
           {faces.length ? <Metric label="Faces" value={faces.length} /> : null}
           {people.length ? (
             <Metric label="People" value={people.map(personDisplayName).join(", ")} />
           ) : null}
         </dl>
+
+        {photoMetadata?.raw?.length ? <PhotoMetadataDetails metadata={photoMetadata} /> : null}
 
         <VideoSceneLinks image={image} />
         <AudioLinks image={image} />
@@ -3808,7 +4027,9 @@ function sortPeopleEntries(people: InverseIndexResponse["people"]) {
     (left, right) =>
       right.media_count - left.media_count ||
       right.face_count - left.face_count ||
-      registryName(left).localeCompare(registryName(right), undefined, { sensitivity: "base" }),
+      registryName(left).localeCompare(registryName(right), undefined, {
+        sensitivity: "base",
+      }),
   );
 }
 
@@ -3817,7 +4038,9 @@ function sortSpeakerEntries(speakers: InverseIndexResponse["speakers"]) {
     (left, right) =>
       right.media_count - left.media_count ||
       right.total_seconds - left.total_seconds ||
-      registryName(left).localeCompare(registryName(right), undefined, { sensitivity: "base" }),
+      registryName(left).localeCompare(registryName(right), undefined, {
+        sensitivity: "base",
+      }),
   );
 }
 
@@ -3885,6 +4108,34 @@ function formatModifiedAt(modifiedAt: number) {
     month: "short",
     year: "numeric",
   }).format(new Date(modifiedAt * 1000));
+}
+
+function formatCaptureTime(value: string) {
+  const parsed = captureTimeMs(value);
+  if (parsed === null) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(parsed));
+}
+
+function photoCameraLabel(metadata: NonNullable<SearchResult["image"]["photo_metadata"]>) {
+  return [metadata.camera_make, metadata.camera_model].filter(Boolean).join(" ") || null;
+}
+
+function formatGps(gps: NonNullable<SearchResult["image"]["photo_metadata"]>["gps"]) {
+  if (!gps) {
+    return "";
+  }
+
+  const coordinates = `${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)}`;
+  return gps.altitude_meters !== null && gps.altitude_meters !== undefined
+    ? `${coordinates}, ${gps.altitude_meters.toFixed(1)} m`
+    : coordinates;
 }
 
 function Metric({ label, value }: { label: string; value: number | string }) {

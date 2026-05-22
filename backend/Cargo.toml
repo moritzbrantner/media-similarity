@@ -21,6 +21,8 @@ image-analysis-models = { path = "../../rust-packages/crates/image/image-analysi
 image-analysis-onnx = { path = "../../rust-packages/crates/image/image-analysis-onnx", features = ["onnxruntime"] }
 image-analysis-processing = { path = "../../rust-packages/crates/image/image-analysis-processing" }
 jobs-core = { path = "../../rust-packages/crates/jobs/jobs-core" }
+metastrip = "0.1"
+model-runtime = { version = "0.1.0", path = "../../rust-packages/crates/runtime/model-runtime" }
 text-analysis-core = { path = "shims/text-analysis-core" }
 text-transcripts = { path = "../../rust-packages/crates/text/text-transcripts", features = ["native"] }
 async-trait = "0.1"

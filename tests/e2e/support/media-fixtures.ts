@@ -294,6 +294,30 @@ const defaultImage = {
   pdf_page_number: null as number | null,
   pdf_page_url: null as string | null,
   people: [],
+  photo_metadata: null as {
+    capture_time: string | null;
+    camera_make: string | null;
+    camera_model: string | null;
+    lens_model: string | null;
+    orientation: string | null;
+    gps: {
+      altitude_meters: number | null;
+      latitude: number;
+      longitude: number;
+    } | null;
+    rating: number | null;
+    keywords: string[];
+    title: string | null;
+    description: string | null;
+    creator: string | null;
+    copyright: string | null;
+    raw: Array<{
+      key: string;
+      label: string;
+      namespace: string;
+      value: string;
+    }>;
+  } | null,
   phash: "0123456789abcdef",
   relative_path: "trips/sunrise.jpg",
   scene_clip_url: null as string | null,

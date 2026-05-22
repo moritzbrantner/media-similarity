@@ -6,7 +6,9 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use crate::config::Settings;
-use crate::domain::models::{GeneratedArtifactPayload, ImagePayload, IndexResponse, OcrAnalysis};
+use crate::domain::models::{
+    GeneratedArtifactPayload, ImagePayload, IndexResponse, OcrAnalysis, PhotoMetadataPayload,
+};
 use crate::storage::qdrant::QdrantImageStore;
 use crate::workers::deletion::delete_indexed_media;
 use crate::workers::media::audio::{
@@ -18,6 +20,7 @@ use crate::workers::media::image_io::{dimensions, image_id_for_uri};
 use crate::workers::media::media::{DecodedMedia, MediaKind};
 use crate::workers::media::ocr::extract_media_ocr;
 use crate::workers::media::pdf::{decode_pdf, expose_source_pdf, merge_pdf_text};
+use crate::workers::media::photo_metadata::extract_photo_metadata;
 use crate::workers::media::thumbnails::{ensure_animated_thumbnail, ensure_thumbnail};
 use crate::workers::media::video::{decode_source_video_scenes, SourceVideoScene};
 use crate::workers::media::visual_embedding::VisualEmbeddingBackend;
@@ -340,6 +343,16 @@ impl ImageIndexer {
             return self.index_pdf(source_image).await;
         }
 
+        let photo_metadata = source_image
+            .local_path()
+            .filter(|_| !source_image.is_video() && !source_image.is_audio() && !source_image.is_pdf())
+            .and_then(|path| match extract_photo_metadata(path) {
+                Ok(metadata) => metadata,
+                Err(error) => {
+                    tracing::warn!(%error, path = %path.display(), "photo metadata extraction failed");
+                    None
+                }
+            });
         let media = source_image.load_media(&self.settings)?;
         let media_id = image_id_for_uri(&source_image.id_base);
         let face_analysis = analyze_faces_for_media(
@@ -354,7 +367,7 @@ impl ImageIndexer {
         let payload = self.build_payload(
             source_image,
             &media,
-            PayloadBuildOptions::new(&face_analysis),
+            PayloadBuildOptions::new(&face_analysis).with_photo_metadata(photo_metadata),
         )?;
         let vector = self
             .embedder
@@ -675,6 +688,7 @@ impl ImageIndexer {
             faces: options.face_analysis.faces.clone(),
             people: options.face_analysis.person_clusters.clone(),
             artifacts,
+            photo_metadata: options.photo_metadata.clone(),
             scene_clip_url,
             scene_index: video_scene
                 .map(|scene| scene.scene_index)
@@ -700,6 +714,7 @@ struct PayloadBuildOptions<'a> {
     audio_segment: Option<&'a SourceAudioSegment>,
     pdf_context: Option<&'a PdfPayloadContext>,
     ocr_override: Option<OcrAnalysis>,
+    photo_metadata: Option<PhotoMetadataPayload>,
     face_analysis: &'a FaceAnalysis,
 }
 
@@ -710,6 +725,7 @@ impl<'a> PayloadBuildOptions<'a> {
             audio_segment: None,
             pdf_context: None,
             ocr_override: None,
+            photo_metadata: None,
             face_analysis,
         }
     }
@@ -731,6 +747,11 @@ impl<'a> PayloadBuildOptions<'a> {
 
     fn with_ocr(mut self, analysis: OcrAnalysis) -> Self {
         self.ocr_override = Some(analysis);
+        self
+    }
+
+    fn with_photo_metadata(mut self, photo_metadata: Option<PhotoMetadataPayload>) -> Self {
+        self.photo_metadata = photo_metadata;
         self
     }
 }
@@ -864,7 +885,8 @@ fn generated_artifacts(
 
 fn indexing_profile(settings: &Settings) -> String {
     let profile = IndexingProfile {
-        version: 3,
+        version: 4,
+        photo_metadata_version: "photo-metadata-v1",
         clip_model_name: &settings.clip_model_name,
         vector_size: settings.vector_size,
         visual_embedding_enabled: settings.visual_embedding_enabled,
@@ -910,6 +932,7 @@ fn indexing_profile(settings: &Settings) -> String {
 #[derive(Serialize)]
 struct IndexingProfile<'a> {
     version: u32,
+    photo_metadata_version: &'a str,
     clip_model_name: &'a str,
     vector_size: usize,
     visual_embedding_enabled: bool,
