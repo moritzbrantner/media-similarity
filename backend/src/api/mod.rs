@@ -16,7 +16,7 @@ use sha2::{Digest, Sha256};
 use text_analysis_transcription::{WhisperCppModel, WhisperCppModelStore};
 use uuid::Uuid;
 
-use crate::config::{parse_media_sources_file, Settings};
+use crate::config::{parse_extensions, parse_media_sources_file, Settings};
 use crate::domain::models::{HealthResponse, IndexResponse, SearchResponse};
 use crate::domain::models::{SearchResult, SearchSceneResponse};
 use crate::storage::qdrant::QdrantImageStore;
@@ -42,6 +42,7 @@ use crate::workers::sources::build_image_sources;
 
 pub struct AppState {
     pub settings: Settings,
+    indexing_config: RwLock<EditableIndexingConfig>,
     source_specs: RwLock<Vec<String>>,
     pub store: QdrantImageStore,
     pub embedder: Arc<dyn VisualEmbeddingBackend>,
@@ -57,9 +58,11 @@ impl AppState {
             settings.face_embedding_vector_size,
         );
         let embedder = build_visual_embedder(&settings);
+        let indexing_config = RwLock::new(EditableIndexingConfig::from_settings(&settings));
         let source_specs = RwLock::new(settings.source_specs());
         Self {
             settings,
+            indexing_config,
             source_specs,
             store,
             embedder,
@@ -70,6 +73,7 @@ impl AppState {
     pub fn indexing_settings(&self) -> Settings {
         let mut settings = self.settings.clone();
         settings.image_sources = read_source_specs(&self.source_specs);
+        read_indexing_config(&self.indexing_config).apply_to_settings(&mut settings);
         settings
     }
 
@@ -79,6 +83,14 @@ impl AppState {
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         *source_specs = sources;
+    }
+
+    fn replace_indexing_config(&self, indexing_config: EditableIndexingConfig) {
+        let mut current = self
+            .indexing_config
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *current = indexing_config;
     }
 }
 
@@ -186,9 +198,12 @@ pub struct SourceIndexingConfig {
     pub face_analysis_enabled: bool,
     pub face_detection_min_confidence: f32,
     pub face_cluster_threshold: f32,
+    pub face_min_cluster_images: u32,
+    pub face_max_frames_per_media: usize,
     pub gif_sample_frames: usize,
     pub gif_max_decode_frames: usize,
     pub gif_preview_frames: usize,
+    pub gif_default_frame_delay_ms: u32,
     pub gif_motion_weight: f32,
     pub video_frame_stride: u32,
     pub video_max_frames: Option<u32>,
@@ -202,7 +217,130 @@ pub struct SourceIndexingConfig {
 
 #[derive(Debug, Deserialize)]
 pub struct UpdateSourceConfigRequest {
-    pub sources: Vec<String>,
+    pub sources: Option<Vec<String>>,
+    pub indexing: Option<EditableIndexingConfig>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct EditableIndexingConfig {
+    pub image_extensions: Vec<String>,
+    pub audio_extensions: Vec<String>,
+    pub pdf_extensions: Vec<String>,
+    pub face_analysis_enabled: bool,
+    pub face_detection_min_confidence: f32,
+    pub face_cluster_threshold: f32,
+    pub face_min_cluster_images: u32,
+    pub face_max_frames_per_media: usize,
+    pub gif_sample_frames: usize,
+    pub gif_max_decode_frames: usize,
+    pub gif_preview_frames: usize,
+    pub gif_default_frame_delay_ms: u32,
+    pub gif_motion_weight: f32,
+    pub video_frame_stride: u32,
+    pub video_max_frames: Option<u32>,
+    pub pdf_render_dpi: u32,
+    pub pdf_max_pages: u32,
+    pub pdf_summary_pages: usize,
+    pub ocr_enabled: bool,
+    pub ocr_max_frames: usize,
+    pub audio_transcription_enabled: bool,
+}
+
+impl EditableIndexingConfig {
+    fn from_settings(settings: &Settings) -> Self {
+        Self {
+            image_extensions: settings.image_extensions.iter().cloned().collect(),
+            audio_extensions: settings.audio_extensions.iter().cloned().collect(),
+            pdf_extensions: settings.pdf_extensions.iter().cloned().collect(),
+            face_analysis_enabled: settings.face_analysis_enabled,
+            face_detection_min_confidence: settings.face_detection_min_confidence,
+            face_cluster_threshold: settings.face_cluster_threshold,
+            face_min_cluster_images: settings.face_min_cluster_images,
+            face_max_frames_per_media: settings.face_max_frames_per_media,
+            gif_sample_frames: settings.gif_sample_frames,
+            gif_max_decode_frames: settings.gif_max_decode_frames,
+            gif_preview_frames: settings.gif_preview_frames,
+            gif_default_frame_delay_ms: settings.gif_default_frame_delay_ms,
+            gif_motion_weight: settings.gif_motion_weight,
+            video_frame_stride: settings.video_frame_stride,
+            video_max_frames: settings.video_max_frames,
+            pdf_render_dpi: settings.pdf_render_dpi,
+            pdf_max_pages: settings.pdf_max_pages,
+            pdf_summary_pages: settings.pdf_summary_pages,
+            ocr_enabled: settings.ocr_enabled,
+            ocr_max_frames: settings.ocr_max_frames,
+            audio_transcription_enabled: settings.audio_transcription_enabled,
+        }
+    }
+
+    fn apply_to_settings(&self, settings: &mut Settings) {
+        settings.image_extensions = parse_extensions(&self.image_extensions.join(","))
+            .expect("validated indexing config contains image extensions");
+        settings.audio_extensions = parse_extensions(&self.audio_extensions.join(","))
+            .expect("validated indexing config contains audio extensions");
+        settings.pdf_extensions = parse_extensions(&self.pdf_extensions.join(","))
+            .expect("validated indexing config contains PDF extensions");
+        settings.face_analysis_enabled = self.face_analysis_enabled;
+        settings.face_detection_min_confidence = self.face_detection_min_confidence;
+        settings.face_cluster_threshold = self.face_cluster_threshold;
+        settings.face_min_cluster_images = self.face_min_cluster_images;
+        settings.face_max_frames_per_media = self.face_max_frames_per_media;
+        settings.gif_sample_frames = self.gif_sample_frames;
+        settings.gif_max_decode_frames = self.gif_max_decode_frames;
+        settings.gif_preview_frames = self.gif_preview_frames;
+        settings.gif_default_frame_delay_ms = self.gif_default_frame_delay_ms;
+        settings.gif_motion_weight = self.gif_motion_weight;
+        settings.video_frame_stride = self.video_frame_stride;
+        settings.video_max_frames = self.video_max_frames;
+        settings.pdf_render_dpi = self.pdf_render_dpi;
+        settings.pdf_max_pages = self.pdf_max_pages;
+        settings.pdf_summary_pages = self.pdf_summary_pages;
+        settings.ocr_enabled = self.ocr_enabled;
+        settings.ocr_max_frames = self.ocr_max_frames;
+        settings.audio_transcription_enabled = self.audio_transcription_enabled;
+    }
+
+    fn validated(mut self) -> Result<Self, ApiError> {
+        self.image_extensions = normalized_extensions("image_extensions", &self.image_extensions)?;
+        self.audio_extensions = normalized_extensions("audio_extensions", &self.audio_extensions)?;
+        self.pdf_extensions = normalized_extensions("pdf_extensions", &self.pdf_extensions)?;
+        validate_range(
+            "face_detection_min_confidence",
+            self.face_detection_min_confidence,
+            0.0,
+            1.0,
+        )?;
+        validate_range(
+            "face_cluster_threshold",
+            self.face_cluster_threshold,
+            0.0,
+            2.0,
+        )?;
+        validate_min("face_min_cluster_images", self.face_min_cluster_images, 1)?;
+        validate_min_usize(
+            "face_max_frames_per_media",
+            self.face_max_frames_per_media,
+            1,
+        )?;
+        validate_min_usize("gif_sample_frames", self.gif_sample_frames, 1)?;
+        validate_min_usize("gif_max_decode_frames", self.gif_max_decode_frames, 1)?;
+        validate_min_usize("gif_preview_frames", self.gif_preview_frames, 1)?;
+        validate_min(
+            "gif_default_frame_delay_ms",
+            self.gif_default_frame_delay_ms,
+            1,
+        )?;
+        validate_range("gif_motion_weight", self.gif_motion_weight, 0.0, 1.0)?;
+        validate_min("video_frame_stride", self.video_frame_stride, 1)?;
+        if let Some(video_max_frames) = self.video_max_frames {
+            validate_min("video_max_frames", video_max_frames, 1)?;
+        }
+        validate_range_u32("pdf_render_dpi", self.pdf_render_dpi, 72, 300)?;
+        validate_range_u32("pdf_max_pages", self.pdf_max_pages, 1, 10_000)?;
+        validate_range_usize("pdf_summary_pages", self.pdf_summary_pages, 1, 256)?;
+        validate_range_usize("ocr_max_frames", self.ocr_max_frames, 1, 64)?;
+        Ok(self)
+    }
 }
 
 pub async fn get_source_config(State(state): State<Arc<AppState>>) -> Json<SourceConfigResponse> {
@@ -213,9 +351,14 @@ pub async fn update_source_config(
     State(state): State<Arc<AppState>>,
     Json(request): Json<UpdateSourceConfigRequest>,
 ) -> Result<Json<SourceConfigResponse>, ApiError> {
-    let sources = normalize_source_specs(&request.sources)?;
-    write_media_sources_file(&state.settings.media_sources_file, &sources)?;
-    state.replace_source_specs(sources);
+    if let Some(sources) = request.sources {
+        let sources = normalize_source_specs(&sources)?;
+        write_media_sources_file(&state.settings.media_sources_file, &sources)?;
+        state.replace_source_specs(sources);
+    }
+    if let Some(indexing) = request.indexing {
+        state.replace_indexing_config(indexing.validated()?);
+    }
     Ok(Json(source_config_response(&state)))
 }
 
@@ -242,9 +385,12 @@ fn source_config_response(state: &AppState) -> SourceConfigResponse {
             face_analysis_enabled: settings.face_analysis_enabled,
             face_detection_min_confidence: settings.face_detection_min_confidence,
             face_cluster_threshold: settings.face_cluster_threshold,
+            face_min_cluster_images: settings.face_min_cluster_images,
+            face_max_frames_per_media: settings.face_max_frames_per_media,
             gif_sample_frames: settings.gif_sample_frames,
             gif_max_decode_frames: settings.gif_max_decode_frames,
             gif_preview_frames: settings.gif_preview_frames,
+            gif_default_frame_delay_ms: settings.gif_default_frame_delay_ms,
             gif_motion_weight: settings.gif_motion_weight,
             video_frame_stride: settings.video_frame_stride,
             video_max_frames: settings.video_max_frames,
@@ -255,6 +401,74 @@ fn source_config_response(state: &AppState) -> SourceConfigResponse {
             ocr_max_frames: settings.ocr_max_frames,
             audio_transcription_enabled: settings.audio_transcription_enabled,
         },
+    }
+}
+
+fn read_indexing_config(
+    indexing_config: &RwLock<EditableIndexingConfig>,
+) -> EditableIndexingConfig {
+    indexing_config
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}
+
+fn normalized_extensions(name: &str, values: &[String]) -> Result<Vec<String>, ApiError> {
+    let normalized = parse_extensions(&values.join(",")).map_err(|error| {
+        ApiError::bad_request(format!(
+            "{name} must contain at least one extension: {error}"
+        ))
+    })?;
+    Ok(normalized.into_iter().collect())
+}
+
+fn validate_range(name: &str, value: f32, min: f32, max: f32) -> Result<(), ApiError> {
+    if value.is_finite() && value >= min && value <= max {
+        Ok(())
+    } else {
+        Err(ApiError::bad_request(format!(
+            "{name} must be between {min} and {max}"
+        )))
+    }
+}
+
+fn validate_range_u32(name: &str, value: u32, min: u32, max: u32) -> Result<(), ApiError> {
+    if value >= min && value <= max {
+        Ok(())
+    } else {
+        Err(ApiError::bad_request(format!(
+            "{name} must be between {min} and {max}"
+        )))
+    }
+}
+
+fn validate_range_usize(name: &str, value: usize, min: usize, max: usize) -> Result<(), ApiError> {
+    if value >= min && value <= max {
+        Ok(())
+    } else {
+        Err(ApiError::bad_request(format!(
+            "{name} must be between {min} and {max}"
+        )))
+    }
+}
+
+fn validate_min(name: &str, value: u32, min: u32) -> Result<(), ApiError> {
+    if value >= min {
+        Ok(())
+    } else {
+        Err(ApiError::bad_request(format!(
+            "{name} must be at least {min}"
+        )))
+    }
+}
+
+fn validate_min_usize(name: &str, value: usize, min: usize) -> Result<(), ApiError> {
+    if value >= min {
+        Ok(())
+    } else {
+        Err(ApiError::bad_request(format!(
+            "{name} must be at least {min}"
+        )))
     }
 }
 

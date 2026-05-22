@@ -97,9 +97,12 @@ export type SourceIndexingConfig = {
   face_analysis_enabled: boolean;
   face_detection_min_confidence: number;
   face_cluster_threshold: number;
+  face_min_cluster_images: number;
+  face_max_frames_per_media: number;
   gif_sample_frames: number;
   gif_max_decode_frames: number;
   gif_preview_frames: number;
+  gif_default_frame_delay_ms: number;
   gif_motion_weight: number;
   video_frame_stride: number;
   video_max_frames: number | null;

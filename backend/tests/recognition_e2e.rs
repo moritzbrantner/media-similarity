@@ -448,6 +448,86 @@ async fn source_config_api_persists_sources_and_reports_planned_types() {
 }
 
 #[tokio::test]
+async fn source_config_api_updates_runtime_indexing_configuration() {
+    let app = TestApp::new(|settings| {
+        settings.image_extensions = parse_extensions(".png").unwrap();
+    })
+    .await;
+
+    let updated = app
+        .put_json(
+            "/api/source-config",
+            json!({
+                "indexing": {
+                    "image_extensions": [".png", "webp"],
+                    "audio_extensions": [".mp3"],
+                    "pdf_extensions": ["pdf"],
+                    "face_analysis_enabled": false,
+                    "face_detection_min_confidence": 0.6,
+                    "face_cluster_threshold": 0.4,
+                    "face_min_cluster_images": 3,
+                    "face_max_frames_per_media": 6,
+                    "gif_sample_frames": 8,
+                    "gif_max_decode_frames": 128,
+                    "gif_preview_frames": 6,
+                    "gif_default_frame_delay_ms": 90,
+                    "gif_motion_weight": 0.35,
+                    "video_frame_stride": 12,
+                    "video_max_frames": 48,
+                    "pdf_render_dpi": 180,
+                    "pdf_max_pages": 12,
+                    "pdf_summary_pages": 4,
+                    "ocr_enabled": false,
+                    "ocr_max_frames": 2,
+                    "audio_transcription_enabled": true
+                }
+            }),
+        )
+        .await;
+
+    assert_eq!(updated["indexing"]["image_extensions"][0], ".png");
+    assert_eq!(updated["indexing"]["image_extensions"][1], ".webp");
+    assert_eq!(updated["indexing"]["audio_extensions"][0], ".mp3");
+    assert_eq!(updated["indexing"]["pdf_extensions"][0], ".pdf");
+    assert_eq!(updated["indexing"]["face_analysis_enabled"], false);
+    assert_eq!(updated["indexing"]["video_frame_stride"], 12);
+    assert_eq!(updated["indexing"]["video_max_frames"], 48);
+    assert_eq!(updated["indexing"]["ocr_enabled"], false);
+
+    let invalid = app
+        .raw_put_json(
+            "/api/source-config",
+            json!({
+                "indexing": {
+                    "image_extensions": [".png"],
+                    "audio_extensions": [".mp3"],
+                    "pdf_extensions": [".pdf"],
+                    "face_analysis_enabled": true,
+                    "face_detection_min_confidence": 1.4,
+                    "face_cluster_threshold": 0.4,
+                    "face_min_cluster_images": 1,
+                    "face_max_frames_per_media": 1,
+                    "gif_sample_frames": 1,
+                    "gif_max_decode_frames": 1,
+                    "gif_preview_frames": 1,
+                    "gif_default_frame_delay_ms": 1,
+                    "gif_motion_weight": 0.2,
+                    "video_frame_stride": 1,
+                    "video_max_frames": null,
+                    "pdf_render_dpi": 144,
+                    "pdf_max_pages": 1,
+                    "pdf_summary_pages": 1,
+                    "ocr_enabled": true,
+                    "ocr_max_frames": 1,
+                    "audio_transcription_enabled": false
+                }
+            }),
+        )
+        .await;
+    assert_eq!(invalid.status(), reqwest::StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn jobs_api_exposes_index_job_snapshots_and_events() {
     let app = TestApp::new(|settings| {
         settings.image_extensions = parse_extensions(".png").unwrap();

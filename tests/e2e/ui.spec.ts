@@ -87,6 +87,12 @@ const sourceConfigResponse = {
     audio_extensions: [".mp3", ".wav"],
     audio_transcription_enabled: false,
     collection: "image_similarity_test",
+    face_analysis_enabled: true,
+    face_cluster_threshold: 0.38,
+    face_detection_min_confidence: 0.75,
+    face_max_frames_per_media: 8,
+    face_min_cluster_images: 2,
+    gif_default_frame_delay_ms: 100,
     gif_max_decode_frames: 512,
     gif_motion_weight: 0.2,
     gif_preview_frames: 16,
@@ -101,6 +107,9 @@ const sourceConfigResponse = {
     video_extensions: [".mp4", ".mov"],
     video_frame_stride: 30,
     video_max_frames: null,
+    visual_embedding_enabled: true,
+    visual_embedding_model: "sentence-transformers/clip-ViT-B-32",
+    visual_embedding_vector_size: 512,
   },
   media_sources_file: "config/media-sources.txt",
   sources: [
@@ -398,16 +407,21 @@ test.beforeEach(async ({ page }) => {
 
   await page.route("**/api/source-config", async (route) => {
     if (route.request().method() === "PUT") {
-      const request = route.request().postDataJSON() as { sources: string[] };
+      const request = route.request().postDataJSON() as {
+        indexing?: typeof sourceConfigResponse.indexing;
+        sources?: string[];
+      };
       await route.fulfill({
         json: {
           ...sourceConfigResponse,
-          sources: request.sources.map((spec) => ({
-            detail: null,
-            kind: spec.startsWith("minio:") ? "minio" : "local",
-            spec,
-            status: spec.startsWith("minio:") ? "not_implemented" : "ready",
-          })),
+          indexing: request.indexing ?? sourceConfigResponse.indexing,
+          sources:
+            request.sources?.map((spec) => ({
+              detail: null,
+              kind: spec.startsWith("minio:") ? "minio" : "local",
+              spec,
+              status: spec.startsWith("minio:") ? "not_implemented" : "ready",
+            })) ?? sourceConfigResponse.sources,
         },
       });
       return;
@@ -494,6 +508,35 @@ test("configures media sources from the UI", async ({ page }) => {
 
   await expect(page.getByText("Saved source configuration.")).toBeVisible();
   await expect(page.getByText("/new-media")).toBeVisible();
+
+  await page.getByRole("button", { name: "Index Sources" }).last().click();
+  await expect(
+    page.getByText("Indexed 3 media item(s), skipped 1, pruned 1, failed 0."),
+  ).toBeVisible();
+});
+
+test("configures indexing behavior from the UI", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Open indexing configuration" }).click();
+
+  await expect(page.getByRole("heading", { name: "Indexing Configuration" })).toBeVisible();
+  await expect(page.getByLabel("Image extensions")).toHaveValue(".jpg, .png, .gif");
+  await expect(page.getByLabel("OCR", { exact: true })).toBeChecked();
+  await expect(page.getByLabel("Audio transcription")).not.toBeChecked();
+  await expect(page.getByText("Collection")).toBeVisible();
+  await expect(page.getByText("image_similarity_test")).toBeVisible();
+
+  await page.getByLabel("Image extensions").fill(".jpg, .png, webp");
+  await page.getByLabel("Video frame stride").fill("12");
+  await page.getByLabel("GIF motion weight").fill("0.35");
+  await page.getByLabel("OCR", { exact: true }).uncheck();
+  await page.getByRole("button", { name: "Save" }).click();
+
+  await expect(page.getByText("Saved indexing configuration.")).toBeVisible();
+  await expect(page.getByLabel("Image extensions")).toHaveValue(".jpg, .png, .webp");
+  await expect(page.getByLabel("Video frame stride")).toHaveValue("12");
+  await expect(page.getByLabel("OCR", { exact: true })).not.toBeChecked();
 
   await page.getByRole("button", { name: "Index Sources" }).last().click();
   await expect(

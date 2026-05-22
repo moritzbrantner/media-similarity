@@ -5,6 +5,7 @@ import type {
   JobSnapshot,
   SearchResponse,
   SourceConfigResponse,
+  SourceIndexingConfig,
 } from "./types";
 
 async function parseResponse<T>(response: Response): Promise<T> {
@@ -94,6 +95,17 @@ export async function fetchSourceConfig(): Promise<SourceConfigResponse> {
 export async function updateSourceConfig(sources: string[]): Promise<SourceConfigResponse> {
   const response = await fetch("/api/source-config", {
     body: JSON.stringify({ sources }),
+    headers: { "Content-Type": "application/json" },
+    method: "PUT",
+  });
+  return parseResponse<SourceConfigResponse>(response);
+}
+
+export async function updateIndexingConfig(
+  indexing: SourceIndexingConfig,
+): Promise<SourceConfigResponse> {
+  const response = await fetch("/api/source-config", {
+    body: JSON.stringify({ indexing }),
     headers: { "Content-Type": "application/json" },
     method: "PUT",
   });
