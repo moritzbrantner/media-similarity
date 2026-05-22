@@ -89,6 +89,7 @@ export type SourceIndexingConfig = {
   collection: string;
   image_extensions: string[];
   audio_extensions: string[];
+  pdf_extensions: string[];
   video_extensions: string[];
   visual_embedding_enabled: boolean;
   visual_embedding_model: string;
@@ -102,6 +103,9 @@ export type SourceIndexingConfig = {
   gif_motion_weight: number;
   video_frame_stride: number;
   video_max_frames: number | null;
+  pdf_render_dpi: number;
+  pdf_max_pages: number;
+  pdf_summary_pages: number;
   ocr_enabled: boolean;
   ocr_max_frames: number;
   audio_transcription_enabled: boolean;
@@ -195,11 +199,23 @@ export type ImagePayload = {
   phash: string;
   thumbnail_url: string | null;
   animated_thumbnail_url: string | null;
-  media_kind: "static_image" | "animated_gif" | "video_scene" | "audio";
+  media_kind:
+    | "static_image"
+    | "animated_gif"
+    | "video_scene"
+    | "audio"
+    | "pdf_page"
+    | "pdf_document";
   frame_count: number | null;
   duration_ms: number | null;
   full_video_url: string | null;
   full_audio_url: string | null;
+  full_pdf_url: string | null;
+  pdf_page_url: string | null;
+  pdf_document_id: string | null;
+  pdf_page_index: number | null;
+  pdf_page_number: number | null;
+  pdf_page_count: number | null;
   audio_analysis: AudioAnalysis | null;
   ocr_text: string;
   ocr_frames: OcrFrameText[];
@@ -235,6 +251,9 @@ export type SearchSceneResponse = {
   start_seconds: number;
   end_seconds: number;
   clip_url: string | null;
+  page_index: number | null;
+  page_number: number | null;
+  page_label: string | null;
   speaker_id: string | null;
   speaker_label: string | null;
   query_phash: string;
@@ -246,7 +265,7 @@ export type SearchResponse = {
   query_phash: string;
   count: number;
   results: SearchResult[];
-  query_media_kind: "static_image" | "animated_gif" | "video" | "audio";
+  query_media_kind: "static_image" | "animated_gif" | "video" | "audio" | "pdf";
   scenes: SearchSceneResponse[];
   query_audio_analysis: AudioAnalysis | null;
   query_ocr_text: string;

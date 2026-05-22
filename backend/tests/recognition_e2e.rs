@@ -303,6 +303,60 @@ async fn audio_recognition_indexes_bits_voice_metadata_and_searches_uploaded_aud
 }
 
 #[tokio::test]
+async fn pdf_recognition_indexes_document_pages_and_searches_uploaded_pdf() {
+    if !has_tool("pdfinfo") || !has_tool("pdftoppm") || !has_tool("pdftotext") {
+        eprintln!("skipping PDF e2e test because poppler-utils is unavailable");
+        return;
+    }
+
+    let app = TestApp::new(|settings| {
+        settings.default_search_limit = 10;
+        settings.ocr_enabled = false;
+        settings.pdf_max_pages = 10;
+        settings.pdf_summary_pages = 2;
+    })
+    .await;
+
+    let pdf = app.source_path("invoice.pdf");
+    write_test_pdf(&pdf, &["Invoice total due", "Receipt archive"]);
+
+    let indexed = app.index().await;
+    assert_eq!(indexed.indexed, 3);
+    assert_eq!(indexed.failed, 0, "{:?}", indexed.errors);
+
+    let second = app.index().await;
+    assert_eq!(second.indexed, 0);
+    assert_eq!(second.skipped, 1);
+
+    let response = app
+        .search_upload(
+            "query.pdf",
+            "application/pdf",
+            fs::read(&pdf).unwrap(),
+            Some(10),
+        )
+        .await;
+    assert_eq!(response.query_media_kind, "pdf");
+    assert_eq!(response.scenes.len(), 2);
+    assert!(response
+        .scenes
+        .iter()
+        .all(|scene| scene.scene_kind == "pdf_page"));
+    assert!(response.results.iter().any(|result| {
+        result.image.media_kind == "pdf_document"
+            && result.image.full_pdf_url.is_some()
+            && result.image.pdf_page_count == Some(2)
+    }));
+    assert!(response.results.iter().any(|result| {
+        result.image.media_kind == "pdf_page"
+            && result.image.pdf_page_number == Some(1)
+            && result.image.pdf_page_count == Some(2)
+            && result.image.pdf_page_url.is_some()
+            && result.image.ocr_text.contains("Invoice")
+    }));
+}
+
+#[tokio::test]
 async fn upload_validation_covers_invalid_media_and_size_configuration() {
     let app = TestApp::new(|settings| {
         settings.max_upload_mb = 1;
@@ -316,7 +370,7 @@ async fn upload_validation_covers_invalid_media_and_size_configuration() {
     let invalid_body: Value = invalid.json().await.unwrap();
     assert_eq!(
         invalid_body["detail"],
-        "Upload must be an image, video, or audio file"
+        "Upload must be an image, video, audio, or PDF file"
     );
 
     let oversized = app
@@ -1119,6 +1173,62 @@ fn write_test_gif(path: &Path, colors: &[[u8; 3]], delay_ms: u32) {
         })
         .collect::<Vec<_>>();
     encoder.encode_frames(frames).unwrap();
+}
+
+fn write_test_pdf(path: &Path, page_texts: &[&str]) {
+    let mut objects = Vec::<String>::new();
+    let kids = (0..page_texts.len())
+        .map(|index| format!("{} 0 R", 3 + index))
+        .collect::<Vec<_>>()
+        .join(" ");
+    objects.push("<< /Type /Catalog /Pages 2 0 R >>".to_string());
+    objects.push(format!(
+        "<< /Type /Pages /Kids [{kids}] /Count {} >>",
+        page_texts.len()
+    ));
+    let font_object_id = 3 + page_texts.len();
+    let first_content_id = font_object_id + 1;
+    for index in 0..page_texts.len() {
+        objects.push(format!(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 240 160] /Resources << /Font << /F1 {font_object_id} 0 R >> >> /Contents {} 0 R >>",
+            first_content_id + index
+        ));
+    }
+    objects.push("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string());
+    for text in page_texts {
+        let stream = format!(
+            "BT /F1 18 Tf 24 92 Td ({}) Tj ET",
+            text.replace('\\', "\\\\")
+                .replace('(', "\\(")
+                .replace(')', "\\)")
+        );
+        objects.push(format!(
+            "<< /Length {} >>\nstream\n{}\nendstream",
+            stream.len(),
+            stream
+        ));
+    }
+
+    let mut pdf = Vec::from("%PDF-1.4\n".as_bytes());
+    let mut offsets = Vec::new();
+    for (index, object) in objects.iter().enumerate() {
+        offsets.push(pdf.len());
+        pdf.extend_from_slice(format!("{} 0 obj\n{}\nendobj\n", index + 1, object).as_bytes());
+    }
+    let xref_offset = pdf.len();
+    pdf.extend_from_slice(format!("xref\n0 {}\n", objects.len() + 1).as_bytes());
+    pdf.extend_from_slice(b"0000000000 65535 f \n");
+    for offset in offsets {
+        pdf.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
+    }
+    pdf.extend_from_slice(
+        format!(
+            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n",
+            objects.len() + 1
+        )
+        .as_bytes(),
+    );
+    fs::write(path, pdf).unwrap();
 }
 
 fn write_two_scene_video(path: &Path) {

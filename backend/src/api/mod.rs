@@ -29,6 +29,9 @@ use crate::workers::media::audio::{
 };
 use crate::workers::media::image_io::load_media_bytes;
 use crate::workers::media::ocr::normalize_ocr_query;
+use crate::workers::media::pdf::{
+    decode_pdf, is_pdf_content_type, is_pdf_extension, pdf_upload_path, write_pdf_upload,
+};
 use crate::workers::media::video::{
     decode_video_scenes, is_video_content_type, is_video_extension, video_upload_path,
     write_video_upload,
@@ -175,6 +178,7 @@ pub struct SourceIndexingConfig {
     pub collection: String,
     pub image_extensions: Vec<String>,
     pub audio_extensions: Vec<String>,
+    pub pdf_extensions: Vec<String>,
     pub video_extensions: Vec<String>,
     pub visual_embedding_enabled: bool,
     pub visual_embedding_model: String,
@@ -188,6 +192,9 @@ pub struct SourceIndexingConfig {
     pub gif_motion_weight: f32,
     pub video_frame_stride: u32,
     pub video_max_frames: Option<u32>,
+    pub pdf_render_dpi: u32,
+    pub pdf_max_pages: u32,
+    pub pdf_summary_pages: usize,
     pub ocr_enabled: bool,
     pub ocr_max_frames: usize,
     pub audio_transcription_enabled: bool,
@@ -227,6 +234,7 @@ fn source_config_response(state: &AppState) -> SourceConfigResponse {
             collection: settings.qdrant_collection,
             image_extensions: settings.image_extensions.into_iter().collect(),
             audio_extensions: settings.audio_extensions.into_iter().collect(),
+            pdf_extensions: settings.pdf_extensions.into_iter().collect(),
             video_extensions: video_source_extensions(),
             visual_embedding_enabled: settings.visual_embedding_enabled,
             visual_embedding_model: settings.clip_model_name.clone(),
@@ -240,6 +248,9 @@ fn source_config_response(state: &AppState) -> SourceConfigResponse {
             gif_motion_weight: settings.gif_motion_weight,
             video_frame_stride: settings.video_frame_stride,
             video_max_frames: settings.video_max_frames,
+            pdf_render_dpi: settings.pdf_render_dpi,
+            pdf_max_pages: settings.pdf_max_pages,
+            pdf_summary_pages: settings.pdf_summary_pages,
             ocr_enabled: settings.ocr_enabled,
             ocr_max_frames: settings.ocr_max_frames,
             audio_transcription_enabled: settings.audio_transcription_enabled,
@@ -588,9 +599,14 @@ pub async fn search_upload(
                 .as_deref()
                 .map(is_audio_extension)
                 .unwrap_or(false);
-        if !is_image && !is_video && !is_audio {
+        let is_pdf = is_pdf_content_type(&content_type)
+            || filename_extension
+                .as_deref()
+                .map(is_pdf_extension)
+                .unwrap_or(false);
+        if !is_image && !is_video && !is_audio && !is_pdf {
             return Err(ApiError::bad_request(
-                "Upload must be an image, video, or audio file",
+                "Upload must be an image, video, audio, or PDF file",
             ));
         }
         let raw = field
@@ -601,15 +617,18 @@ pub async fn search_upload(
         upload_kind = Some(UploadedFileKind {
             is_video,
             is_audio,
+            is_pdf,
             filename,
         });
         break;
     }
 
-    let raw = uploaded
-        .ok_or_else(|| ApiError::bad_request("Upload must be an image, video, or audio file"))?;
-    let upload_kind = upload_kind
-        .ok_or_else(|| ApiError::bad_request("Upload must be an image, video, or audio file"))?;
+    let raw = uploaded.ok_or_else(|| {
+        ApiError::bad_request("Upload must be an image, video, audio, or PDF file")
+    })?;
+    let upload_kind = upload_kind.ok_or_else(|| {
+        ApiError::bad_request("Upload must be an image, video, audio, or PDF file")
+    })?;
     let max_bytes = state.settings.max_upload_mb as usize * 1024 * 1024;
     if raw.len() > max_bytes {
         return Err(ApiError::payload_too_large(format!(
@@ -644,6 +663,19 @@ pub async fn search_upload(
         .map(Json);
     }
 
+    if upload_kind.is_pdf {
+        return search_pdf_upload(
+            state,
+            query.limit,
+            query.ocr_text.as_deref(),
+            query.person_id.as_deref(),
+            &raw,
+            upload_kind.filename.as_deref(),
+        )
+        .await
+        .map(Json);
+    }
+
     let media = load_media_bytes(&raw, &state.settings)
         .map_err(|_| ApiError::bad_request("Could not decode image"))?;
     let service = ImageSearchService::new(
@@ -666,7 +698,79 @@ pub async fn search_upload(
 struct UploadedFileKind {
     is_video: bool,
     is_audio: bool,
+    is_pdf: bool,
     filename: Option<String>,
+}
+
+async fn search_pdf_upload(
+    state: Arc<AppState>,
+    limit: Option<u32>,
+    ocr_text: Option<&str>,
+    person_id: Option<&str>,
+    raw: &[u8],
+    filename: Option<&str>,
+) -> Result<SearchResponse, ApiError> {
+    let upload_path = pdf_upload_path(&state.settings.upload_dir, filename);
+    write_pdf_upload(&upload_path, raw).map_err(ApiError::internal)?;
+    let pdf = match decode_pdf(&upload_path, &state.settings) {
+        Ok(pdf) => pdf,
+        Err(error) => {
+            let _ = std::fs::remove_file(&upload_path);
+            return Err(ApiError::bad_request(format!(
+                "Could not process PDF: {error}"
+            )));
+        }
+    };
+    let _ = std::fs::remove_file(&upload_path);
+    let service = ImageSearchService::new(
+        state.settings.clone(),
+        state.store.clone(),
+        state.embedder.clone(),
+    );
+    let mut scene_responses = Vec::new();
+    let mut flattened = Vec::new();
+
+    for page in &pdf.pages {
+        let mut response = service
+            .search_media(&page.media, limit, ocr_text, person_id)
+            .await
+            .map_err(ApiError::internal)?;
+        for result in &mut response.results {
+            result.query_scene_index = Some(page.page_index);
+        }
+        flattened.extend(response.results.clone());
+        scene_responses.push(SearchSceneResponse {
+            scene_index: page.page_index,
+            scene_kind: "pdf_page".to_string(),
+            start_frame: page.page_number as u64,
+            end_frame: page.page_number as u64,
+            start_seconds: 0.0,
+            end_seconds: 0.0,
+            clip_url: None,
+            page_index: Some(page.page_index),
+            page_number: Some(page.page_number),
+            page_label: Some(format!("Page {}", page.page_number)),
+            speaker_id: None,
+            speaker_label: None,
+            query_phash: response.query_phash,
+            count: response.count,
+            results: response.results,
+        });
+    }
+
+    let results = deduplicate_flat_results(flattened);
+    Ok(SearchResponse {
+        query_phash: scene_responses
+            .first()
+            .map(|scene| scene.query_phash.clone())
+            .unwrap_or_default(),
+        count: results.len(),
+        results,
+        query_media_kind: "pdf".to_string(),
+        scenes: scene_responses,
+        query_audio_analysis: None,
+        query_ocr_text: normalize_ocr_query(ocr_text),
+    })
 }
 
 async fn search_audio_upload(
@@ -714,6 +818,9 @@ async fn search_audio_upload(
             start_seconds: segment.start_seconds,
             end_seconds: segment.end_seconds,
             clip_url: None,
+            page_index: None,
+            page_number: None,
+            page_label: None,
             speaker_id: segment.speaker_id.clone(),
             speaker_label: segment.speaker_label.clone(),
             query_phash: response.query_phash,
@@ -784,6 +891,9 @@ async fn search_video_upload(
             start_seconds: scene.start.timestamp.seconds(),
             end_seconds: scene.end.timestamp.seconds(),
             clip_url: scene.clip_url.clone(),
+            page_index: None,
+            page_number: None,
+            page_label: None,
             speaker_id: None,
             speaker_label: None,
             query_phash: response.query_phash,

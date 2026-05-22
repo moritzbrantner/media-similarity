@@ -142,6 +142,18 @@ pub struct ImagePayload {
     #[serde(default)]
     pub full_audio_url: Option<String>,
     #[serde(default)]
+    pub full_pdf_url: Option<String>,
+    #[serde(default)]
+    pub pdf_page_url: Option<String>,
+    #[serde(default)]
+    pub pdf_document_id: Option<String>,
+    #[serde(default)]
+    pub pdf_page_index: Option<usize>,
+    #[serde(default)]
+    pub pdf_page_number: Option<usize>,
+    #[serde(default)]
+    pub pdf_page_count: Option<usize>,
+    #[serde(default)]
     pub audio_analysis: Option<AudioAnalysis>,
     #[serde(default)]
     pub ocr_text: String,
@@ -212,6 +224,12 @@ pub struct SearchSceneResponse {
     pub start_seconds: f64,
     pub end_seconds: f64,
     pub clip_url: Option<String>,
+    #[serde(default)]
+    pub page_index: Option<usize>,
+    #[serde(default)]
+    pub page_number: Option<usize>,
+    #[serde(default)]
+    pub page_label: Option<String>,
     #[serde(default)]
     pub speaker_id: Option<String>,
     #[serde(default)]
@@ -289,6 +307,12 @@ mod tests {
         assert_eq!(payload.duration_ms, None);
         assert_eq!(payload.full_video_url, None);
         assert_eq!(payload.full_audio_url, None);
+        assert_eq!(payload.full_pdf_url, None);
+        assert_eq!(payload.pdf_page_url, None);
+        assert_eq!(payload.pdf_document_id, None);
+        assert_eq!(payload.pdf_page_index, None);
+        assert_eq!(payload.pdf_page_number, None);
+        assert_eq!(payload.pdf_page_count, None);
         assert_eq!(payload.audio_analysis, None);
         assert_eq!(payload.ocr_text, "");
         assert!(payload.ocr_frames.is_empty());
@@ -349,6 +373,12 @@ mod tests {
             duration_ms: Some(600),
             full_video_url: None,
             full_audio_url: None,
+            full_pdf_url: None,
+            pdf_page_url: None,
+            pdf_document_id: None,
+            pdf_page_index: None,
+            pdf_page_number: None,
+            pdf_page_count: None,
             audio_analysis: None,
             ocr_text: "SALE 50".to_string(),
             ocr_frames: vec![super::OcrFrameText {
@@ -396,6 +426,12 @@ mod tests {
             duration_ms: Some(1200),
             full_video_url: Some("/uploads/source-videos/id.mp4".to_string()),
             full_audio_url: None,
+            full_pdf_url: None,
+            pdf_page_url: None,
+            pdf_document_id: None,
+            pdf_page_index: None,
+            pdf_page_number: None,
+            pdf_page_count: None,
             audio_analysis: None,
             ocr_text: "Scene title".to_string(),
             ocr_frames: vec![super::OcrFrameText {
@@ -445,6 +481,12 @@ mod tests {
             duration_ms: Some(4200),
             full_video_url: None,
             full_audio_url: Some("/uploads/source-audio/id.mp3".to_string()),
+            full_pdf_url: None,
+            pdf_page_url: None,
+            pdf_document_id: None,
+            pdf_page_index: None,
+            pdf_page_number: None,
+            pdf_page_count: None,
             audio_analysis: Some(super::AudioAnalysis {
                 speech_detected: true,
                 speech_ratio: 0.4,

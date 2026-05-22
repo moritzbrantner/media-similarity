@@ -8,6 +8,8 @@ pub enum MediaKind {
     AnimatedGif,
     VideoScene,
     Audio,
+    PdfPage,
+    PdfDocument,
 }
 
 impl MediaKind {
@@ -17,6 +19,8 @@ impl MediaKind {
             Self::AnimatedGif => "animated_gif",
             Self::VideoScene => "video_scene",
             Self::Audio => "audio",
+            Self::PdfPage => "pdf_page",
+            Self::PdfDocument => "pdf_document",
         }
     }
 }

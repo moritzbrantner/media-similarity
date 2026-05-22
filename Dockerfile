@@ -29,6 +29,7 @@ RUN apt-get update \
         ca-certificates \
         curl \
         ffmpeg \
+        poppler-utils \
         tesseract-ocr \
         tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*

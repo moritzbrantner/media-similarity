@@ -6,7 +6,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use crate::config::Settings;
-use crate::domain::models::{ImagePayload, IndexResponse};
+use crate::domain::models::{ImagePayload, IndexResponse, OcrAnalysis};
 use crate::storage::qdrant::QdrantImageStore;
 use crate::workers::media::audio::{
     decode_source_audio_segments, expose_source_audio, SourceAudioSegment,
@@ -16,6 +16,7 @@ use crate::workers::media::hashing::phash_image;
 use crate::workers::media::image_io::{dimensions, image_id_for_uri};
 use crate::workers::media::media::{DecodedMedia, MediaKind};
 use crate::workers::media::ocr::extract_media_ocr;
+use crate::workers::media::pdf::{decode_pdf, expose_source_pdf, merge_pdf_text};
 use crate::workers::media::thumbnails::{ensure_animated_thumbnail, ensure_thumbnail};
 use crate::workers::media::video::{decode_source_video_scenes, SourceVideoScene};
 use crate::workers::media::visual_embedding::VisualEmbeddingBackend;
@@ -334,6 +335,9 @@ impl ImageIndexer {
         if source_image.is_audio() {
             return self.index_audio(source_image).await;
         }
+        if source_image.is_pdf() {
+            return self.index_pdf(source_image).await;
+        }
 
         let media = source_image.load_media(&self.settings)?;
         let media_id = image_id_for_uri(&source_image.id_base);
@@ -345,7 +349,11 @@ impl ImageIndexer {
             Some(source_image.item_uri.clone()),
         )
         .await;
-        let payload = self.build_payload(source_image, &media, None, None, &face_analysis)?;
+        let payload = self.build_payload(
+            source_image,
+            &media,
+            PayloadBuildOptions::new(&face_analysis),
+        )?;
         let vector = self
             .embedder
             .embed_media(&media.sampled_frames, self.settings.gif_motion_weight)?;
@@ -373,9 +381,7 @@ impl ImageIndexer {
             let payload = self.build_payload(
                 source_image,
                 &scene.media,
-                Some(scene),
-                None,
-                &face_analysis,
+                PayloadBuildOptions::new(&face_analysis).with_video_scene(scene),
             )?;
             let vector = self
                 .embedder
@@ -394,12 +400,11 @@ impl ImageIndexer {
         let segments = decode_source_audio_segments(path, &source_image.id_base, &self.settings)?;
         let mut outcome = IndexOneOutcome::default();
         for segment in &segments {
+            let face_analysis = FaceAnalysis::default();
             let payload = self.build_payload(
                 source_image,
                 &segment.media,
-                None,
-                Some(segment),
-                &FaceAnalysis::default(),
+                PayloadBuildOptions::new(&face_analysis).with_audio_segment(segment),
             )?;
             let vector = self.embedder.embed_media(
                 &segment.media.sampled_frames,
@@ -412,15 +417,108 @@ impl ImageIndexer {
         Ok(outcome)
     }
 
+    async fn index_pdf(&self, source_image: &SourceImage) -> Result<IndexOneOutcome, String> {
+        let path = source_image
+            .local_path()
+            .ok_or_else(|| "PDF source does not have a local path".to_string())?;
+        let pdf = decode_pdf(path, &self.settings)?;
+        let source_pdf_id = image_id_for_uri(&source_image.id_base);
+        let full_pdf_url = expose_source_pdf(path, &source_pdf_id, &self.settings)?;
+        let document_id_base = format!("{}#document", source_image.id_base);
+        let document_id = image_id_for_uri(&document_id_base);
+        let mut outcome = IndexOneOutcome::default();
+        let mut page_texts = Vec::new();
+
+        for page in &pdf.pages {
+            let page_ocr = extract_media_ocr(&page.media, &self.settings).unwrap_or_else(|error| {
+                tracing::warn!(%error, "PDF page OCR extraction failed");
+                Default::default()
+            });
+            let merged_text = merge_pdf_text(&page.embedded_text, &page_ocr.text);
+            if !merged_text.is_empty() {
+                page_texts.push(merged_text.clone());
+            }
+            let page_number = page.page_number;
+            let page_context = PdfPayloadContext {
+                id_base: format!("{}#page={page_number}", source_image.id_base),
+                relative_path: format!("{}#page-{page_number:03}", source_image.relative_path),
+                filename: format!("{} page {page_number:03}", source_image.filename),
+                path: format!("{}#page={page_number}", source_image.display_path),
+                full_pdf_url: full_pdf_url.clone(),
+                pdf_page_url: full_pdf_url
+                    .as_ref()
+                    .map(|url| format!("{url}#page={page_number}")),
+                pdf_document_id: Some(document_id.clone()),
+                pdf_page_index: Some(page.page_index),
+                pdf_page_number: Some(page.page_number),
+                pdf_page_count: Some(pdf.page_count),
+            };
+            let face_analysis = FaceAnalysis::default();
+            let payload = self.build_payload(
+                source_image,
+                &page.media,
+                PayloadBuildOptions::new(&face_analysis)
+                    .with_pdf_context(&page_context)
+                    .with_ocr(OcrAnalysis {
+                        text: merged_text,
+                        frames: page_ocr.frames,
+                    }),
+            )?;
+            let vector = self
+                .embedder
+                .embed_media(&page.media.sampled_frames, self.settings.gif_motion_weight)?;
+            let point_id = payload.id.clone();
+            self.store.upsert_media(&payload, vector).await?;
+            outcome.insert(point_id);
+        }
+
+        let document_text = merge_pdf_text(&pdf.document_text, &page_texts.join(" "));
+        let document_context = PdfPayloadContext {
+            id_base: document_id_base,
+            relative_path: format!("{}#document", source_image.relative_path),
+            filename: format!("{} document", source_image.filename),
+            path: format!("{}#document", source_image.display_path),
+            full_pdf_url,
+            pdf_page_url: None,
+            pdf_document_id: None,
+            pdf_page_index: None,
+            pdf_page_number: None,
+            pdf_page_count: Some(pdf.page_count),
+        };
+        let face_analysis = FaceAnalysis::default();
+        let payload = self.build_payload(
+            source_image,
+            &pdf.document_media,
+            PayloadBuildOptions::new(&face_analysis)
+                .with_pdf_context(&document_context)
+                .with_ocr(OcrAnalysis {
+                    text: document_text,
+                    frames: Vec::new(),
+                }),
+        )?;
+        let vector = self.embedder.embed_media(
+            &pdf.document_media.sampled_frames,
+            self.settings.gif_motion_weight,
+        )?;
+        let point_id = payload.id.clone();
+        self.store.upsert_media(&payload, vector).await?;
+        outcome.insert(point_id);
+
+        Ok(outcome)
+    }
+
     fn build_payload(
         &self,
         source_image: &SourceImage,
         media: &DecodedMedia,
-        video_scene: Option<&SourceVideoScene>,
-        audio_segment: Option<&SourceAudioSegment>,
-        face_analysis: &FaceAnalysis,
+        options: PayloadBuildOptions<'_>,
     ) -> Result<ImagePayload, String> {
-        let id_base = if let Some(scene) = video_scene {
+        let video_scene = options.video_scene;
+        let audio_segment = options.audio_segment;
+        let pdf_context = options.pdf_context;
+        let id_base = if let Some(pdf) = pdf_context {
+            pdf.id_base.clone()
+        } else if let Some(scene) = video_scene {
             format!("{}#scene={}", source_image.id_base, scene.scene_index + 1)
         } else if let Some(segment) = audio_segment {
             format!(
@@ -459,11 +557,15 @@ impl ImageIndexer {
             None
         };
         let (width, height) = dimensions(&media.poster);
-        let ocr_analysis = extract_media_ocr(media, &self.settings).unwrap_or_else(|error| {
-            tracing::warn!(%error, "OCR extraction failed");
-            Default::default()
+        let ocr_analysis = options.ocr_override.unwrap_or_else(|| {
+            extract_media_ocr(media, &self.settings).unwrap_or_else(|error| {
+                tracing::warn!(%error, "OCR extraction failed");
+                Default::default()
+            })
         });
-        let relative_path = if let Some(scene) = video_scene {
+        let relative_path = if let Some(pdf) = pdf_context {
+            pdf.relative_path.clone()
+        } else if let Some(scene) = video_scene {
             format!(
                 "{}#scene-{:03}",
                 source_image.relative_path,
@@ -478,7 +580,9 @@ impl ImageIndexer {
         } else {
             source_image.relative_path.clone()
         };
-        let filename = if let Some(scene) = video_scene {
+        let filename = if let Some(pdf) = pdf_context {
+            pdf.filename.clone()
+        } else if let Some(scene) = video_scene {
             format!(
                 "{} scene {:03}",
                 source_image.filename,
@@ -493,7 +597,9 @@ impl ImageIndexer {
         } else {
             source_image.filename.clone()
         };
-        let path = if let Some(scene) = video_scene {
+        let path = if let Some(pdf) = pdf_context {
+            pdf.path.clone()
+        } else if let Some(scene) = video_scene {
             format!(
                 "{}#t={:.3},{:.3}",
                 source_image.display_path,
@@ -525,12 +631,18 @@ impl ImageIndexer {
             duration_ms: media.duration_ms,
             full_video_url: video_scene.and_then(|scene| scene.full_video_url.clone()),
             full_audio_url,
+            full_pdf_url: pdf_context.and_then(|pdf| pdf.full_pdf_url.clone()),
+            pdf_page_url: pdf_context.and_then(|pdf| pdf.pdf_page_url.clone()),
+            pdf_document_id: pdf_context.and_then(|pdf| pdf.pdf_document_id.clone()),
+            pdf_page_index: pdf_context.and_then(|pdf| pdf.pdf_page_index),
+            pdf_page_number: pdf_context.and_then(|pdf| pdf.pdf_page_number),
+            pdf_page_count: pdf_context.and_then(|pdf| pdf.pdf_page_count),
             audio_analysis: media.audio_analysis.clone(),
             ocr_text: ocr_analysis.text,
             ocr_frames: ocr_analysis.frames,
             visual_embedding_model: Some(self.embedder.model_name().to_string()),
-            faces: face_analysis.faces.clone(),
-            people: face_analysis.person_clusters.clone(),
+            faces: options.face_analysis.faces.clone(),
+            people: options.face_analysis.person_clusters.clone(),
             scene_clip_url: video_scene.and_then(|scene| scene.clip_url.clone()),
             scene_index: video_scene
                 .map(|scene| scene.scene_index)
@@ -549,6 +661,59 @@ impl ImageIndexer {
             source_uri: Some(source_image.source_uri.clone()),
         })
     }
+}
+
+struct PayloadBuildOptions<'a> {
+    video_scene: Option<&'a SourceVideoScene>,
+    audio_segment: Option<&'a SourceAudioSegment>,
+    pdf_context: Option<&'a PdfPayloadContext>,
+    ocr_override: Option<OcrAnalysis>,
+    face_analysis: &'a FaceAnalysis,
+}
+
+impl<'a> PayloadBuildOptions<'a> {
+    fn new(face_analysis: &'a FaceAnalysis) -> Self {
+        Self {
+            video_scene: None,
+            audio_segment: None,
+            pdf_context: None,
+            ocr_override: None,
+            face_analysis,
+        }
+    }
+
+    fn with_video_scene(mut self, scene: &'a SourceVideoScene) -> Self {
+        self.video_scene = Some(scene);
+        self
+    }
+
+    fn with_audio_segment(mut self, segment: &'a SourceAudioSegment) -> Self {
+        self.audio_segment = Some(segment);
+        self
+    }
+
+    fn with_pdf_context(mut self, context: &'a PdfPayloadContext) -> Self {
+        self.pdf_context = Some(context);
+        self
+    }
+
+    fn with_ocr(mut self, analysis: OcrAnalysis) -> Self {
+        self.ocr_override = Some(analysis);
+        self
+    }
+}
+
+struct PdfPayloadContext {
+    id_base: String,
+    relative_path: String,
+    filename: String,
+    path: String,
+    full_pdf_url: Option<String>,
+    pdf_page_url: Option<String>,
+    pdf_document_id: Option<String>,
+    pdf_page_index: Option<usize>,
+    pdf_page_number: Option<usize>,
+    pdf_page_count: Option<usize>,
 }
 
 struct SourceIndexPlan {
@@ -637,7 +802,7 @@ fn payload_analysis_complete(payload: &ImagePayload, settings: &Settings) -> boo
 
 fn indexing_profile(settings: &Settings) -> String {
     let profile = IndexingProfile {
-        version: 2,
+        version: 3,
         clip_model_name: &settings.clip_model_name,
         vector_size: settings.vector_size,
         visual_embedding_enabled: settings.visual_embedding_enabled,
@@ -663,6 +828,9 @@ fn indexing_profile(settings: &Settings) -> String {
         gif_motion_weight_bits: settings.gif_motion_weight.to_bits(),
         video_frame_stride: settings.video_frame_stride,
         video_max_frames: settings.video_max_frames,
+        pdf_render_dpi: settings.pdf_render_dpi,
+        pdf_max_pages: settings.pdf_max_pages,
+        pdf_summary_pages: settings.pdf_summary_pages,
         audio_transcription_enabled: settings.audio_transcription_enabled,
         audio_transcription_model: &settings.audio_transcription_model,
         audio_transcription_language: settings.audio_transcription_language.as_deref(),
@@ -703,6 +871,9 @@ struct IndexingProfile<'a> {
     gif_motion_weight_bits: u32,
     video_frame_stride: u32,
     video_max_frames: Option<u32>,
+    pdf_render_dpi: u32,
+    pdf_max_pages: u32,
+    pdf_summary_pages: usize,
     audio_transcription_enabled: bool,
     audio_transcription_model: &'a str,
     audio_transcription_language: Option<&'a str>,

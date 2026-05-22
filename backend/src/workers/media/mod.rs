@@ -6,6 +6,7 @@ pub mod image_io;
 #[allow(clippy::module_inception)]
 pub mod media;
 pub mod ocr;
+pub mod pdf;
 pub mod persons;
 pub mod thumbnails;
 pub mod video;

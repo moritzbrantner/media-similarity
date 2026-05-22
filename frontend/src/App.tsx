@@ -59,6 +59,7 @@ const MAX_SEARCH_HISTORY = 8;
 const SEARCH_HISTORY_STORAGE_KEY = "image-similarity-search-history";
 const SEARCH_HISTORY_QUERY_KEY = ["search-history"] as const;
 const AUDIO_EXTENSIONS = [".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wma"];
+const PDF_EXTENSIONS = [".pdf"];
 
 const DEFAULT_METADATA_FILTERS = {
   dateFrom: "",
@@ -83,7 +84,14 @@ type MetadataFilters = {
   maxHeight: string;
   maxSizeMb: string;
   maxWidth: string;
-  mediaKind: "all" | "static_image" | "animated_gif" | "video_scene" | "audio";
+  mediaKind:
+    | "all"
+    | "static_image"
+    | "animated_gif"
+    | "video_scene"
+    | "audio"
+    | "pdf_page"
+    | "pdf_document";
   minHeight: string;
   minSizeMb: string;
   minWidth: string;
@@ -235,7 +243,7 @@ export function App() {
   });
 
   useEffect(() => {
-    if (!file) {
+    if (!file || isPdfFile(file)) {
       setPreviewUrl(null);
       return;
     }
@@ -320,7 +328,7 @@ export function App() {
 
     setActiveSearchId(null);
     const queryImageUrl =
-      file.type.startsWith("video/") || isAudioFile(file)
+      file.type.startsWith("video/") || isAudioFile(file) || isPdfFile(file)
         ? previewUrl
         : await createQueryPreview(file);
     searchMutation.mutate({
@@ -365,6 +373,9 @@ export function App() {
   const previewIsAudio = activeSearch
     ? activeSearch.queryMediaKind === "audio"
     : Boolean(file && isAudioFile(file));
+  const previewIsPdf = activeSearch
+    ? activeSearch.queryMediaKind === "pdf"
+    : Boolean(file && isPdfFile(file));
   const showMetadataFilters = Boolean(file || activeSearch);
   const sourceTypeOptions = sourceTypesFor(
     activeResponse?.results ?? [],
@@ -484,15 +495,15 @@ export function App() {
                   >
                     <Upload className="size-6 text-neutral-600" aria-hidden="true" />
                     <span className="max-w-full truncate text-sm font-medium text-neutral-800">
-                      {file?.name ?? "Choose an image, video, or audio"}
+                      {file?.name ?? "Choose an image, video, audio, or PDF"}
                     </span>
                     <span className="text-xs text-neutral-500">
                       PNG, JPEG, GIF, WebP, BMP, TIFF, MP4, MOV, WebM, MKV, AVI, MP3, WAV, FLAC,
-                      M4A, AAC, OGG, or Opus
+                      M4A, AAC, OGG, Opus, or PDF
                     </span>
                   </label>
                   <input
-                    accept="image/*,video/*,audio/*"
+                    accept="image/*,video/*,audio/*,application/pdf,.pdf"
                     className="sr-only"
                     id="query-image"
                     onChange={(event) => handleFileChange(event.target.files?.[0] ?? null)}
@@ -591,8 +602,14 @@ export function App() {
                   )
                 ) : (
                   <div className="flex flex-col items-center justify-center gap-3 bg-neutral-50 p-8 text-center text-neutral-500">
-                    <ImageIcon className="size-12" aria-hidden="true" />
-                    <span className="text-sm font-medium">No query media selected</span>
+                    {previewIsPdf ? (
+                      <FileText className="size-12" aria-hidden="true" />
+                    ) : (
+                      <ImageIcon className="size-12" aria-hidden="true" />
+                    )}
+                    <span className="text-sm font-medium">
+                      {previewIsPdf ? "PDF query selected" : "No query media selected"}
+                    </span>
                   </div>
                 )}
               </section>
@@ -1063,6 +1080,7 @@ function SourceConfigurationPage({
             <Metric label="Images" value={config.indexing.image_extensions.join(", ")} />
             <Metric label="Video" value={config.indexing.video_extensions.join(", ")} />
             <Metric label="Audio" value={config.indexing.audio_extensions.join(", ")} />
+            <Metric label="PDF" value={config.indexing.pdf_extensions.join(", ")} />
             <Metric
               label="Visual embeddings"
               value={
@@ -1087,6 +1105,9 @@ function SourceConfigurationPage({
             <Metric label="GIF motion" value={config.indexing.gif_motion_weight.toFixed(2)} />
             <Metric label="Video stride" value={config.indexing.video_frame_stride} />
             <Metric label="Video cap" value={config.indexing.video_max_frames ?? "none"} />
+            <Metric label="PDF DPI" value={config.indexing.pdf_render_dpi} />
+            <Metric label="PDF page cap" value={config.indexing.pdf_max_pages} />
+            <Metric label="PDF summary pages" value={config.indexing.pdf_summary_pages} />
             <Metric label="OCR" value={config.indexing.ocr_enabled ? "enabled" : "disabled"} />
             <Metric label="OCR frames" value={config.indexing.ocr_max_frames} />
             <Metric
@@ -1351,6 +1372,8 @@ function MetadataFiltersPanel({
             <option value="animated_gif">GIFs only</option>
             <option value="video_scene">Video scenes only</option>
             <option value="audio">Audio only</option>
+            <option value="pdf_document">PDF documents only</option>
+            <option value="pdf_page">PDF pages only</option>
           </select>
         </div>
 
@@ -1781,6 +1804,15 @@ function isAudioFile(file: File) {
   return AUDIO_EXTENSIONS.some((extension) => lowerName.endsWith(extension));
 }
 
+function isPdfFile(file: File) {
+  if (file.type === "application/pdf") {
+    return true;
+  }
+
+  const lowerName = file.name.toLocaleLowerCase();
+  return PDF_EXTENSIONS.some((extension) => lowerName.endsWith(extension));
+}
+
 async function createQueryPreview(file: File) {
   if (file.type === "image/gif" || file.name.toLowerCase().endsWith(".gif")) {
     return null;
@@ -1867,7 +1899,8 @@ function isSearchHistoryItem(value: unknown): value is SearchHistoryItem {
       item.queryMediaKind === "static_image" ||
       item.queryMediaKind === "animated_gif" ||
       item.queryMediaKind === "video" ||
-      item.queryMediaKind === "audio") &&
+      item.queryMediaKind === "audio" ||
+      item.queryMediaKind === "pdf") &&
     (item.sortMode === undefined || isResultSortMode(item.sortMode)) &&
     typeof item.searchedAt === "string" &&
     Boolean(response) &&
@@ -1930,7 +1963,9 @@ function isMediaKindFilter(value: unknown): value is MetadataFilters["mediaKind"
     value === "static_image" ||
     value === "animated_gif" ||
     value === "video_scene" ||
-    value === "audio"
+    value === "audio" ||
+    value === "pdf_page" ||
+    value === "pdf_document"
   );
 }
 
@@ -1952,6 +1987,9 @@ function normalizeSearchResponse(response: SearchHistoryItem["response"]): Searc
     scenes: Array.isArray(response.scenes)
       ? response.scenes.map((scene) => ({
           ...scene,
+          page_index: scene.page_index ?? null,
+          page_number: scene.page_number ?? null,
+          page_label: scene.page_label ?? null,
           results: Array.isArray(scene.results) ? scene.results.map(normalizeSearchResult) : [],
         }))
       : [],
@@ -1965,6 +2003,12 @@ function normalizeSearchResult(result: SearchResult): SearchResult {
       ...result.image,
       faces: Array.isArray(result.image.faces) ? result.image.faces : [],
       people: Array.isArray(result.image.people) ? result.image.people : [],
+      full_pdf_url: result.image.full_pdf_url ?? null,
+      pdf_page_url: result.image.pdf_page_url ?? null,
+      pdf_document_id: result.image.pdf_document_id ?? null,
+      pdf_page_index: result.image.pdf_page_index ?? null,
+      pdf_page_number: result.image.pdf_page_number ?? null,
+      pdf_page_count: result.image.pdf_page_count ?? null,
       visual_embedding_model: result.image.visual_embedding_model ?? null,
     },
   };
@@ -2204,7 +2248,7 @@ function ResultsGrid({
   }
 
   if (!searched) {
-    return <EmptyResults text="Choose a query image, video, or audio and run a search." />;
+    return <EmptyResults text="Choose a query image, video, audio, or PDF and run a search." />;
   }
 
   if (results.length === 0) {
@@ -2241,8 +2285,9 @@ function SceneResultsList({
     ? sortResults(filterResults(selectedScene.results, filters), sortMode).slice(0, resultLimit)
     : [];
   const isAudioBits = scenes.some((scene) => scene.scene_kind === "audio_bit");
-  const segmentLabel = isAudioBits ? "Bit" : "Scene";
-  const SegmentIcon = isAudioBits ? FileAudio : FileVideo;
+  const isPdfPages = scenes.some((scene) => scene.scene_kind === "pdf_page");
+  const segmentLabel = isPdfPages ? "Page" : isAudioBits ? "Bit" : "Scene";
+  const SegmentIcon = isPdfPages ? FileText : isAudioBits ? FileAudio : FileVideo;
 
   return (
     <div className="flex flex-col gap-5">
@@ -2264,8 +2309,10 @@ function SceneResultsList({
               onClick={() => onSelectScene(scene.scene_index)}
               type="button"
             >
-              {segmentLabel} {scene.scene_index + 1} · {formatSeconds(scene.start_seconds)}-
-              {formatSeconds(scene.end_seconds)}
+              {scene.page_label ?? `${segmentLabel} ${scene.scene_index + 1}`}
+              {!isPdfPages
+                ? ` · ${formatSeconds(scene.start_seconds)}-${formatSeconds(scene.end_seconds)}`
+                : ""}
               {scene.speaker_label ? ` · ${scene.speaker_label}` : ""}
             </button>
           ))}
@@ -2277,16 +2324,23 @@ function SceneResultsList({
           <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <h3 className="text-sm font-semibold text-neutral-950">
-                {segmentLabel} {selectedScene.scene_index + 1}
+                {selectedScene.page_label ?? `${segmentLabel} ${selectedScene.scene_index + 1}`}
               </h3>
               <p className="text-xs text-neutral-600">
-                {formatSeconds(selectedScene.start_seconds)}-
-                {formatSeconds(selectedScene.end_seconds)}
-                {isAudioBits
+                {isPdfPages
+                  ? selectedScene.page_number
+                    ? `Page ${selectedScene.page_number}`
+                    : "PDF page"
+                  : `${formatSeconds(selectedScene.start_seconds)}-${formatSeconds(
+                      selectedScene.end_seconds,
+                    )}`}
+                {!isPdfPages && isAudioBits
                   ? selectedScene.speaker_label
                     ? ` · ${selectedScene.speaker_label}`
                     : ""
-                  : ` · frames ${selectedScene.start_frame}-${selectedScene.end_frame}`}
+                  : !isPdfPages
+                    ? ` · frames ${selectedScene.start_frame}-${selectedScene.end_frame}`
+                    : ""}
               </p>
             </div>
             {selectedScene.clip_url ? (
@@ -2388,6 +2442,57 @@ function AudioLinks({ image }: { image: SearchResult["image"] }) {
   );
 }
 
+function PdfLinks({ image }: { image: SearchResult["image"] }) {
+  if (image.media_kind !== "pdf_page" && image.media_kind !== "pdf_document") {
+    return null;
+  }
+
+  const pageUrl =
+    image.pdf_page_url ??
+    (image.full_pdf_url && image.pdf_page_number
+      ? `${image.full_pdf_url}#page=${image.pdf_page_number}`
+      : null);
+
+  return (
+    <div className="grid gap-2">
+      {image.pdf_page_number ? (
+        <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-700">
+          Page {image.pdf_page_number}
+          {image.pdf_page_count ? ` of ${image.pdf_page_count}` : ""}
+        </div>
+      ) : image.pdf_page_count ? (
+        <div className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-xs text-neutral-700">
+          {image.pdf_page_count} page(s)
+        </div>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        {image.full_pdf_url ? (
+          <a
+            className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-neutral-300 bg-white px-2 text-xs font-semibold text-neutral-800 transition hover:border-neutral-500 hover:bg-neutral-50"
+            href={image.full_pdf_url}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <FileText className="size-3.5" aria-hidden="true" />
+            <span>Open PDF</span>
+          </a>
+        ) : null}
+        {pageUrl ? (
+          <a
+            className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-neutral-300 bg-white px-2 text-xs font-semibold text-neutral-800 transition hover:border-neutral-500 hover:bg-neutral-50"
+            href={pageUrl}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <FileText className="size-3.5" aria-hidden="true" />
+            <span>Open page</span>
+          </a>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function EmptyResults({ text }: { text: string }) {
   return (
     <div className="grid min-h-44 place-items-center rounded-lg border border-neutral-300 bg-white p-8 text-center text-sm text-neutral-500">
@@ -2437,6 +2542,18 @@ function ResultCard({ result }: { result: SearchResult }) {
           {image.duration_ms ? (
             <Metric label="Duration" value={formatDuration(image.duration_ms)} />
           ) : null}
+          {image.pdf_page_number ? (
+            <Metric
+              label="PDF page"
+              value={
+                image.pdf_page_count
+                  ? `${image.pdf_page_number} of ${image.pdf_page_count}`
+                  : image.pdf_page_number
+              }
+            />
+          ) : image.pdf_page_count ? (
+            <Metric label="PDF pages" value={image.pdf_page_count} />
+          ) : null}
           {image.audio_analysis ? (
             <Metric
               label="Speech"
@@ -2479,6 +2596,7 @@ function ResultCard({ result }: { result: SearchResult }) {
 
         <VideoSceneLinks image={image} />
         <AudioLinks image={image} />
+        <PdfLinks image={image} />
 
         <div className="flex flex-wrap gap-2">
           {image.media_kind === "animated_gif" ? (
@@ -2494,6 +2612,16 @@ function ResultCard({ result }: { result: SearchResult }) {
           {image.media_kind === "audio" ? (
             <span className="inline-flex w-fit rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-900">
               Audio
+            </span>
+          ) : null}
+          {image.media_kind === "pdf_document" ? (
+            <span className="inline-flex w-fit rounded-md border border-red-300 bg-red-50 px-2 py-1 text-xs font-semibold text-red-900">
+              PDF document
+            </span>
+          ) : null}
+          {image.media_kind === "pdf_page" ? (
+            <span className="inline-flex w-fit rounded-md border border-orange-300 bg-orange-50 px-2 py-1 text-xs font-semibold text-orange-900">
+              PDF page
             </span>
           ) : null}
           {image.ocr_text ? (

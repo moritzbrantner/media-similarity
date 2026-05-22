@@ -2,7 +2,7 @@
 
 Native Rust image similarity search service with a React UI and Qdrant vector storage.
 
-The service indexes configured media folders, generates thumbnails and perceptual hashes, then lets you upload a query image, video, or audio file through the web UI or HTTP API to find visually similar media and near duplicates. Animated GIFs are supported with sampled frame and motion-aware vector search. Uploaded videos are detected and split into scenes with the sibling Rust `video-analysis` crates, then each scene is searched independently. Audio files are rendered to spectrogram images for indexing and search.
+The service indexes configured media folders, generates thumbnails and perceptual hashes, then lets you upload a query image, video, audio file, or PDF through the web UI or HTTP API to find visually similar media and near duplicates. Animated GIFs are supported with sampled frame and motion-aware vector search. Uploaded videos are detected and split into scenes with the sibling Rust `video-analysis` crates, then each scene is searched independently. Audio files are rendered to spectrogram images for indexing and search. PDFs are rendered page-by-page and indexed both as page records and whole-document summary records.
 
 The repository is organized as a Rust-only backend plus a conventional React/Vite/Bun/Tailwind frontend. Python support and PyO3 extension packaging have been removed. Worker boundaries are Rust modules inside the single backend process.
 
@@ -16,6 +16,7 @@ The repository is organized as a Rust-only backend plus a conventional React/Vit
 - Uploaded video query support for MP4, MOV, M4V, WebM, MKV, and AVI when `ffmpeg`/`ffprobe` are available.
 - Local source video indexing: videos in configured local source folders are cut into scenes and indexed as individual searchable scene records.
 - Uploaded and local source audio support for MP3, WAV, FLAC, M4A, AAC, OGG, and Opus when `ffmpeg`/`ffprobe` are available.
+- Uploaded and local source PDF support when Poppler `pdfinfo`, `pdftoppm`, and `pdftotext` are available.
 - Audio speech-activity, tempo, bit-boundary, and recognized-voice metadata for indexed and uploaded audio.
 - Scene detection and scene splitting through the Rust `video-analysis-core`, `video-analysis-detectors`, `video-analysis-ffmpeg`, and `video-analysis-split` crates.
 - Native pHash generation, pHash Hamming distance, and thumbnail generation.
@@ -64,7 +65,7 @@ MinIO, `video://`, and camera source URI parsing is retained, but those source b
 
    `bun dev` starts the Docker Compose app stack in the background, then starts the Vite dev server. The backend container remains available at `http://localhost:8000`.
 
-6. Click **Index configured sources**, then upload a query image, video, or audio file and search.
+6. Click **Index configured sources**, then upload a query image, video, audio file, or PDF and search.
 
 ## API
 
@@ -80,7 +81,7 @@ curl http://localhost:8000/api/health
 curl -X POST http://localhost:8000/api/index
 ```
 
-### Search With Uploaded Image, Video, Or Audio
+### Search With Uploaded Image, Video, Audio, Or PDF
 
 ```bash
 curl -X POST "http://localhost:8000/api/search?limit=12" \
@@ -94,8 +95,9 @@ The response includes:
 - `near_duplicate`: `true` when `hash_distance <= DUPLICATE_HASH_DISTANCE`.
 - `thumbnail_url`: URL for the generated thumbnail served by the backend.
 - `animated_thumbnail_url`: URL for generated animated GIF previews when the result is an animated GIF.
-- `query_media_kind`: `static_image`, `animated_gif`, `video`, or `audio`.
+- `query_media_kind`: `static_image`, `animated_gif`, `video`, `audio`, or `pdf`.
 - `scenes`: per-scene search groups for video uploads and per-bit search groups for audio uploads, including time bounds. Video scenes also include frame bounds and a `clip_url` for the generated scene MP4.
+- PDF upload responses use `scenes` with `scene_kind: "pdf_page"` and page metadata so each query page can be inspected independently.
 - Matched source video scenes include `full_video_url`, `scene_clip_url`, and `scene_start_seconds`/`scene_end_seconds` so clients can open the source video at the matching time window.
 - Matched source audio records include `full_audio_url` and `scene_start_seconds`/`scene_end_seconds` so clients can play the matched audio bit.
 - Matched source audio records include `audio_analysis` with `speech_detected`, `speech_ratio`, `speech_segments`, `audio_segments`, `recognized_voices`, `tempo_bpm`, `tempo_confidence`, and `tempo_onset_count`.
@@ -108,6 +110,8 @@ Video query search and source video indexing use the Rust scene detection crates
 Audio query search and source audio indexing use FFmpeg to render deterministic spectrogram images, then reuse the same thumbnail, pHash, and vector search pipeline as image media. Audio duration metadata is read with `ffprobe`. Speech activity uses a deterministic RMS voice-activity detector, tempo uses onset detection plus BPM estimation over mono 16 kHz PCM extracted with FFmpeg, and audio bit boundaries are guessed from speech spans, speaker labels, onsets, and maximum bit duration. Recognized voices are stored in a persistent spectral speaker registry; this is a deterministic baseline suitable for matching recurring voices, not a biometric identity guarantee.
 
 Audio transcript fields are retained in the API shape, but native whisper.cpp transcription is disabled by default and not bundled into the repository-local text compatibility layer.
+
+PDF query search and source PDF indexing use Poppler commands. Each source PDF creates one `pdf_document` summary record plus one `pdf_page` record for each rendered page up to `PDF_MAX_PAGES`. PDF text search combines embedded text from `pdftotext` with OCR over rendered pages. The rendered page images reuse the same thumbnail, pHash, and vector search pipeline as other visual media.
 
 ## Configuration
 
@@ -129,6 +133,10 @@ Set these values in `.env`:
 | `UPLOAD_DIR` | `/app/data/uploads` | Reserved local upload storage path. |
 | `IMAGE_EXTENSIONS` | `.jpg,.jpeg,.png,.webp,.bmp,.tif,.tiff,.gif` | File extensions to index. |
 | `AUDIO_EXTENSIONS` | `.mp3,.wav,.flac,.m4a,.aac,.ogg,.opus` | Audio file extensions to index. |
+| `PDF_EXTENSIONS` | `.pdf` | PDF file extensions to index. |
+| `PDF_RENDER_DPI` | `144` | DPI used when rendering PDF pages with Poppler. |
+| `PDF_MAX_PAGES` | `100` | Maximum pages indexed per PDF. |
+| `PDF_SUMMARY_PAGES` | `8` | Maximum rendered pages sampled into the document summary vector. |
 | `AUDIO_TRANSCRIPTION_ENABLED` | `false` | Compatibility switch for transcript analysis. The repository-local text compatibility layer does not bundle a native transcription backend. |
 | `VOICE_REGISTRY_PATH` | `/app/data/recognized-voices.json` | Persistent speaker registry used to recognize recurring voices across audio files. |
 | `DEFAULT_SEARCH_LIMIT` | `12` | Default result count. |
@@ -160,7 +168,7 @@ By default, source folders are configured in `config/media-sources.txt`:
 /media/audio
 ```
 
-The file uses a small `.gitignore`-style convention: blank lines and lines starting with `#` are ignored. Each remaining line is a local path or supported source URI. Local paths may use `~`, `$VAR`, or `${VAR}` expansion. The indexer scans configured image, video, and audio extensions under each listed folder.
+The file uses a small `.gitignore`-style convention: blank lines and lines starting with `#` are ignored. Each remaining line is a local path or supported source URI. Local paths may use `~`, `$VAR`, or `${VAR}` expansion. The indexer scans configured image, video, audio, and PDF extensions under each listed folder.
 
 `IMAGE_SOURCES` still accepts multiple local source paths and overrides the file when set. Local folder support remains backward compatible with `SOURCE_IMAGE_DIR`.
 

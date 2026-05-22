@@ -94,6 +94,10 @@ const sourceConfigResponse = {
     image_extensions: [".jpg", ".png", ".gif"],
     ocr_enabled: true,
     ocr_max_frames: 4,
+    pdf_extensions: [".pdf"],
+    pdf_max_pages: 100,
+    pdf_render_dpi: 144,
+    pdf_summary_pages: 8,
     video_extensions: [".mp4", ".mov"],
     video_frame_stride: 30,
     video_max_frames: null,
@@ -291,6 +295,77 @@ const sortableSearchResponse = {
   ],
 };
 
+const pdfSearchResponse = {
+  count: 1,
+  query_audio_analysis: null,
+  query_media_kind: "pdf",
+  query_ocr_text: "invoice",
+  query_phash: "1111111111111111",
+  results: [
+    {
+      hash_distance: 4,
+      image: {
+        animated_thumbnail_url: null,
+        audio_analysis: null,
+        duration_ms: null,
+        filename: "invoice.pdf page 001",
+        frame_count: 1,
+        full_audio_url: null,
+        full_pdf_url: "/uploads/source-pdfs/invoice.pdf",
+        full_video_url: null,
+        height: 1200,
+        id: "pdf-page-1",
+        media_kind: "pdf_page",
+        modified_at: 1_720_000_000,
+        ocr_text: "Invoice total due",
+        path: "/documents/invoice.pdf#page=1",
+        pdf_document_id: "pdf-document",
+        pdf_page_count: 2,
+        pdf_page_index: 0,
+        pdf_page_number: 1,
+        pdf_page_url: "/uploads/source-pdfs/invoice.pdf#page=1",
+        phash: "1111111111111111",
+        relative_path: "invoice.pdf#page-001",
+        scene_clip_url: null,
+        scene_end_frame: null,
+        scene_end_seconds: null,
+        scene_index: null,
+        scene_start_frame: null,
+        scene_start_seconds: null,
+        size_bytes: 131_072,
+        source_type: "local",
+        source_uri: "/documents",
+        thumbnail_url: "/thumbnails/pdf-page-1.png",
+        width: 900,
+      },
+      near_duplicate: true,
+      ocr_score: 1,
+      query_scene_index: 0,
+      vector_score: 0.91,
+    },
+  ],
+  scenes: [
+    {
+      clip_url: null,
+      count: 1,
+      end_frame: 1,
+      end_seconds: 0,
+      page_index: 0,
+      page_label: "Page 1",
+      page_number: 1,
+      query_phash: "1111111111111111",
+      results: [],
+      scene_index: 0,
+      scene_kind: "pdf_page",
+      speaker_id: null,
+      speaker_label: null,
+      start_frame: 1,
+      start_seconds: 0,
+    },
+  ],
+};
+(pdfSearchResponse.scenes[0].results as unknown[]).push(...pdfSearchResponse.results);
+
 const historyStorageKey = "image-similarity-search-history";
 
 test.beforeEach(async ({ page }) => {
@@ -382,7 +457,7 @@ test("renders service health and empty UI state", async ({ page }) => {
   await expect(page.getByText("No query media selected")).toBeVisible();
   await expect(page.getByText("Metadata filters")).toBeHidden();
   await expect(
-    page.getByText("Choose a query image, video, or audio and run a search."),
+    page.getByText("Choose a query image, video, audio, or PDF and run a search."),
   ).toBeVisible();
 });
 
@@ -410,6 +485,8 @@ test("configures media sources from the UI", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "MinIO bucket" })).toBeVisible();
   await expect(page.getByRole("option", { name: "MinIO bucket (planned)" }).first()).toBeDisabled();
   await expect(page.getByText("Images", { exact: true })).toBeVisible();
+  await expect(page.getByText("PDF", { exact: true })).toBeVisible();
+  await expect(page.getByText("PDF page cap", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Add Source" }).click();
   await page.getByLabel("Source spec").last().fill("/new-media");
@@ -444,6 +521,27 @@ test("uploads query media and renders search results", async ({ page }) => {
   await expect(
     page.getByRole("complementary").getByRole("button", { name: /query\.png/ }),
   ).toBeVisible();
+});
+
+test("renders PDF query pages and PDF result metadata", async ({ page }) => {
+  await mockSearchResponse(page, pdfSearchResponse);
+  await page.goto("/");
+
+  await page.locator("#query-image").setInputFiles({
+    buffer: Buffer.from("%PDF-1.4\n"),
+    mimeType: "application/pdf",
+    name: "query.pdf",
+  });
+  await expect(page.getByText("PDF query selected")).toBeVisible();
+
+  await page.getByRole("button", { name: "Search" }).click();
+
+  await expect(page.getByRole("button", { name: "Page 1" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "invoice.pdf page 001" })).toBeVisible();
+  await expect(page.locator("span").filter({ hasText: "PDF page" })).toBeVisible();
+  await expect(page.getByText("Page 1 of 2")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open PDF" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open page" })).toBeVisible();
 });
 
 test("metadata-filtered searches request a wider candidate set", async ({ page }) => {

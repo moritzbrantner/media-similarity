@@ -22,6 +22,10 @@ pub struct Settings {
     pub voice_registry_path: PathBuf,
     pub image_extensions: BTreeSet<String>,
     pub audio_extensions: BTreeSet<String>,
+    pub pdf_extensions: BTreeSet<String>,
+    pub pdf_render_dpi: u32,
+    pub pdf_max_pages: u32,
+    pub pdf_summary_pages: usize,
     pub audio_transcription_enabled: bool,
     pub audio_transcription_model: String,
     pub audio_transcription_language: Option<String>,
@@ -86,6 +90,10 @@ impl Default for Settings {
                 .expect("default extensions are valid"),
             audio_extensions: parse_extensions(".mp3,.wav,.flac,.m4a,.aac,.ogg,.opus")
                 .expect("default audio extensions are valid"),
+            pdf_extensions: parse_extensions(".pdf").expect("default PDF extensions are valid"),
+            pdf_render_dpi: 144,
+            pdf_max_pages: 100,
+            pdf_summary_pages: 8,
             audio_transcription_enabled: false,
             audio_transcription_model: "base.en".to_string(),
             audio_transcription_language: Some("en".to_string()),
@@ -182,6 +190,18 @@ impl Settings {
                 Ok(value) => parse_extensions(&value)?,
                 Err(_) => defaults.audio_extensions,
             },
+            pdf_extensions: match env::var("PDF_EXTENSIONS") {
+                Ok(value) => parse_extensions(&value)?,
+                Err(_) => defaults.pdf_extensions,
+            },
+            pdf_render_dpi: bounded_u32_var("PDF_RENDER_DPI", defaults.pdf_render_dpi, 72, 300)?,
+            pdf_max_pages: bounded_u32_var("PDF_MAX_PAGES", defaults.pdf_max_pages, 1, 10_000)?,
+            pdf_summary_pages: bounded_usize_var(
+                "PDF_SUMMARY_PAGES",
+                defaults.pdf_summary_pages,
+                1,
+                256,
+            )?,
             audio_transcription_enabled: bool_var(
                 "AUDIO_TRANSCRIPTION_ENABLED",
                 defaults.audio_transcription_enabled,
@@ -634,5 +654,10 @@ mod tests {
     #[test]
     fn default_audio_extensions_include_mp3() {
         assert!(Settings::default().audio_extensions.contains(".mp3"));
+    }
+
+    #[test]
+    fn default_pdf_extensions_include_pdf() {
+        assert!(Settings::default().pdf_extensions.contains(".pdf"));
     }
 }
