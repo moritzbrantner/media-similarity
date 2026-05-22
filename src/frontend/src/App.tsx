@@ -864,12 +864,17 @@ function SourceConfigurationPage({
   }
 
   function addSource(kind = "local") {
-    const type = config?.supported_source_types.find((item) => item.kind === kind);
+    const type =
+      config?.supported_source_types.find((item) => item.kind === kind && item.implemented) ??
+      config?.supported_source_types.find((item) => item.implemented);
+    if (!type) {
+      return;
+    }
     setDrafts((current) => [
       ...current,
       {
         id: createHistoryId(),
-        kind,
+        kind: type.kind,
         spec: type?.example.split(" or ")[0] ?? "",
       },
     ]);
@@ -1082,9 +1087,9 @@ function SourceDraftRow({
 }) {
   const inputId = `source-spec-${source.id}`;
   const selectId = `source-kind-${source.id}`;
-  const hasKnownType =
-    source.kind === "custom" ||
-    supportedTypes.some((sourceType) => sourceType.kind === source.kind);
+  const selectedSourceType = supportedTypes.find((sourceType) => sourceType.kind === source.kind);
+  const plannedReadOnly = selectedSourceType ? !selectedSourceType.implemented : false;
+  const hasKnownType = source.kind === "custom" || selectedSourceType !== undefined;
 
   return (
     <div className="grid gap-3 rounded-md border border-neutral-200 bg-neutral-50 p-3 md:grid-cols-[180px_minmax(0,1fr)_40px]">
@@ -1093,14 +1098,20 @@ function SourceDraftRow({
           Source {index + 1}
         </label>
         <select
-          className="mt-1 h-10 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
+          className="mt-1 h-10 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200 disabled:cursor-not-allowed disabled:bg-neutral-100 disabled:text-neutral-500"
+          disabled={plannedReadOnly}
           id={selectId}
           onChange={(event) => onUpdate({ kind: event.target.value })}
           value={source.kind}
         >
           {supportedTypes.map((sourceType) => (
-            <option key={sourceType.kind} value={sourceType.kind}>
+            <option
+              disabled={!sourceType.implemented}
+              key={sourceType.kind}
+              value={sourceType.kind}
+            >
               {sourceType.label}
+              {sourceType.implemented ? "" : " (planned)"}
             </option>
           ))}
           {!hasKnownType ? <option value={source.kind}>{source.kind}</option> : null}
@@ -1112,10 +1123,11 @@ function SourceDraftRow({
           Source spec
         </label>
         <input
-          className="mt-1 h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200"
+          className="mt-1 h-10 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-950 outline-none transition focus:border-emerald-700 focus:ring-2 focus:ring-emerald-200 read-only:cursor-not-allowed read-only:bg-neutral-100 read-only:text-neutral-500"
           id={inputId}
           onChange={(event) => onUpdate({ spec: event.target.value })}
           placeholder="/images or minio://bucket/prefix"
+          readOnly={plannedReadOnly}
           value={source.spec}
         />
       </div>

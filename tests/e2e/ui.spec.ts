@@ -408,6 +408,7 @@ test("configures media sources from the UI", async ({ page }) => {
   await expect(page.locator('input[value="/images"]')).toBeVisible();
   await expect(page.getByRole("heading", { name: "Local folder" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "MinIO bucket" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "MinIO bucket (planned)" }).first()).toBeDisabled();
   await expect(page.getByText("Images", { exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Add Source" }).click();

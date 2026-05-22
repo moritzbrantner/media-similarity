@@ -1,9 +1,10 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fs;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use axum::extract::{Path as AxumPath, State};
 use axum::http::StatusCode as AxumStatusCode;
@@ -11,13 +12,19 @@ use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use image::codecs::gif::{GifEncoder, Repeat};
 use image::{Delay, Frame, ImageBuffer, Rgb, RgbImage};
+use jobs_core::{JobProgress, JobSpec};
 use reqwest::header::CONTENT_TYPE;
 use serde::Deserialize;
 use serde_json::{json, Value};
+use text_analysis_transcription::WhisperCppModel;
 use tokio::net::TcpListener;
 use uuid::Uuid;
 
-use _rust::api::{health, index_images, search_upload, AppState};
+use _rust::api::{
+    audio_transcription_models, cancel_job, download_audio_transcription_model,
+    enable_audio_transcription_model, get_job, get_job_events, get_source_config, health,
+    index_images, list_jobs, search_upload, spawn_index_job, update_source_config, AppState,
+};
 use _rust::config::{parse_extensions, Settings};
 use _rust::models::{IndexResponse, SearchResponse};
 
@@ -318,9 +325,202 @@ async fn upload_validation_covers_invalid_media_and_size_configuration() {
     assert_eq!(oversized.status(), reqwest::StatusCode::PAYLOAD_TOO_LARGE);
 }
 
+#[tokio::test]
+async fn source_config_api_persists_sources_and_reports_planned_types() {
+    let app = TestApp::new(|_| {}).await;
+    let extra_source = app.root_path().join("extra-media");
+    fs::create_dir_all(&extra_source).unwrap();
+
+    let initial = app.get_json("/api/source-config").await;
+    assert_eq!(
+        initial["default_source_dir"].as_str(),
+        Some(app.source_dir.to_string_lossy().as_ref())
+    );
+    assert_eq!(initial["sources"][0]["kind"], "local");
+    assert_eq!(initial["sources"][0]["status"], "ready");
+    assert_eq!(
+        initial["supported_source_types"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|source_type| source_type["kind"] == "minio")
+            .unwrap()["implemented"],
+        false
+    );
+
+    let updated = app
+        .put_json(
+            "/api/source-config",
+            json!({
+                "sources": [
+                    format!("  {}  ", extra_source.display()),
+                    "",
+                    "minio://bucket/prefix",
+                    "video:///clips/demo.mp4",
+                    "camera://front-door"
+                ]
+            }),
+        )
+        .await;
+    assert_eq!(
+        updated["sources"][0]["spec"].as_str(),
+        Some(extra_source.to_string_lossy().as_ref())
+    );
+    assert_eq!(updated["sources"][0]["status"], "ready");
+    assert_eq!(updated["sources"][1]["kind"], "minio");
+    assert_eq!(updated["sources"][1]["status"], "not_implemented");
+    assert_eq!(updated["sources"][2]["kind"], "video");
+    assert_eq!(updated["sources"][2]["status"], "not_implemented");
+    assert_eq!(updated["sources"][3]["kind"], "camera");
+    assert_eq!(updated["sources"][3]["status"], "not_implemented");
+
+    let persisted = fs::read_to_string(app.media_sources_file()).unwrap();
+    assert!(persisted.contains("# Managed by image-similarity-service."));
+    assert!(persisted.contains(&extra_source.to_string_lossy().to_string()));
+    assert!(persisted.contains("minio://bucket/prefix"));
+
+    let reloaded = app.get_json("/api/source-config").await;
+    assert_eq!(reloaded["sources"], updated["sources"]);
+
+    let empty = app
+        .raw_put_json("/api/source-config", json!({ "sources": ["  "] }))
+        .await;
+    assert_eq!(empty.status(), reqwest::StatusCode::BAD_REQUEST);
+    let body: Value = empty.json().await.unwrap();
+    assert_eq!(
+        body["detail"],
+        "At least one media source must be configured"
+    );
+}
+
+#[tokio::test]
+async fn jobs_api_exposes_index_job_snapshots_and_events() {
+    let app = TestApp::new(|settings| {
+        settings.image_extensions = parse_extensions(".png").unwrap();
+    })
+    .await;
+    write_pattern_image(
+        &app.source_path("job-index.png"),
+        32,
+        32,
+        [180, 40, 40],
+        [20, 20, 20],
+    );
+
+    let started = app.post_json("/api/jobs/index", json!({})).await;
+    let job_id = started["spec"]["id"].as_str().unwrap().to_string();
+    assert_eq!(started["spec"]["kind"], "index.manual");
+
+    let finished = app.wait_for_job_status(&job_id, &["Succeeded"]).await;
+    assert_eq!(finished["status"], "Succeeded");
+    assert_eq!(finished["metadata"]["indexed"], "1");
+    assert_eq!(finished["metadata"]["failed"], "0");
+
+    let jobs = app.get_json("/api/jobs").await;
+    assert!(jobs
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|job| job["spec"]["id"] == job_id));
+
+    let events = app.get_json(&format!("/api/jobs/{job_id}/events")).await;
+    assert!(!events.as_array().unwrap().is_empty());
+
+    let fetched = app.get_json(&format!("/api/jobs/{job_id}")).await;
+    assert_eq!(fetched["spec"]["id"], job_id);
+}
+
+#[tokio::test]
+async fn cancel_job_api_requests_cancellation_for_active_jobs() {
+    let app = TestApp::new(|_| {}).await;
+    let job_id = app.spawn_cancellable_job();
+
+    let cancelled = app
+        .post_json(&format!("/api/jobs/{job_id}/cancel"), json!({}))
+        .await;
+    assert!(matches!(
+        cancelled["status"].as_str().unwrap(),
+        "Cancelling" | "Cancelled"
+    ));
+
+    let finished = app.wait_for_job_status(&job_id, &["Cancelled"]).await;
+    assert_eq!(finished["status"], "Cancelled");
+
+    let events = app.get_json(&format!("/api/jobs/{job_id}/events")).await;
+    assert!(events.as_array().unwrap().iter().any(|event| {
+        event["kind"]["StatusChanged"]["status"] == "Cancelled"
+            || event["kind"]["StatusChanged"]["status"] == "Cancelling"
+    }));
+
+    let missing = app
+        .client
+        .post(format!("{}/api/jobs/not-a-real-job/cancel", app.base_url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(missing.status(), reqwest::StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn audio_transcription_model_endpoints_report_cache_and_spawn_cached_jobs() {
+    let app = TestApp::new(|settings| {
+        settings.audio_transcription_enabled = true;
+        settings.audio_transcription_model = "tiny.en".to_string();
+        settings.audio_transcription_cache_dir = Some(settings.source_image_dir.join("../whisper"));
+    })
+    .await;
+    app.cache_whisper_model(WhisperCppModel::TinyEn);
+
+    let catalog = app.get_json("/api/models/audio-transcription").await;
+    assert_eq!(catalog["enabled"], true);
+    assert_eq!(catalog["configured_model"], "tiny.en");
+    let tiny = catalog["models"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|model| model["id"] == "tiny.en")
+        .unwrap();
+    assert_eq!(tiny["cached"], true);
+    assert_eq!(tiny["configured"], true);
+
+    let download = app
+        .post_json(
+            "/api/models/audio-transcription/download",
+            json!({ "model": "tiny.en" }),
+        )
+        .await;
+    let download_id = download["spec"]["id"].as_str().unwrap();
+    let download_finished = app.wait_for_job_status(download_id, &["Succeeded"]).await;
+    assert_eq!(download_finished["status"], "Succeeded");
+    assert_eq!(download_finished["spec"]["metadata"]["model"], "tiny.en");
+
+    let enable = app
+        .post_json(
+            "/api/models/audio-transcription/enable",
+            json!({ "model": "tiny.en" }),
+        )
+        .await;
+    let enable_id = enable["spec"]["id"].as_str().unwrap();
+    let enable_finished = app.wait_for_job_status(enable_id, &["Succeeded"]).await;
+    assert_eq!(enable_finished["status"], "Succeeded");
+    assert_eq!(enable_finished["metadata"]["enabled"], "true");
+    assert_eq!(enable_finished["metadata"]["configured_model"], "tiny.en");
+
+    let invalid = app
+        .raw_post_json(
+            "/api/models/audio-transcription/enable",
+            json!({ "model": "unknown-model" }),
+        )
+        .await;
+    assert_eq!(invalid.status(), reqwest::StatusCode::BAD_REQUEST);
+    let body: Value = invalid.json().await.unwrap();
+    assert_eq!(body["detail"], "Unknown whisper.cpp model `unknown-model`");
+}
+
 struct TestApp {
     base_url: String,
     client: reqwest::Client,
+    state: Arc<AppState>,
     source_dir: PathBuf,
     _qdrant: FakeQdrant,
     _root: TempDir,
@@ -344,6 +544,7 @@ impl TestApp {
             thumbnail_dir,
             upload_dir: upload_dir.clone(),
             voice_registry_path: root.path().join("recognized-voices.json"),
+            media_sources_file: root.path().join("config/media-sources.txt"),
             vector_size: 32,
             default_search_limit: 10,
             duplicate_hash_distance: 8,
@@ -359,8 +560,29 @@ impl TestApp {
         let app = Router::new()
             .route("/api/health", get(health))
             .route("/api/index", post(index_images))
+            .route(
+                "/api/source-config",
+                get(get_source_config).put(update_source_config),
+            )
+            .route("/api/jobs", get(list_jobs))
+            .route("/api/jobs/index", post(spawn_index_job))
+            .route("/api/jobs/:job_id", get(get_job))
+            .route("/api/jobs/:job_id/events", get(get_job_events))
+            .route("/api/jobs/:job_id/cancel", post(cancel_job))
+            .route(
+                "/api/models/audio-transcription",
+                get(audio_transcription_models),
+            )
+            .route(
+                "/api/models/audio-transcription/download",
+                post(download_audio_transcription_model),
+            )
+            .route(
+                "/api/models/audio-transcription/enable",
+                post(enable_audio_transcription_model),
+            )
             .route("/api/search", post(search_upload))
-            .with_state(state);
+            .with_state(state.clone());
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
@@ -370,6 +592,7 @@ impl TestApp {
         Self {
             base_url: format!("http://{addr}"),
             client: reqwest::Client::new(),
+            state,
             source_dir,
             _qdrant: qdrant,
             _root: root,
@@ -378,6 +601,52 @@ impl TestApp {
 
     fn source_path(&self, name: &str) -> PathBuf {
         self.source_dir.join(name)
+    }
+
+    fn root_path(&self) -> &Path {
+        self._root.path()
+    }
+
+    fn media_sources_file(&self) -> &Path {
+        &self.state.settings.media_sources_file
+    }
+
+    fn spawn_cancellable_job(&self) -> String {
+        let spec = JobSpec::new(
+            format!("test.cancel.{}", Uuid::new_v4()),
+            "Cancellable test job",
+        )
+        .and_then(|spec| spec.with_kind("test.cancel"))
+        .unwrap();
+        let snapshot = self
+            .state
+            .jobs
+            .spawn(spec, |context| {
+                context.info("waiting for cancellation")?;
+                context.progress(
+                    JobProgress::new(0, None)?
+                        .unit("checks")?
+                        .message("waiting for cancellation"),
+                )?;
+                loop {
+                    context.check_cancelled()?;
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            })
+            .unwrap();
+        snapshot.spec.id.to_string()
+    }
+
+    fn cache_whisper_model(&self, model: WhisperCppModel) {
+        let cache_dir = self
+            .state
+            .settings
+            .audio_transcription_cache_dir
+            .as_ref()
+            .unwrap()
+            .join("models");
+        fs::create_dir_all(&cache_dir).unwrap();
+        fs::write(cache_dir.join(model.file_name()), b"cached model").unwrap();
     }
 
     async fn index(&self) -> IndexResponse {
@@ -401,7 +670,11 @@ impl TestApp {
         let response = self
             .raw_search_upload(filename, content_type, bytes, limit)
             .await;
-        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        let status = response.status();
+        if status != reqwest::StatusCode::OK {
+            let body = response.text().await.unwrap_or_default();
+            panic!("expected search upload to succeed, got {status}: {body}");
+        }
         response.json().await.unwrap()
     }
 
@@ -424,6 +697,61 @@ impl TestApp {
             .send()
             .await
             .unwrap()
+    }
+
+    async fn get_json(&self, path: &str) -> Value {
+        let response = self
+            .client
+            .get(format!("{}{}", self.base_url, path))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        response.json().await.unwrap()
+    }
+
+    async fn post_json(&self, path: &str, body: Value) -> Value {
+        let response = self.raw_post_json(path, body).await;
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        response.json().await.unwrap()
+    }
+
+    async fn raw_post_json(&self, path: &str, body: Value) -> reqwest::Response {
+        self.client
+            .post(format!("{}{}", self.base_url, path))
+            .json(&body)
+            .send()
+            .await
+            .unwrap()
+    }
+
+    async fn put_json(&self, path: &str, body: Value) -> Value {
+        let response = self.raw_put_json(path, body).await;
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        response.json().await.unwrap()
+    }
+
+    async fn raw_put_json(&self, path: &str, body: Value) -> reqwest::Response {
+        self.client
+            .put(format!("{}{}", self.base_url, path))
+            .json(&body)
+            .send()
+            .await
+            .unwrap()
+    }
+
+    async fn wait_for_job_status(&self, job_id: &str, statuses: &[&str]) -> Value {
+        for _ in 0..100 {
+            let snapshot = self.get_json(&format!("/api/jobs/{job_id}")).await;
+            if statuses
+                .iter()
+                .any(|status| snapshot["status"].as_str() == Some(*status))
+            {
+                return snapshot;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        panic!("job `{job_id}` did not reach one of {statuses:?}");
     }
 }
 
@@ -455,7 +783,7 @@ struct FakeQdrant {
 
 #[derive(Default)]
 struct FakeQdrantState {
-    collections: BTreeSet<String>,
+    collections: BTreeMap<String, Value>,
     points: BTreeMap<(String, String), FakePoint>,
 }
 
@@ -463,6 +791,11 @@ struct FakeQdrantState {
 struct FakePoint {
     vector: Vec<f32>,
     payload: Value,
+}
+
+#[derive(Deserialize)]
+struct FakeCreateCollectionRequest {
+    vectors: Value,
 }
 
 #[derive(Deserialize)]
@@ -499,7 +832,10 @@ impl FakeQdrant {
         let state = Arc::new(Mutex::new(FakeQdrantState::default()));
         let app = Router::new()
             .route("/collections", get(fake_list_collections))
-            .route("/collections/:collection", put(fake_create_collection))
+            .route(
+                "/collections/:collection",
+                get(fake_get_collection).put(fake_create_collection),
+            )
             .route("/collections/:collection/points", put(fake_upsert_points))
             .route(
                 "/collections/:collection/points/delete",
@@ -529,7 +865,7 @@ async fn fake_list_collections(State(state): State<Arc<Mutex<FakeQdrantState>>>)
     let state = state.lock().unwrap();
     let collections = state
         .collections
-        .iter()
+        .keys()
         .map(|name| json!({ "name": name }))
         .collect::<Vec<_>>();
     Json(json!({ "result": { "collections": collections } }))
@@ -538,10 +874,33 @@ async fn fake_list_collections(State(state): State<Arc<Mutex<FakeQdrantState>>>)
 async fn fake_create_collection(
     AxumPath(collection): AxumPath<String>,
     State(state): State<Arc<Mutex<FakeQdrantState>>>,
-    Json(_request): Json<Value>,
+    Json(request): Json<FakeCreateCollectionRequest>,
 ) -> Json<Value> {
-    state.lock().unwrap().collections.insert(collection);
+    state
+        .lock()
+        .unwrap()
+        .collections
+        .insert(collection, request.vectors);
     Json(json!({ "result": true }))
+}
+
+async fn fake_get_collection(
+    AxumPath(collection): AxumPath<String>,
+    State(state): State<Arc<Mutex<FakeQdrantState>>>,
+) -> Result<Json<Value>, AxumStatusCode> {
+    let state = state.lock().unwrap();
+    let Some(vectors) = state.collections.get(&collection) else {
+        return Err(AxumStatusCode::NOT_FOUND);
+    };
+    Ok(Json(json!({
+        "result": {
+            "config": {
+                "params": {
+                    "vectors": vectors
+                }
+            }
+        }
+    })))
 }
 
 async fn fake_upsert_points(
@@ -550,7 +909,7 @@ async fn fake_upsert_points(
     Json(request): Json<FakeUpsertRequest>,
 ) -> Result<Json<Value>, AxumStatusCode> {
     let mut state = state.lock().unwrap();
-    if !state.collections.contains(&collection) {
+    if !state.collections.contains_key(&collection) {
         return Err(AxumStatusCode::NOT_FOUND);
     }
     for point in request.points {
@@ -571,7 +930,7 @@ async fn fake_delete_points(
     Json(request): Json<FakeDeleteRequest>,
 ) -> Result<Json<Value>, AxumStatusCode> {
     let mut state = state.lock().unwrap();
-    if !state.collections.contains(&collection) {
+    if !state.collections.contains_key(&collection) {
         return Err(AxumStatusCode::NOT_FOUND);
     }
     for id in request.points {
@@ -586,7 +945,7 @@ async fn fake_search_points(
     Json(request): Json<FakeSearchRequest>,
 ) -> Result<Json<Value>, AxumStatusCode> {
     let state = state.lock().unwrap();
-    if !state.collections.contains(&collection) {
+    if !state.collections.contains_key(&collection) {
         return Err(AxumStatusCode::NOT_FOUND);
     }
     let mut scored = state
@@ -617,7 +976,7 @@ async fn fake_scroll_points(
     Json(request): Json<FakeScrollRequest>,
 ) -> Result<Json<Value>, AxumStatusCode> {
     let state = state.lock().unwrap();
-    if !state.collections.contains(&collection) {
+    if !state.collections.contains_key(&collection) {
         return Err(AxumStatusCode::NOT_FOUND);
     }
     let offset = request.offset.as_ref().and_then(Value::as_str);
