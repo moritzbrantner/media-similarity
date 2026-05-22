@@ -4,6 +4,7 @@ import {
   completedIndexJob,
   healthResponse,
   indexResponse,
+  inverseIndexResponse,
   pngPixel,
   searchResponse,
   sourceConfigResponse,
@@ -16,6 +17,7 @@ export type ApiMockOptions = {
   jobs?: unknown[];
   jobEvents?: unknown[];
   searchResponse?: unknown;
+  inverseIndex?: unknown;
 };
 
 export type CapturedSearchRequest = {
@@ -38,6 +40,10 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
 
   await page.route("**/api/index", async (route) => {
     await route.fulfill({ json: indexResponse });
+  });
+
+  await page.route("**/api/inverse-index", async (route) => {
+    await route.fulfill({ json: options.inverseIndex ?? inverseIndexResponse });
   });
 
   await page.route("**/api/jobs/index", async (route) => {

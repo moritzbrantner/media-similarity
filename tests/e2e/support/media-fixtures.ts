@@ -376,6 +376,91 @@ export const completedIndexEvents = makeJobEvents(completedIndexJob);
 export const sourceConfigResponse = makeSourceConfigResponse();
 export const searchResponse = makeSearchResponse();
 
+export const inverseIndexResponse = {
+  errors: [],
+  indexed_media: 3,
+  people: [
+    {
+      confidence: 0.91,
+      face_count: 2,
+      id: "person-0001",
+      label: "Ada",
+      locations: [
+        {
+          confidence: 0.92,
+          end_seconds: null,
+          filename: "portrait.png",
+          frame_indices: [0],
+          media_id: "import-portrait",
+          media_kind: "static_image",
+          media_url: null,
+          occurrence_count: 1,
+          page_number: null,
+          path: "/archive/portraits/portrait.png",
+          relative_path: "portraits/portrait.png",
+          scene_clip_url: null,
+          source_item_uri: "local:///archive/portraits/portrait.png",
+          source_type: "import",
+          source_uri: "local:///archive",
+          start_seconds: null,
+          thumbnail_url: "/thumbnails/portrait.png",
+        },
+        {
+          confidence: 0.9,
+          end_seconds: null,
+          filename: "group.jpg",
+          frame_indices: [0],
+          media_id: "local-group",
+          media_kind: "static_image",
+          media_url: null,
+          occurrence_count: 1,
+          page_number: null,
+          path: "/images/group.jpg",
+          relative_path: "group.jpg",
+          scene_clip_url: null,
+          source_item_uri: "local:///images/group.jpg",
+          source_type: "local",
+          source_uri: "local:///images",
+          start_seconds: null,
+          thumbnail_url: "/thumbnails/group.jpg",
+        },
+      ],
+      media_count: 2,
+    },
+  ],
+  speakers: [
+    {
+      confidence: 0.84,
+      id: "voice-0001",
+      label: "Voice 1",
+      locations: [
+        {
+          confidence: 0.84,
+          end_seconds: 8,
+          filename: "interview.mp3",
+          frame_indices: [],
+          media_id: "audio-interview",
+          media_kind: "audio",
+          media_url: "/uploads/audio/interview.mp3",
+          occurrence_count: 2,
+          page_number: null,
+          path: "/audio/interview.mp3",
+          relative_path: "interview.mp3",
+          scene_clip_url: null,
+          source_item_uri: "local:///audio/interview.mp3",
+          source_type: "local",
+          source_uri: "local:///audio",
+          start_seconds: 1,
+          thumbnail_url: null,
+        },
+      ],
+      media_count: 1,
+      segment_count: 2,
+      total_seconds: 7,
+    },
+  ],
+};
+
 export const sortableSearchResponse = makeSearchResponse({
   count: 4,
   results: [

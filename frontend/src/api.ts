@@ -1,6 +1,7 @@
 import type {
   HealthResponse,
   IndexResponse,
+  InverseIndexResponse,
   JobEvent,
   JobSnapshot,
   DeleteIndexResponse,
@@ -62,6 +63,11 @@ function errorDetail(payload: unknown): string | null {
 export async function fetchHealth(): Promise<HealthResponse> {
   const response = await fetch("/api/health");
   return parseResponse<HealthResponse>(response);
+}
+
+export async function fetchInverseIndex(): Promise<InverseIndexResponse> {
+  const response = await fetch("/api/inverse-index");
+  return parseResponse<InverseIndexResponse>(response);
 }
 
 export async function indexSources(): Promise<IndexResponse> {

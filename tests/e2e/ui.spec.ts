@@ -404,6 +404,13 @@ test("navigates between web UI pages with pressed tab state", async ({ page }) =
     "true",
   );
 
+  await page.getByRole("button", { name: "Open inverse index" }).click();
+  await expect(page.getByRole("heading", { name: "Inverse Index" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open inverse index" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+
   await page.getByRole("button", { name: "Open media configuration" }).click();
   await expect(page.getByRole("heading", { name: "Media Sources" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Open media configuration" })).toHaveAttribute(
@@ -420,6 +427,24 @@ test("navigates between web UI pages with pressed tab state", async ({ page }) =
 
   await page.getByRole("button", { name: "Open query page" }).click();
   await expect(page.getByRole("heading", { name: "Results" })).toBeVisible();
+});
+
+test("renders inverse index people and speaker registries", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Open inverse index" }).click();
+
+  await expect(page.getByRole("heading", { name: "Inverse Index" })).toBeVisible();
+  await expect(page.getByText("Indexed media", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Depicted People" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Recognized Speakers" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ada" })).toBeVisible();
+  await expect(page.getByText("person-0001")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Voice 1" })).toBeVisible();
+  await expect(page.getByText("voice-0001")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "portrait.png" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "interview.mp3" })).toBeVisible();
+  await expect(page.getByText("1.0s-8.0s")).toBeVisible();
 });
 
 test("shows active job progress and cancels running jobs", async ({ page }) => {
@@ -500,9 +525,7 @@ test("renders model status from the source configuration panel", async ({ page }
 
   await expect(page.getByRole("heading", { name: "Model Status" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Visual embedding" })).toBeVisible();
-  await expect(
-    page.getByTitle("xenova-clip-vit-base-patch32-onnx"),
-  ).toBeVisible();
+  await expect(page.getByTitle("xenova-clip-vit-base-patch32-onnx")).toBeVisible();
   await expect(page.getByText("Audio transcription")).toBeVisible();
 });
 

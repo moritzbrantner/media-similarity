@@ -143,6 +143,52 @@ export type DeleteIndexResponse = {
   errors: string[];
 };
 
+export type InverseIndexLocation = {
+  media_id: string;
+  filename: string;
+  relative_path: string;
+  path: string;
+  media_kind: ImagePayload["media_kind"];
+  source_type: string;
+  source_uri: string | null;
+  source_item_uri: string | null;
+  thumbnail_url: string | null;
+  media_url: string | null;
+  scene_clip_url: string | null;
+  occurrence_count: number;
+  frame_indices: number[];
+  start_seconds: number | null;
+  end_seconds: number | null;
+  page_number: number | null;
+  confidence: number;
+};
+
+export type InversePersonEntry = {
+  id: string;
+  label: string | null;
+  face_count: number;
+  media_count: number;
+  confidence: number;
+  locations: InverseIndexLocation[];
+};
+
+export type InverseSpeakerEntry = {
+  id: string;
+  label: string | null;
+  segment_count: number;
+  total_seconds: number;
+  media_count: number;
+  confidence: number;
+  locations: InverseIndexLocation[];
+};
+
+export type InverseIndexResponse = {
+  indexed_media: number;
+  people: InversePersonEntry[];
+  speakers: InverseSpeakerEntry[];
+  errors: string[];
+};
+
 export type AudioAnalysis = {
   speech_detected: boolean;
   speech_ratio: number;
