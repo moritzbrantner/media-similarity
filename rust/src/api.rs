@@ -104,6 +104,28 @@ pub async fn index_images(State(state): State<Arc<AppState>>) -> Json<IndexRespo
     Json(indexer.index_sources().await)
 }
 
+pub async fn spawn_index_job(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<JobSnapshot>, ApiError> {
+    let spec = JobSpec::new(
+        format!("index.manual.{}", Uuid::new_v4()),
+        "Index media sources",
+    )
+    .and_then(|spec| spec.with_kind("index.manual"))
+    .and_then(|spec| spec.with_metadata("collection", state.settings.qdrant_collection.clone()))
+    .map_err(ApiError::from_job)?;
+    let jobs = state.jobs.clone();
+    let settings = state.indexing_settings();
+    let store = state.store.clone();
+    let embedder = state.embedder.clone();
+
+    jobs.spawn(spec, move |context| {
+        run_index_job(context, settings, store, embedder)
+    })
+    .map(Json)
+    .map_err(ApiError::from_job)
+}
+
 pub fn spawn_startup_index_job(state: Arc<AppState>) -> jobs_core::Result<JobSnapshot> {
     let spec = JobSpec::new(
         format!("index.startup.{}", Uuid::new_v4()),

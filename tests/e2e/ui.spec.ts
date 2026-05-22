@@ -17,10 +17,69 @@ const indexResponse = {
   errors: [],
   failed: 0,
   indexed: 3,
+  pruned: 1,
   skipped: 1,
   source_dir: "/images",
   sources: ["/images", "/archive"],
 };
+
+const completedIndexJob = {
+  artifacts: [],
+  created_at: "2026-05-22T10:00:00Z",
+  failure: null,
+  finished_at: "2026-05-22T10:00:03Z",
+  logs: [
+    {
+      level: "Info",
+      message: "indexing complete: 3 media item(s), 1 skipped, 1 pruned, 0 failed",
+      timestamp: "2026-05-22T10:00:03Z",
+    },
+  ],
+  metadata: {
+    collection: "image_similarity_test",
+    failed: "0",
+    indexed: "3",
+    pruned: "1",
+    skipped: "1",
+  },
+  progress: {
+    completed: 2,
+    message: "indexed 2/2 pending source files",
+    total: 2,
+    unit: "files",
+  },
+  spec: {
+    id: "index.manual.mock",
+    kind: "index.manual",
+    metadata: {
+      collection: "image_similarity_test",
+    },
+    name: "Index media sources",
+  },
+  started_at: "2026-05-22T10:00:01Z",
+  status: "Succeeded",
+};
+
+const completedIndexEvents = [
+  {
+    job_id: completedIndexJob.spec.id,
+    kind: { StatusChanged: { message: null, status: "Queued" } },
+    sequence: 1,
+    timestamp: "2026-05-22T10:00:00Z",
+  },
+  {
+    job_id: completedIndexJob.spec.id,
+    kind: { Progress: completedIndexJob.progress },
+    sequence: 2,
+    timestamp: "2026-05-22T10:00:02Z",
+  },
+  {
+    job_id: completedIndexJob.spec.id,
+    kind: { Log: completedIndexJob.logs[0] },
+    sequence: 3,
+    timestamp: "2026-05-22T10:00:03Z",
+  },
+];
 
 const sourceConfigResponse = {
   default_source_dir: "/images",
@@ -235,12 +294,31 @@ const sortableSearchResponse = {
 const historyStorageKey = "image-similarity-search-history";
 
 test.beforeEach(async ({ page }) => {
+  let jobs: unknown[] = [];
+
   await page.route("**/api/health", async (route) => {
     await route.fulfill({ json: healthResponse });
   });
 
   await page.route("**/api/index", async (route) => {
     await route.fulfill({ json: indexResponse });
+  });
+
+  await page.route("**/api/jobs/index", async (route) => {
+    jobs = [completedIndexJob];
+    await route.fulfill({ json: completedIndexJob });
+  });
+
+  await page.route("**/api/jobs", async (route) => {
+    await route.fulfill({ json: jobs });
+  });
+
+  await page.route("**/api/jobs/*/events", async (route) => {
+    await route.fulfill({ json: jobs.length > 0 ? completedIndexEvents : [] });
+  });
+
+  await page.route("**/api/jobs/*/cancel", async (route) => {
+    await route.fulfill({ json: completedIndexJob });
   });
 
   await page.route("**/api/source-config", async (route) => {
@@ -313,7 +391,11 @@ test("indexes sources from the UI", async ({ page }) => {
 
   await page.getByRole("button", { name: "Index Sources" }).click();
 
-  await expect(page.getByText("Indexed 3 media item(s), skipped 1, failed 0.")).toBeVisible();
+  await expect(
+    page.getByText("Indexed 3 media item(s), skipped 1, pruned 1, failed 0."),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Background Jobs" })).toBeVisible();
+  await expect(page.getByText("indexing complete: 3 media item(s)")).toBeVisible();
 });
 
 test("configures media sources from the UI", async ({ page }) => {
@@ -336,7 +418,9 @@ test("configures media sources from the UI", async ({ page }) => {
   await expect(page.getByText("/new-media")).toBeVisible();
 
   await page.getByRole("button", { name: "Index Sources" }).last().click();
-  await expect(page.getByText("Indexed 3 media item(s), skipped 1, failed 0.")).toBeVisible();
+  await expect(
+    page.getByText("Indexed 3 media item(s), skipped 1, pruned 1, failed 0."),
+  ).toBeVisible();
 });
 
 test("uploads query media and renders search results", async ({ page }) => {

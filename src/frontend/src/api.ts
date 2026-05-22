@@ -1,4 +1,11 @@
-import type { HealthResponse, IndexResponse, SearchResponse, SourceConfigResponse } from "./types";
+import type {
+  HealthResponse,
+  IndexResponse,
+  JobEvent,
+  JobSnapshot,
+  SearchResponse,
+  SourceConfigResponse,
+} from "./types";
 
 async function parseResponse<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -57,6 +64,26 @@ export async function fetchHealth(): Promise<HealthResponse> {
 export async function indexSources(): Promise<IndexResponse> {
   const response = await fetch("/api/index", { method: "POST" });
   return parseResponse<IndexResponse>(response);
+}
+
+export async function startIndexJob(): Promise<JobSnapshot> {
+  const response = await fetch("/api/jobs/index", { method: "POST" });
+  return parseResponse<JobSnapshot>(response);
+}
+
+export async function fetchJobs(): Promise<JobSnapshot[]> {
+  const response = await fetch("/api/jobs");
+  return parseResponse<JobSnapshot[]>(response);
+}
+
+export async function fetchJobEvents(jobId: string): Promise<JobEvent[]> {
+  const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/events`);
+  return parseResponse<JobEvent[]>(response);
+}
+
+export async function cancelJob(jobId: string): Promise<JobSnapshot> {
+  const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" });
+  return parseResponse<JobSnapshot>(response);
 }
 
 export async function fetchSourceConfig(): Promise<SourceConfigResponse> {

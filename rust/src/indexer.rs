@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use jobs_core::{JobContext, JobProgress};
 use serde::Serialize;
@@ -45,6 +45,7 @@ impl ImageIndexer {
                     indexed: 0,
                     skipped: 0,
                     failed: 1,
+                    pruned: 0,
                     collection: self.settings.qdrant_collection.clone(),
                     source_dir: self.settings.source_image_dir.to_string_lossy().to_string(),
                     sources: build_image_sources(&self.settings)
@@ -67,22 +68,49 @@ impl ImageIndexer {
         }
 
         let mut indexed = 0;
+        let mut pruned = 0;
         let skipped = plan.skipped + plan.already_indexed;
         let mut failed = 0;
         let mut errors = plan.errors;
+        if !plan.prune_point_ids.is_empty() {
+            let prune_count = plan.prune_point_ids.len();
+            if let Some(context) = context {
+                let _ = context.info(format!(
+                    "pruning {prune_count} stale Qdrant record(s) before indexing"
+                ));
+            }
+            match self.store.delete_points(&plan.prune_point_ids).await {
+                Ok(()) => {
+                    pruned += prune_count;
+                    if let Some(context) = context {
+                        let _ = context.metadata("pruned", pruned.to_string());
+                    }
+                }
+                Err(error) => {
+                    failed += 1;
+                    errors.push(format!("Could not prune stale Qdrant records: {error}"));
+                    if let Some(context) = context {
+                        let _ =
+                            context.warn(format!("could not prune stale Qdrant records: {error}"));
+                    }
+                }
+            }
+        }
         let total = plan.pending.len() as u64;
         if let Some(context) = context {
             if let Ok(progress) = index_progress(0, total, "indexing pending sources") {
                 let _ = context.progress(progress);
             }
         }
-        for (index, source_image) in plan.pending.iter().enumerate() {
+        for (index, pending_source) in plan.pending.iter().enumerate() {
+            let source_image = &pending_source.source_image;
             if let Some(context) = context {
                 if let Err(error) = context.check_cancelled() {
                     errors.truncate(50);
                     let _ = context.metadata("indexed", indexed.to_string());
                     let _ = context.metadata("failed", failed.to_string());
                     let _ = context.metadata("skipped", skipped.to_string());
+                    let _ = context.metadata("pruned", pruned.to_string());
                     let _ = context.warn(format!(
                         "indexing cancelled before {}",
                         source_image.display_path
@@ -91,6 +119,7 @@ impl ImageIndexer {
                         indexed,
                         skipped,
                         failed,
+                        pruned,
                         collection: self.settings.qdrant_collection.clone(),
                         source_dir: self.settings.source_image_dir.to_string_lossy().to_string(),
                         sources: plan.source_uris,
@@ -104,7 +133,42 @@ impl ImageIndexer {
             }
 
             match self.index_one(source_image).await {
-                Ok(count) => indexed += count,
+                Ok(outcome) => {
+                    indexed += outcome.indexed;
+                    let stale_point_ids = pending_source
+                        .indexed_point_ids
+                        .iter()
+                        .filter(|id| !outcome.point_ids.contains(*id))
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    if !stale_point_ids.is_empty() {
+                        match self.store.delete_points(&stale_point_ids).await {
+                            Ok(()) => {
+                                pruned += stale_point_ids.len();
+                                if let Some(context) = context {
+                                    let _ = context.info(format!(
+                                        "pruned {} stale record(s) for {}",
+                                        stale_point_ids.len(),
+                                        source_image.display_path
+                                    ));
+                                }
+                            }
+                            Err(error) => {
+                                failed += 1;
+                                errors.push(format!(
+                                    "{}: could not prune stale Qdrant records: {error}",
+                                    source_image.display_path
+                                ));
+                                if let Some(context) = context {
+                                    let _ = context.warn(format!(
+                                        "{}: could not prune stale Qdrant records: {error}",
+                                        source_image.display_path
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
                 Err(error) => {
                     failed += 1;
                     errors.push(format!("{}: {error}", source_image.display_path));
@@ -130,8 +194,9 @@ impl ImageIndexer {
             let _ = context.metadata("indexed", indexed.to_string());
             let _ = context.metadata("failed", failed.to_string());
             let _ = context.metadata("skipped", skipped.to_string());
+            let _ = context.metadata("pruned", pruned.to_string());
             let _ = context.info(format!(
-                "indexing complete: {indexed} media item(s), {skipped} skipped, {failed} failed"
+                "indexing complete: {indexed} media item(s), {skipped} skipped, {pruned} pruned, {failed} failed"
             ));
         }
 
@@ -140,6 +205,7 @@ impl ImageIndexer {
             indexed,
             skipped,
             failed,
+            pruned,
             collection: self.settings.qdrant_collection.clone(),
             source_dir: self.settings.source_image_dir.to_string_lossy().to_string(),
             sources: plan.source_uris,
@@ -162,14 +228,35 @@ impl ImageIndexer {
         let mut already_indexed = 0;
         let mut skipped = 0;
         let mut errors = Vec::new();
+        let mut scanned_source_items = BTreeSet::new();
+        let mut prune_point_ids = Vec::new();
         for source in &sources {
             match source.iter_images() {
                 Ok(images) => {
                     for source_image in images {
-                        if source_is_current(&indexed_sources, &source_image, &indexing_profile) {
+                        scanned_source_items.insert(source_image.item_uri.clone());
+                        let indexed_records = indexed_sources
+                            .get(&source_image.item_uri)
+                            .cloned()
+                            .unwrap_or_default();
+                        if source_is_current(&indexed_records, &source_image, &indexing_profile) {
                             already_indexed += 1;
+                            prune_point_ids.extend(
+                                indexed_records
+                                    .iter()
+                                    .filter(|record| {
+                                        !record_is_current(record, &source_image, &indexing_profile)
+                                    })
+                                    .map(|record| record.point_id.clone()),
+                            );
                         } else {
-                            pending.push(source_image);
+                            pending.push(PendingSource {
+                                source_image,
+                                indexed_point_ids: indexed_records
+                                    .iter()
+                                    .map(|record| record.point_id.clone())
+                                    .collect(),
+                            });
                         }
                     }
                 }
@@ -180,12 +267,22 @@ impl ImageIndexer {
             }
         }
 
+        prune_point_ids.extend(
+            indexed_sources
+                .iter()
+                .filter(|(source_item_uri, _)| !scanned_source_items.contains(*source_item_uri))
+                .flat_map(|(_, records)| records.iter().map(|record| record.point_id.clone())),
+        );
+        prune_point_ids.sort();
+        prune_point_ids.dedup();
+
         errors.truncate(50);
         Ok(SourceIndexPlan {
             source_uris,
             pending,
             already_indexed,
             skipped,
+            prune_point_ids,
             errors,
         })
     }
@@ -194,7 +291,10 @@ impl ImageIndexer {
         &self,
     ) -> Result<BTreeMap<String, Vec<IndexedSourceRecord>>, String> {
         let mut records = BTreeMap::<String, Vec<IndexedSourceRecord>>::new();
-        for payload in self.store.scroll_payloads().await? {
+        for point in self.store.scroll_points().await? {
+            let Some(payload) = point.payload else {
+                continue;
+            };
             let Ok(payload) = serde_json::from_value::<ImagePayload>(payload) else {
                 continue;
             };
@@ -209,6 +309,7 @@ impl ImageIndexer {
                 .entry(source_item_uri)
                 .or_default()
                 .push(IndexedSourceRecord {
+                    point_id: point.id,
                     size_bytes: payload.size_bytes,
                     modified_at: payload.modified_at,
                     indexing_profile: payload.indexing_profile.clone(),
@@ -218,7 +319,7 @@ impl ImageIndexer {
         Ok(records)
     }
 
-    async fn index_one(&self, source_image: &SourceImage) -> Result<usize, String> {
+    async fn index_one(&self, source_image: &SourceImage) -> Result<IndexOneOutcome, String> {
         if source_image.is_video() {
             return self.index_video(source_image).await;
         }
@@ -232,42 +333,44 @@ impl ImageIndexer {
             .embedder
             .encode_media(&media.sampled_frames, self.settings.gif_motion_weight);
         self.store.upsert_image(&payload, vector).await?;
-        Ok(1)
+        Ok(IndexOneOutcome::single(payload.id))
     }
 
-    async fn index_video(&self, source_image: &SourceImage) -> Result<usize, String> {
+    async fn index_video(&self, source_image: &SourceImage) -> Result<IndexOneOutcome, String> {
         let path = source_image
             .local_path()
             .ok_or_else(|| "Video source does not have a local path".to_string())?;
         let scenes = decode_source_video_scenes(path, &source_image.id_base, &self.settings)?;
-        let mut indexed = 0;
+        let mut outcome = IndexOneOutcome::default();
         for scene in &scenes {
             let payload = self.build_payload(source_image, &scene.media, Some(scene), None)?;
             let vector = self
                 .embedder
                 .encode_media(&scene.media.sampled_frames, self.settings.gif_motion_weight);
+            let point_id = payload.id.clone();
             self.store.upsert_image(&payload, vector).await?;
-            indexed += 1;
+            outcome.insert(point_id);
         }
-        Ok(indexed)
+        Ok(outcome)
     }
 
-    async fn index_audio(&self, source_image: &SourceImage) -> Result<usize, String> {
+    async fn index_audio(&self, source_image: &SourceImage) -> Result<IndexOneOutcome, String> {
         let path = source_image
             .local_path()
             .ok_or_else(|| "Audio source does not have a local path".to_string())?;
         let segments = decode_source_audio_segments(path, &source_image.id_base, &self.settings)?;
-        let mut indexed = 0;
+        let mut outcome = IndexOneOutcome::default();
         for segment in &segments {
             let payload = self.build_payload(source_image, &segment.media, None, Some(segment))?;
             let vector = self.embedder.encode_media(
                 &segment.media.sampled_frames,
                 self.settings.gif_motion_weight,
             );
+            let point_id = payload.id.clone();
             self.store.upsert_image(&payload, vector).await?;
-            indexed += 1;
+            outcome.insert(point_id);
         }
-        Ok(indexed)
+        Ok(outcome)
     }
 
     fn build_payload(
@@ -407,14 +510,21 @@ impl ImageIndexer {
 
 struct SourceIndexPlan {
     source_uris: Vec<String>,
-    pending: Vec<SourceImage>,
+    pending: Vec<PendingSource>,
     already_indexed: usize,
     skipped: usize,
+    prune_point_ids: Vec<String>,
     errors: Vec<String>,
+}
+
+struct PendingSource {
+    source_image: SourceImage,
+    indexed_point_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
 struct IndexedSourceRecord {
+    point_id: String,
     size_bytes: u64,
     modified_at: f64,
     indexing_profile: Option<String>,
@@ -422,21 +532,43 @@ struct IndexedSourceRecord {
 }
 
 fn source_is_current(
-    indexed_sources: &BTreeMap<String, Vec<IndexedSourceRecord>>,
+    indexed_records: &[IndexedSourceRecord],
     source_image: &SourceImage,
     indexing_profile: &str,
 ) -> bool {
-    indexed_sources
-        .get(&source_image.item_uri)
-        .map(|records| {
-            records.iter().any(|record| {
-                record.size_bytes == source_image.size_bytes
-                    && (record.modified_at - source_image.modified_at).abs() <= 0.001
-                    && record.indexing_profile.as_deref() == Some(indexing_profile)
-                    && record.analysis_complete
-            })
-        })
-        .unwrap_or(false)
+    indexed_records
+        .iter()
+        .any(|record| record_is_current(record, source_image, indexing_profile))
+}
+
+fn record_is_current(
+    record: &IndexedSourceRecord,
+    source_image: &SourceImage,
+    indexing_profile: &str,
+) -> bool {
+    record.size_bytes == source_image.size_bytes
+        && (record.modified_at - source_image.modified_at).abs() <= 0.001
+        && record.indexing_profile.as_deref() == Some(indexing_profile)
+        && record.analysis_complete
+}
+
+#[derive(Default)]
+struct IndexOneOutcome {
+    indexed: usize,
+    point_ids: BTreeSet<String>,
+}
+
+impl IndexOneOutcome {
+    fn single(point_id: String) -> Self {
+        let mut outcome = Self::default();
+        outcome.insert(point_id);
+        outcome
+    }
+
+    fn insert(&mut self, point_id: String) {
+        self.indexed += 1;
+        self.point_ids.insert(point_id);
+    }
 }
 
 fn payload_analysis_complete(payload: &ImagePayload, settings: &Settings) -> bool {

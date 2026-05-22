@@ -29,8 +29,8 @@ mod voice;
 use crate::api::{
     audio_transcription_models, cancel_job, download_audio_transcription_model,
     enable_audio_transcription_model, get_job, get_job_events, get_source_config, health,
-    index_images, list_jobs, search_upload, spawn_startup_index_job, update_source_config,
-    AppState,
+    index_images, list_jobs, search_upload, spawn_index_job, spawn_startup_index_job,
+    update_source_config, AppState,
 };
 use crate::config::Settings;
 
@@ -61,6 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             get(get_source_config).put(update_source_config),
         )
         .route("/api/jobs", get(list_jobs))
+        .route("/api/jobs/index", post(spawn_index_job))
         .route("/api/jobs/:job_id", get(get_job))
         .route("/api/jobs/:job_id/events", get(get_job_events))
         .route("/api/jobs/:job_id/cancel", post(cancel_job))

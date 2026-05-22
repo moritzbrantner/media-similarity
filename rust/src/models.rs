@@ -176,6 +176,8 @@ pub struct IndexResponse {
     pub indexed: usize,
     pub skipped: usize,
     pub failed: usize,
+    #[serde(default)]
+    pub pruned: usize,
     pub collection: String,
     pub source_dir: String,
     #[serde(default)]
@@ -252,6 +254,7 @@ mod tests {
             indexed: 0,
             skipped: 0,
             failed: 0,
+            pruned: 0,
             collection: "image_similarity".to_string(),
             source_dir: "/images".to_string(),
             sources: Vec::new(),

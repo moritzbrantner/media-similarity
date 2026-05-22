@@ -102,6 +102,42 @@ async fn index_skips_files_that_are_already_current() {
 }
 
 #[tokio::test]
+async fn index_prunes_records_for_removed_source_files() {
+    let app = TestApp::new(|settings| {
+        settings.image_extensions = parse_extensions(".png").unwrap();
+    })
+    .await;
+
+    let keep = app.source_path("keep.png");
+    let remove = app.source_path("remove.png");
+    write_pattern_image(&keep, 64, 40, [220, 20, 20], [20, 20, 20]);
+    write_pattern_image(&remove, 64, 40, [20, 20, 220], [20, 20, 20]);
+
+    let first = app.index().await;
+    assert_eq!(first.indexed, 2);
+    assert_eq!(first.pruned, 0);
+    assert_eq!(first.failed, 0, "{:?}", first.errors);
+
+    fs::remove_file(&remove).unwrap();
+    let second = app.index().await;
+    assert_eq!(second.indexed, 0);
+    assert_eq!(second.skipped, 1);
+    assert_eq!(second.pruned, 1);
+    assert_eq!(second.failed, 0, "{:?}", second.errors);
+
+    let response = app
+        .search_upload(
+            "remove.png",
+            "application/octet-stream",
+            fs::read(&keep).unwrap(),
+            None,
+        )
+        .await;
+    assert_eq!(response.count, 1);
+    assert_eq!(response.results[0].image.filename, "keep.png");
+}
+
+#[tokio::test]
 async fn source_extension_configuration_filters_indexed_media() {
     let app = TestApp::new(|settings| {
         settings.image_extensions = parse_extensions(".png").unwrap();
@@ -453,6 +489,11 @@ struct FakeScrollRequest {
     offset: Option<Value>,
 }
 
+#[derive(Deserialize)]
+struct FakeDeleteRequest {
+    points: Vec<String>,
+}
+
 impl FakeQdrant {
     async fn spawn() -> Self {
         let state = Arc::new(Mutex::new(FakeQdrantState::default()));
@@ -460,6 +501,10 @@ impl FakeQdrant {
             .route("/collections", get(fake_list_collections))
             .route("/collections/:collection", put(fake_create_collection))
             .route("/collections/:collection/points", put(fake_upsert_points))
+            .route(
+                "/collections/:collection/points/delete",
+                post(fake_delete_points),
+            )
             .route(
                 "/collections/:collection/points/scroll",
                 post(fake_scroll_points),
@@ -516,6 +561,21 @@ async fn fake_upsert_points(
                 payload: point.payload,
             },
         );
+    }
+    Ok(Json(json!({ "result": { "status": "completed" } })))
+}
+
+async fn fake_delete_points(
+    AxumPath(collection): AxumPath<String>,
+    State(state): State<Arc<Mutex<FakeQdrantState>>>,
+    Json(request): Json<FakeDeleteRequest>,
+) -> Result<Json<Value>, AxumStatusCode> {
+    let mut state = state.lock().unwrap();
+    if !state.collections.contains(&collection) {
+        return Err(AxumStatusCode::NOT_FOUND);
+    }
+    for id in request.points {
+        state.points.remove(&(collection.clone(), id));
     }
     Ok(Json(json!({ "result": { "status": "completed" } })))
 }

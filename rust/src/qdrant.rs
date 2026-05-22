@@ -19,6 +19,12 @@ pub struct ScoredPoint {
     pub score: f32,
 }
 
+#[derive(Clone, Debug)]
+pub struct StoredPoint {
+    pub id: String,
+    pub payload: Option<Value>,
+}
+
 impl QdrantImageStore {
     pub fn new(url: impl Into<String>, collection: impl Into<String>, vector_size: usize) -> Self {
         Self {
@@ -91,6 +97,28 @@ impl QdrantImageStore {
         Ok(())
     }
 
+    pub async fn delete_points(&self, ids: &[String]) -> Result<(), String> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+
+        let request = DeletePointsRequest {
+            points: ids.to_vec(),
+        };
+        self.send_with_fallback(|base_url| {
+            self.client
+                .post(format!(
+                    "{base_url}/collections/{}/points/delete?wait=true",
+                    self.collection
+                ))
+                .json(&request)
+        })
+        .await?
+        .error_for_status()
+        .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
     pub async fn search(&self, vector: Vec<f32>, limit: u32) -> Result<Vec<ScoredPoint>, String> {
         let request = SearchRequest {
             vector,
@@ -122,9 +150,19 @@ impl QdrantImageStore {
             .collect())
     }
 
+    #[allow(dead_code)]
     pub async fn scroll_payloads(&self) -> Result<Vec<Value>, String> {
+        Ok(self
+            .scroll_points()
+            .await?
+            .into_iter()
+            .filter_map(|point| point.payload)
+            .collect())
+    }
+
+    pub async fn scroll_points(&self) -> Result<Vec<StoredPoint>, String> {
         let mut offset = None;
-        let mut payloads = Vec::new();
+        let mut points = Vec::new();
 
         loop {
             let request = ScrollRequest {
@@ -149,13 +187,10 @@ impl QdrantImageStore {
                 .await
                 .map_err(|error| error.to_string())?;
 
-            payloads.extend(
-                response
-                    .result
-                    .points
-                    .into_iter()
-                    .filter_map(|point| point.payload),
-            );
+            points.extend(response.result.points.into_iter().map(|point| StoredPoint {
+                id: point.id,
+                payload: point.payload,
+            }));
 
             match response.result.next_page_offset {
                 Some(next_offset) => offset = Some(next_offset),
@@ -163,7 +198,7 @@ impl QdrantImageStore {
             }
         }
 
-        Ok(payloads)
+        Ok(points)
     }
 
     #[allow(dead_code)]
@@ -257,6 +292,11 @@ struct UpsertRequest {
 }
 
 #[derive(Serialize)]
+struct DeletePointsRequest {
+    points: Vec<String>,
+}
+
+#[derive(Serialize)]
 struct PointStruct {
     id: String,
     vector: Vec<f32>,
@@ -303,6 +343,7 @@ struct ScrollResult {
 
 #[derive(Deserialize)]
 struct ScrollPoint {
+    id: String,
     payload: Option<Value>,
 }
 

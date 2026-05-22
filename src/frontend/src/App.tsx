@@ -29,14 +29,19 @@ import {
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
+  cancelJob,
   fetchHealth,
+  fetchJobEvents,
+  fetchJobs,
   fetchSourceConfig,
-  indexSources,
   searchMedia,
+  startIndexJob,
   updateSourceConfig,
 } from "./api";
 import type {
   IndexResponse,
+  JobEvent,
+  JobSnapshot,
   SearchResponse,
   SearchResult,
   SearchSceneResponse,
@@ -133,6 +138,7 @@ export function App() {
   const [lastIndex, setLastIndex] = useState<IndexResponse | null>(null);
   const [activeSearchId, setActiveSearchId] = useState<string | null>(null);
   const [selectedQuerySceneIndex, setSelectedQuerySceneIndex] = useState<number | null>(null);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
 
   const searchHistoryQuery = useQuery({
     queryKey: SEARCH_HISTORY_QUERY_KEY,
@@ -153,11 +159,37 @@ export function App() {
     queryFn: fetchSourceConfig,
   });
 
+  const jobsQuery = useQuery({
+    queryKey: ["jobs"],
+    queryFn: fetchJobs,
+    refetchInterval: 2000,
+  });
+
+  const jobs = useMemo(() => sortJobs(jobsQuery.data ?? []), [jobsQuery.data]);
+  const selectedJob = jobs.find((job) => job.spec.id === selectedJobId) ?? jobs[0] ?? null;
+  const latestIndexJob = jobs.find((job) => job.spec.kind?.startsWith("index."));
+
+  const jobEventsQuery = useQuery({
+    queryKey: ["job-events", selectedJob?.spec.id],
+    queryFn: () => fetchJobEvents(selectedJob?.spec.id ?? ""),
+    enabled: Boolean(selectedJob),
+    refetchInterval: selectedJob && jobIsActive(selectedJob) ? 1500 : false,
+  });
+
   const indexMutation = useMutation({
-    mutationFn: indexSources,
-    onSuccess: (response) => {
-      setLastIndex(response);
-      queryClient.invalidateQueries({ queryKey: ["health"] });
+    mutationFn: startIndexJob,
+    onSuccess: (job) => {
+      setSelectedJobId(job.spec.id);
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+    },
+  });
+
+  const cancelJobMutation = useMutation({
+    mutationFn: cancelJob,
+    onSuccess: (job) => {
+      setSelectedJobId(job.spec.id);
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["job-events", job.spec.id] });
     },
   });
 
@@ -206,6 +238,42 @@ export function App() {
   useEffect(() => {
     saveSearchHistory(searchHistory);
   }, [searchHistory]);
+
+  useEffect(() => {
+    if (!selectedJobId && jobs.length > 0) {
+      setSelectedJobId(jobs[0].spec.id);
+    }
+  }, [jobs, selectedJobId]);
+
+  useEffect(() => {
+    if (!latestIndexJob || !jobIsTerminal(latestIndexJob.status)) {
+      return;
+    }
+
+    const indexed = numberFromMetadata(latestIndexJob.metadata.indexed);
+    const skipped = numberFromMetadata(latestIndexJob.metadata.skipped);
+    const failed = numberFromMetadata(latestIndexJob.metadata.failed);
+    if (indexed === null || skipped === null || failed === null) {
+      return;
+    }
+
+    setLastIndex({
+      collection: latestIndexJob.metadata.collection ?? healthQuery.data?.collection ?? "",
+      errors: latestIndexJob.logs
+        .filter((entry) => entry.level === "Warn" || entry.level === "Error")
+        .map((entry) => entry.message),
+      failed,
+      indexed,
+      pruned: numberFromMetadata(latestIndexJob.metadata.pruned) ?? 0,
+      skipped,
+      source_dir: healthQuery.data?.source_dir ?? "",
+      sources: healthQuery.data?.sources ?? [],
+    });
+
+    if (latestIndexJob.status === "Succeeded") {
+      queryClient.invalidateQueries({ queryKey: ["health"] });
+    }
+  }, [healthQuery.data, latestIndexJob, queryClient]);
 
   function updateSearchHistory(updater: (history: SearchHistoryItem[]) => SearchHistoryItem[]) {
     queryClient.setQueryData<SearchHistoryItem[]>(SEARCH_HISTORY_QUERY_KEY, (history = []) =>
@@ -296,6 +364,7 @@ export function App() {
     filterResults(activeResponse?.results ?? [], metadataFilters),
     resultSortMode,
   );
+  const indexActive = Boolean(latestIndexJob && jobIsActive(latestIndexJob));
 
   function handleHistorySelect(item: SearchHistoryItem) {
     setActiveSearchId(item.id);
@@ -363,11 +432,11 @@ export function App() {
             </div>
             <button
               className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-neutral-400 bg-white px-4 text-sm font-semibold text-neutral-900 shadow-sm transition hover:border-neutral-500 hover:bg-neutral-50 disabled:cursor-wait disabled:opacity-60"
-              disabled={indexMutation.isPending}
+              disabled={indexMutation.isPending || indexActive}
               onClick={() => indexMutation.mutate()}
               type="button"
             >
-              {indexMutation.isPending ? (
+              {indexMutation.isPending || indexActive ? (
                 <Loader2 className="size-4 animate-spin" aria-hidden="true" />
               ) : (
                 <Database className="size-4" aria-hidden="true" />
@@ -376,6 +445,16 @@ export function App() {
             </button>
           </div>
         </header>
+
+        <JobsPanel
+          cancelPendingJobId={cancelJobMutation.variables ?? null}
+          error={jobsQuery.error}
+          events={jobEventsQuery.data ?? []}
+          jobs={jobs}
+          onCancel={(jobId) => cancelJobMutation.mutate(jobId)}
+          onSelectJob={setSelectedJobId}
+          selectedJobId={selectedJob?.spec.id ?? null}
+        />
 
         {activeView === "search" ? (
           <>
@@ -571,7 +650,7 @@ export function App() {
             config={sourceConfigQuery.data ?? null}
             error={sourceConfigQuery.error}
             indexError={indexMutation.error}
-            indexPending={indexMutation.isPending}
+            indexPending={indexMutation.isPending || indexActive}
             lastIndex={lastIndex}
             loading={sourceConfigQuery.isLoading}
             onIndex={() => indexMutation.mutate()}
@@ -592,6 +671,145 @@ function createHistoryId() {
   }
 
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function JobsPanel({
+  cancelPendingJobId,
+  error,
+  events,
+  jobs,
+  onCancel,
+  onSelectJob,
+  selectedJobId,
+}: {
+  cancelPendingJobId: string | null;
+  error: Error | null;
+  events: JobEvent[];
+  jobs: JobSnapshot[];
+  onCancel: (jobId: string) => void;
+  onSelectJob: (jobId: string) => void;
+  selectedJobId: string | null;
+}) {
+  const selectedJob = jobs.find((job) => job.spec.id === selectedJobId) ?? jobs[0] ?? null;
+  const recentEvents = events.slice(-5).reverse();
+
+  if (error) {
+    return <Message icon={<AlertCircle className="size-4" />} text={error.message} tone="error" />;
+  }
+
+  return (
+    <section className="rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <Database className="size-4 text-neutral-600" aria-hidden="true" />
+            <h2 className="text-sm font-semibold text-neutral-950">Background Jobs</h2>
+          </div>
+          <p className="mt-1 text-sm text-neutral-600">
+            {selectedJob
+              ? `${selectedJob.spec.name} · ${selectedJob.status}`
+              : "No background jobs yet."}
+          </p>
+        </div>
+        {selectedJob && jobIsActive(selectedJob) ? (
+          <button
+            className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-red-200 bg-white px-3 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
+            disabled={cancelPendingJobId === selectedJob.spec.id}
+            onClick={() => onCancel(selectedJob.spec.id)}
+            type="button"
+          >
+            {cancelPendingJobId === selectedJob.spec.id ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <X className="size-4" aria-hidden="true" />
+            )}
+            <span>Cancel</span>
+          </button>
+        ) : null}
+      </div>
+
+      {selectedJob ? (
+        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)]">
+          <div className="min-w-0">
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className={`font-semibold ${jobStatusClass(selectedJob.status)}`}>
+                {selectedJob.status}
+              </span>
+              <span className="text-neutral-600">{formatJobTime(selectedJob)}</span>
+            </div>
+            <JobProgressBar progress={selectedJob.progress} />
+            <div className="mt-3 flex flex-wrap gap-2">
+              {jobs.slice(0, 6).map((job) => (
+                <button
+                  className={`max-w-full rounded-md border px-2 py-1 text-left text-xs transition ${
+                    job.spec.id === selectedJob.spec.id
+                      ? "border-neutral-900 bg-neutral-900 text-white"
+                      : "border-neutral-300 bg-neutral-50 text-neutral-700 hover:border-neutral-500"
+                  }`}
+                  key={job.spec.id}
+                  onClick={() => onSelectJob(job.spec.id)}
+                  title={job.spec.id}
+                  type="button"
+                >
+                  <span className="block max-w-44 truncate font-semibold">{job.spec.name}</span>
+                  <span className="block">{job.status}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="min-w-0">
+            <h3 className="text-xs font-semibold uppercase tracking-normal text-neutral-500">
+              Recent Events
+            </h3>
+            <ol className="mt-2 grid max-h-40 gap-2 overflow-auto pr-1">
+              {recentEvents.length > 0 ? (
+                recentEvents.map((event) => (
+                  <li className="rounded-md bg-neutral-50 px-3 py-2 text-sm" key={event.sequence}>
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="min-w-0 text-neutral-800">{jobEventText(event)}</span>
+                      <span className="shrink-0 text-xs text-neutral-500">
+                        {formatHistoryTime(event.timestamp)}
+                      </span>
+                    </div>
+                  </li>
+                ))
+              ) : (
+                <li className="rounded-md bg-neutral-50 px-3 py-2 text-sm text-neutral-500">
+                  No events recorded.
+                </li>
+              )}
+            </ol>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function JobProgressBar({ progress }: { progress: JobSnapshot["progress"] }) {
+  const percent =
+    progress?.total && progress.total > 0
+      ? Math.min(100, Math.round((progress.completed / progress.total) * 100))
+      : null;
+  const value = progress
+    ? `${progress.completed}${progress.total ? `/${progress.total}` : ""} ${progress.unit}`
+    : "Waiting";
+
+  return (
+    <div className="mt-2">
+      <div className="flex items-center justify-between gap-3 text-xs text-neutral-600">
+        <span className="min-w-0 truncate">{progress?.message ?? value}</span>
+        <span className="shrink-0">{percent === null ? value : `${percent}%`}</span>
+      </div>
+      <div className="mt-2 h-2 overflow-hidden rounded bg-neutral-200">
+        <div
+          className="h-full bg-emerald-700 transition-all"
+          style={{ width: `${percent ?? (progress ? 45 : 0)}%` }}
+        />
+      </div>
+    </div>
+  );
 }
 
 function SourceConfigurationPage({
@@ -790,7 +1008,7 @@ function SourceConfigurationPage({
               ) : lastIndex ? (
                 <Message
                   icon={<CheckCircle2 className="size-4" />}
-                  text={`Indexed ${lastIndex.indexed} media item(s), skipped ${lastIndex.skipped}, failed ${lastIndex.failed}.`}
+                  text={`Indexed ${lastIndex.indexed} media item(s), skipped ${lastIndex.skipped}, pruned ${lastIndex.pruned}, failed ${lastIndex.failed}.`}
                   tone={lastIndex.failed > 0 ? "warn" : "ok"}
                 />
               ) : null}
@@ -1751,6 +1969,65 @@ function formatHistoryTime(value: string) {
   }).format(new Date(value));
 }
 
+function sortJobs(jobs: JobSnapshot[]) {
+  return [...jobs].sort(
+    (left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime(),
+  );
+}
+
+function jobIsActive(job: JobSnapshot) {
+  return job.status === "Queued" || job.status === "Running" || job.status === "Cancelling";
+}
+
+function jobIsTerminal(status: JobSnapshot["status"]) {
+  return status === "Succeeded" || status === "Failed" || status === "Cancelled";
+}
+
+function numberFromMetadata(value: string | undefined) {
+  if (value === undefined) {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function jobStatusClass(status: JobSnapshot["status"]) {
+  return {
+    Cancelled: "text-amber-700",
+    Cancelling: "text-amber-700",
+    Failed: "text-red-700",
+    Queued: "text-neutral-700",
+    Running: "text-emerald-700",
+    Succeeded: "text-emerald-700",
+  }[status];
+}
+
+function formatJobTime(job: JobSnapshot) {
+  const value = job.finished_at ?? job.started_at ?? job.created_at;
+  return formatHistoryTime(value);
+}
+
+function jobEventText(event: JobEvent) {
+  const kind = event.kind;
+  if ("StatusChanged" in kind) {
+    return kind.StatusChanged.message
+      ? `${kind.StatusChanged.status}: ${kind.StatusChanged.message}`
+      : kind.StatusChanged.status;
+  }
+  if ("Progress" in kind) {
+    const progress = kind.Progress;
+    const total = progress.total ? `/${progress.total}` : "";
+    return progress.message ?? `${progress.completed}${total} ${progress.unit}`;
+  }
+  if ("Log" in kind) {
+    return kind.Log.message;
+  }
+  if ("Metadata" in kind) {
+    return `${kind.Metadata.key}: ${kind.Metadata.value}`;
+  }
+  return "Artifact recorded";
+}
+
 function StatusMessage({
   indexError,
   lastIndex,
@@ -1786,7 +2063,7 @@ function StatusMessage({
 
   if (lastIndex) {
     const tone = lastIndex.failed > 0 ? "warn" : "ok";
-    const text = `Indexed ${lastIndex.indexed} media item(s), skipped ${lastIndex.skipped}, failed ${lastIndex.failed}.`;
+    const text = `Indexed ${lastIndex.indexed} media item(s), skipped ${lastIndex.skipped}, pruned ${lastIndex.pruned}, failed ${lastIndex.failed}.`;
     return <Message icon={<CheckCircle2 className="size-4" />} text={text} tone={tone} />;
   }
 
