@@ -445,6 +445,28 @@ test("uploads query media and renders search results", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("metadata-filtered searches request a wider candidate set", async ({ page }) => {
+  let requestedLimit: string | null = null;
+  await page.unroute("**/api/search?**");
+  await page.route("**/api/search?**", async (route) => {
+    requestedLimit = new URL(route.request().url()).searchParams.get("limit");
+    await route.fulfill({ json: searchResponse });
+  });
+  await page.goto("/");
+
+  await page.locator("#query-image").setInputFiles({
+    buffer: pngPixel,
+    mimeType: "image/png",
+    name: "query.png",
+  });
+  await page.getByLabel("Result limit").fill("1");
+  await page.getByLabel("Media type").selectOption("static_image");
+  await page.getByRole("button", { name: "Search" }).click();
+
+  await expect.poll(() => requestedLimit).toBe("8");
+  await expect(page.locator("article h3")).toHaveCount(1);
+});
+
 test("sorts results by pHash distance by default and supports changing sort", async ({ page }) => {
   await page.goto("/");
 

@@ -52,6 +52,8 @@ import type {
 
 const DEFAULT_LIMIT = 12;
 const DEFAULT_RESULT_SORT: ResultSortMode = "phash_distance";
+const FILTERED_SEARCH_CANDIDATE_MULTIPLIER = 8;
+const MAX_SEARCH_CANDIDATES = 500;
 const MAX_SEARCH_HISTORY = 8;
 const SEARCH_HISTORY_STORAGE_KEY = "image-similarity-search-history";
 const SEARCH_HISTORY_QUERY_KEY = ["search-history"] as const;
@@ -202,8 +204,8 @@ export function App() {
   });
 
   const searchMutation = useMutation({
-    mutationFn: ({ ocrTextQuery, queryFile, resultLimit }: SearchVariables) =>
-      searchMedia(queryFile, resultLimit, ocrTextQuery),
+    mutationFn: ({ filters, ocrTextQuery, queryFile, resultLimit }: SearchVariables) =>
+      searchMedia(queryFile, searchCandidateLimit(resultLimit, filters), ocrTextQuery),
     onSuccess: (response, variables) => {
       const nextItem: SearchHistoryItem = {
         id: createHistoryId(),
@@ -360,10 +362,11 @@ export function App() {
     activeResponse?.results ?? [],
     metadataFilters.sourceType,
   );
-  const results = sortResults(
+  const filteredResults = sortResults(
     filterResults(activeResponse?.results ?? [], metadataFilters),
     resultSortMode,
   );
+  const results = filteredResults.slice(0, activeSearch?.limit ?? limit);
   const indexActive = Boolean(latestIndexJob && jobIsActive(latestIndexJob));
 
   function handleHistorySelect(item: SearchHistoryItem) {
@@ -633,6 +636,7 @@ export function App() {
                     onSelectScene={setSelectedQuerySceneIndex}
                     scenes={activeResponse.scenes}
                     selectedSceneIndex={selectedQuerySceneIndex}
+                    resultLimit={activeSearch?.limit ?? limit}
                     sortMode={resultSortMode}
                   />
                 ) : (
@@ -1054,7 +1058,7 @@ function SourceConfigurationPage({
             <Metric label="OCR frames" value={config.indexing.ocr_max_frames} />
             <Metric
               label="Transcription"
-              value={config.indexing.audio_transcription_enabled ? "enabled" : "disabled"}
+              value={`backend-only (${config.indexing.audio_transcription_enabled ? "enabled" : "disabled"})`}
             />
           </dl>
         </section>
@@ -2141,12 +2145,14 @@ function ResultsGrid({
 function SceneResultsList({
   filters,
   onSelectScene,
+  resultLimit,
   scenes,
   selectedSceneIndex,
   sortMode,
 }: {
   filters: MetadataFilters;
   onSelectScene: (sceneIndex: number) => void;
+  resultLimit: number;
   scenes: SearchSceneResponse[];
   selectedSceneIndex: number | null;
   sortMode: ResultSortMode;
@@ -2154,7 +2160,7 @@ function SceneResultsList({
   const selectedScene =
     scenes.find((scene) => scene.scene_index === selectedSceneIndex) ?? scenes[0];
   const selectedResults = selectedScene
-    ? sortResults(filterResults(selectedScene.results, filters), sortMode)
+    ? sortResults(filterResults(selectedScene.results, filters), sortMode).slice(0, resultLimit)
     : [];
   const isAudioBits = scenes.some((scene) => scene.scene_kind === "audio_bit");
   const segmentLabel = isAudioBits ? "Bit" : "Scene";
@@ -2455,6 +2461,14 @@ function countActiveFilters(filters: MetadataFilters) {
     const defaultValue = DEFAULT_METADATA_FILTERS[key as keyof MetadataFilters];
     return value !== defaultValue;
   }).length;
+}
+
+function searchCandidateLimit(resultLimit: number, filters: MetadataFilters) {
+  if (countActiveFilters(filters) === 0) {
+    return resultLimit;
+  }
+
+  return Math.min(resultLimit * FILTERED_SEARCH_CANDIDATE_MULTIPLIER, MAX_SEARCH_CANDIDATES);
 }
 
 function formatDuration(durationMs: number) {
