@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::Settings;
 use crate::domain::models::ImagePayload;
-use crate::storage::qdrant::{QdrantImageStore, StoredPoint};
+use crate::storage::{MediaVectorStore, StoredPoint};
 
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct DeleteIndexedSourceFilter {
@@ -24,7 +24,7 @@ pub struct DeleteIndexResponse {
 
 pub async fn delete_indexed_media(
     settings: &Settings,
-    store: &QdrantImageStore,
+    store: &dyn MediaVectorStore,
     media_id: &str,
 ) -> DeleteIndexResponse {
     delete_matching_media(settings, store, Some(media_id), None, None).await
@@ -32,7 +32,7 @@ pub async fn delete_indexed_media(
 
 pub async fn delete_indexed_source(
     settings: &Settings,
-    store: &QdrantImageStore,
+    store: &dyn MediaVectorStore,
     filter: DeleteIndexedSourceFilter,
 ) -> DeleteIndexResponse {
     delete_matching_media(
@@ -47,7 +47,7 @@ pub async fn delete_indexed_source(
 
 async fn delete_matching_media(
     settings: &Settings,
-    store: &QdrantImageStore,
+    store: &dyn MediaVectorStore,
     id: Option<&str>,
     source_uri: Option<&str>,
     source_item_uri: Option<&str>,

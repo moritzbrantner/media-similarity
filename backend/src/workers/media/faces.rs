@@ -9,7 +9,7 @@ use image_analysis_onnx::{
 
 use crate::config::Settings;
 use crate::domain::models::{FaceBoxPayload, FaceDetectionPayload, PersonSummary};
-use crate::storage::qdrant::QdrantImageStore;
+use crate::storage::MediaVectorStore;
 use crate::workers::media::media::DecodedMedia;
 use crate::workers::media::models::{load_role_bundle, ModelRole};
 use crate::workers::media::persons::{assign_person, face_point_payload, summarize_people};
@@ -41,7 +41,7 @@ pub struct FaceBox {
 
 pub async fn analyze_faces_for_media(
     settings: &Settings,
-    store: &QdrantImageStore,
+    store: &dyn MediaVectorStore,
     media: &DecodedMedia,
     media_id: &str,
     source_uri: Option<String>,

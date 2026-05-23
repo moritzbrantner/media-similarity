@@ -1,30 +1,26 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use axum::extract::{Multipart, Path as AxumPath, Query, State};
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
 use axum::Json;
 use jobs_core::{
     JobArtifact, JobContext, JobError, JobEvent, JobId, JobProgress, JobSnapshot, JobSpec,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use sha2::{Digest, Sha256};
 use text_transcripts::{WhisperCppModel, WhisperCppModelStore};
 use uuid::Uuid;
 
 use crate::config::{parse_extensions, parse_media_sources_file, Settings};
-use crate::domain::models::{HealthResponse, ImagePayload, IndexResponse, SearchResponse};
+use crate::domain::models::{ImagePayload, IndexResponse, SearchResponse};
 use crate::domain::models::{SearchResult, SearchSceneResponse};
-use crate::storage::qdrant::QdrantImageStore;
+use crate::storage::MediaVectorStore;
 use crate::workers::deletion::{
     delete_indexed_media, delete_indexed_source, DeleteIndexResponse, DeleteIndexedSourceFilter,
 };
 use crate::workers::indexer::ImageIndexer;
-use crate::workers::jobs::JobManager;
 use crate::workers::media::audio::{
     audio_upload_path, decode_audio_segments, is_audio_content_type, is_audio_extension,
     whisper_model_is_cached, write_audio_upload,
@@ -42,83 +38,25 @@ use crate::workers::media::video::{
     decode_video_scenes, is_video_content_type, is_video_extension, video_upload_path,
     write_video_upload,
 };
-use crate::workers::media::visual_embedding::{build_visual_embedder, VisualEmbeddingBackend};
+use crate::workers::media::visual_embedding::VisualEmbeddingBackend;
 use crate::workers::search::ImageSearchService;
-use crate::workers::sources::build_image_sources;
+
+mod error;
+mod health;
+mod state;
+
+pub use error::ApiError;
+pub use health::health;
+pub use state::AppState;
 
 const MAX_MEDIA_TAGS: usize = 64;
 const MAX_MEDIA_TAG_LENGTH: usize = 80;
-
-pub struct AppState {
-    pub settings: Settings,
-    indexing_config: RwLock<EditableIndexingConfig>,
-    source_specs: RwLock<Vec<String>>,
-    pub store: QdrantImageStore,
-    pub embedder: Arc<dyn VisualEmbeddingBackend>,
-    pub jobs: JobManager,
-}
-
-impl AppState {
-    pub fn new(settings: Settings) -> Self {
-        let store = QdrantImageStore::new(
-            settings.qdrant_url.clone(),
-            settings.qdrant_collection.clone(),
-            settings.visual_embedding_vector_size,
-            settings.face_embedding_vector_size,
-        );
-        let embedder = build_visual_embedder(&settings);
-        let indexing_config = RwLock::new(EditableIndexingConfig::from_settings(&settings));
-        let source_specs = RwLock::new(settings.source_specs());
-        Self {
-            settings,
-            indexing_config,
-            source_specs,
-            store,
-            embedder,
-            jobs: JobManager::default(),
-        }
-    }
-
-    pub fn indexing_settings(&self) -> Settings {
-        let mut settings = self.settings.clone();
-        settings.image_sources = read_source_specs(&self.source_specs);
-        read_indexing_config(&self.indexing_config).apply_to_settings(&mut settings);
-        settings
-    }
-
-    fn replace_source_specs(&self, sources: Vec<String>) {
-        let mut source_specs = self
-            .source_specs
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        *source_specs = sources;
-    }
-
-    fn replace_indexing_config(&self, indexing_config: EditableIndexingConfig) {
-        let mut current = self
-            .indexing_config
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        *current = indexing_config;
-    }
-}
 
 #[derive(Deserialize)]
 pub struct SearchQuery {
     limit: Option<u32>,
     ocr_text: Option<String>,
     person_id: Option<String>,
-}
-
-pub async fn health(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
-    let settings = state.indexing_settings();
-    let sources = build_image_sources(&settings);
-    Json(HealthResponse {
-        status: "ok".to_string(),
-        collection: settings.qdrant_collection.clone(),
-        source_dir: settings.source_image_dir.to_string_lossy().to_string(),
-        sources: sources.iter().map(|source| source.uri()).collect(),
-    })
 }
 
 #[derive(Debug, Serialize)]
@@ -724,15 +662,6 @@ fn source_config_response(state: &AppState) -> SourceConfigResponse {
     }
 }
 
-fn read_indexing_config(
-    indexing_config: &RwLock<EditableIndexingConfig>,
-) -> EditableIndexingConfig {
-    indexing_config
-        .read()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .clone()
-}
-
 fn normalized_extensions(name: &str, values: &[String]) -> Result<Vec<String>, ApiError> {
     let normalized = parse_extensions(&values.join(",")).map_err(|error| {
         ApiError::bad_request(format!(
@@ -790,13 +719,6 @@ fn validate_min_usize(name: &str, value: usize, min: usize) -> Result<(), ApiErr
             "{name} must be at least {min}"
         )))
     }
-}
-
-fn read_source_specs(source_specs: &RwLock<Vec<String>>) -> Vec<String> {
-    source_specs
-        .read()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .clone()
 }
 
 fn normalize_source_specs(sources: &[String]) -> Result<Vec<String>, ApiError> {
@@ -1012,7 +934,8 @@ pub async fn delete_indexed_media_route(
     State(state): State<Arc<AppState>>,
     AxumPath(id): AxumPath<String>,
 ) -> Result<Json<DeleteIndexResponse>, ApiError> {
-    let response = delete_indexed_media(&state.indexing_settings(), &state.store, &id).await;
+    let response =
+        delete_indexed_media(&state.indexing_settings(), state.store.as_ref(), &id).await;
     Ok(Json(response))
 }
 
@@ -1059,7 +982,8 @@ pub async fn delete_indexed_sources_route(
             "source_uri or source_item_uri is required",
         ));
     }
-    let response = delete_indexed_source(&state.indexing_settings(), &state.store, filter).await;
+    let response =
+        delete_indexed_source(&state.indexing_settings(), state.store.as_ref(), filter).await;
     Ok(Json(response))
 }
 
@@ -1704,7 +1628,7 @@ fn model_job_spec(kind: &str, name: &str, model: WhisperCppModel) -> Result<JobS
 fn run_index_job(
     context: JobContext,
     settings: Settings,
-    store: QdrantImageStore,
+    store: Arc<dyn MediaVectorStore>,
     embedder: Arc<dyn VisualEmbeddingBackend>,
 ) -> jobs_core::Result<()> {
     context.info("checking indexed media sources")?;
@@ -1885,65 +1809,6 @@ fn search_error(error: String) -> ApiError {
         ApiError::service_unavailable(error)
     } else {
         ApiError::internal(error)
-    }
-}
-
-#[derive(Debug)]
-pub struct ApiError {
-    status: StatusCode,
-    detail: String,
-}
-
-impl ApiError {
-    fn bad_request(detail: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::BAD_REQUEST,
-            detail: detail.into(),
-        }
-    }
-
-    fn payload_too_large(detail: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::PAYLOAD_TOO_LARGE,
-            detail: detail.into(),
-        }
-    }
-
-    fn not_found(detail: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::NOT_FOUND,
-            detail: detail.into(),
-        }
-    }
-
-    fn service_unavailable(detail: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::SERVICE_UNAVAILABLE,
-            detail: detail.into(),
-        }
-    }
-
-    fn internal(detail: impl Into<String>) -> Self {
-        Self {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
-            detail: detail.into(),
-        }
-    }
-
-    fn from_job(error: JobError) -> Self {
-        match error {
-            JobError::InvalidArgument(message) => Self::bad_request(message),
-            JobError::Cancelled => Self::bad_request("job cancelled"),
-            JobError::Failed(message) | JobError::StateUnavailable(message) => {
-                Self::internal(message)
-            }
-        }
-    }
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        (self.status, Json(json!({ "detail": self.detail }))).into_response()
     }
 }
 

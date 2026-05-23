@@ -63,6 +63,8 @@ import {
   updateIndexingConfig,
   updateSourceConfig,
 } from "./api";
+import { formatFileSize, formatModifiedAt, mediaKindLabel } from "./lib/format";
+import { isAudioFile, isPdfFile } from "./lib/media";
 import type {
   IndexResponse,
   InverseIndexLocation,
@@ -88,8 +90,6 @@ const MAX_SEARCH_CANDIDATES = 500;
 const MAX_SEARCH_HISTORY = 8;
 const SEARCH_HISTORY_STORAGE_KEY = "image-similarity-search-history";
 const SEARCH_HISTORY_QUERY_KEY = ["search-history"] as const;
-const AUDIO_EXTENSIONS = [".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".opus", ".wma"];
-const PDF_EXTENSIONS = [".pdf"];
 
 const DEFAULT_METADATA_FILTERS = {
   cameraQuery: "",
@@ -3007,24 +3007,6 @@ function imageOrientation(width: number, height: number): MetadataFilters["orien
   return width > height ? "landscape" : "portrait";
 }
 
-function isAudioFile(file: File) {
-  if (file.type.startsWith("audio/")) {
-    return true;
-  }
-
-  const lowerName = file.name.toLocaleLowerCase();
-  return AUDIO_EXTENSIONS.some((extension) => lowerName.endsWith(extension));
-}
-
-function isPdfFile(file: File) {
-  if (file.type === "application/pdf") {
-    return true;
-  }
-
-  const lowerName = file.name.toLocaleLowerCase();
-  return PDF_EXTENSIONS.some((extension) => lowerName.endsWith(extension));
-}
-
 async function createQueryPreview(file: File) {
   if (file.type === "image/gif" || file.name.toLowerCase().endsWith(".gif")) {
     return null;
@@ -4233,10 +4215,6 @@ function compactNumberList(values: number[]) {
   return `${values.slice(0, 4).join(", ")} +${values.length - 4}`;
 }
 
-function mediaKindLabel(kind: string) {
-  return kind.replaceAll("_", " ");
-}
-
 function formatDuration(durationMs: number) {
   return `${(durationMs / 1000).toFixed(1)}s`;
 }
@@ -4261,30 +4239,6 @@ function formatPercent(value: number) {
 
 function personDisplayName(person: PersonSummary) {
   return person.label?.trim() || person.person_id;
-}
-
-function formatFileSize(sizeBytes: number) {
-  if (sizeBytes < 1024) {
-    return `${sizeBytes} B`;
-  }
-
-  if (sizeBytes < 1024 * 1024) {
-    return `${(sizeBytes / 1024).toFixed(1)} KB`;
-  }
-
-  return `${(sizeBytes / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function formatModifiedAt(modifiedAt: number) {
-  if (!Number.isFinite(modifiedAt) || modifiedAt <= 0) {
-    return "n/a";
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(modifiedAt * 1000));
 }
 
 function formatCaptureTime(value: string) {

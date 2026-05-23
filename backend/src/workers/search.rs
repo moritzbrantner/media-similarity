@@ -1,6 +1,6 @@
 use crate::config::Settings;
 use crate::domain::models::{ImagePayload, SearchResponse, SearchResult};
-use crate::storage::qdrant::QdrantImageStore;
+use crate::storage::MediaVectorStore;
 use crate::workers::media::hashing::{hash_distance, phash_image};
 use crate::workers::media::media::DecodedMedia;
 use crate::workers::media::ocr::{normalize_ocr_query, ocr_match_score};
@@ -11,14 +11,14 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct ImageSearchService {
     settings: Settings,
-    store: QdrantImageStore,
+    store: Arc<dyn MediaVectorStore>,
     embedder: Arc<dyn VisualEmbeddingBackend>,
 }
 
 impl ImageSearchService {
     pub fn new(
         settings: Settings,
-        store: QdrantImageStore,
+        store: Arc<dyn MediaVectorStore>,
         embedder: Arc<dyn VisualEmbeddingBackend>,
     ) -> Self {
         Self {

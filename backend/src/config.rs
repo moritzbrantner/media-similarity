@@ -69,6 +69,209 @@ pub struct Settings {
     pub bind_addr: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ServerSettings {
+    pub bind_addr: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct StorageSettings {
+    pub qdrant_url: String,
+    pub qdrant_collection: String,
+    pub thumbnail_dir: PathBuf,
+    pub upload_dir: PathBuf,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SourceSettings {
+    pub source_image_dir: PathBuf,
+    pub media_sources_file: PathBuf,
+    pub image_sources: Vec<String>,
+    pub image_extensions: BTreeSet<String>,
+    pub audio_extensions: BTreeSet<String>,
+    pub pdf_extensions: BTreeSet<String>,
+    pub minio_endpoint: Option<String>,
+    pub minio_access_key: Option<String>,
+    pub minio_secret_key: Option<String>,
+    pub minio_secure: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct MediaDecodeSettings {
+    pub gif_sample_frames: usize,
+    pub gif_max_decode_frames: usize,
+    pub gif_preview_frames: usize,
+    pub gif_default_frame_delay_ms: u32,
+    pub gif_motion_weight: f32,
+    pub video_frame_stride: u32,
+    pub video_max_frames: Option<u32>,
+    pub camera_frame_stride: u32,
+    pub camera_max_frames: u32,
+    pub pdf_render_dpi: u32,
+    pub pdf_max_pages: u32,
+    pub pdf_summary_pages: usize,
+    pub max_upload_mb: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct VisualModelSettings {
+    pub clip_model_name: String,
+    pub visual_embedding_enabled: bool,
+    pub visual_embedding_backend: String,
+    pub visual_embedding_model_path: PathBuf,
+    pub visual_embedding_preprocessor_path: PathBuf,
+    pub visual_embedding_vector_size: usize,
+    pub visual_embedding_batch_size: usize,
+    pub vector_size: usize,
+    pub model_bundle_dir: PathBuf,
+    pub model_hf_cache_dir: Option<PathBuf>,
+    pub model_hf_token: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct FaceSettings {
+    pub face_analysis_enabled: bool,
+    pub face_detection_model_path: PathBuf,
+    pub face_embedding_model_path: PathBuf,
+    pub face_embedding_vector_size: usize,
+    pub face_detection_min_confidence: f32,
+    pub face_cluster_threshold: f32,
+    pub face_min_cluster_images: u32,
+    pub face_max_frames_per_media: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct OcrSettings {
+    pub ocr_enabled: bool,
+    pub ocr_command: String,
+    pub ocr_language: Option<String>,
+    pub ocr_max_frames: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AudioTranscriptionSettings {
+    pub voice_registry_path: PathBuf,
+    pub audio_transcription_enabled: bool,
+    pub audio_transcription_model: String,
+    pub audio_transcription_language: Option<String>,
+    pub audio_transcription_threads: Option<usize>,
+    pub audio_transcription_auto_download: bool,
+    pub audio_transcription_cache_dir: Option<PathBuf>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SearchSettings {
+    pub default_search_limit: u32,
+    pub duplicate_hash_distance: u32,
+}
+
+impl Settings {
+    pub fn server_settings(&self) -> ServerSettings {
+        ServerSettings {
+            bind_addr: self.bind_addr.clone(),
+        }
+    }
+
+    pub fn storage_settings(&self) -> StorageSettings {
+        StorageSettings {
+            qdrant_url: self.qdrant_url.clone(),
+            qdrant_collection: self.qdrant_collection.clone(),
+            thumbnail_dir: self.thumbnail_dir.clone(),
+            upload_dir: self.upload_dir.clone(),
+        }
+    }
+
+    pub fn source_settings(&self) -> SourceSettings {
+        SourceSettings {
+            source_image_dir: self.source_image_dir.clone(),
+            media_sources_file: self.media_sources_file.clone(),
+            image_sources: self.image_sources.clone(),
+            image_extensions: self.image_extensions.clone(),
+            audio_extensions: self.audio_extensions.clone(),
+            pdf_extensions: self.pdf_extensions.clone(),
+            minio_endpoint: self.minio_endpoint.clone(),
+            minio_access_key: self.minio_access_key.clone(),
+            minio_secret_key: self.minio_secret_key.clone(),
+            minio_secure: self.minio_secure,
+        }
+    }
+
+    pub fn media_decode_settings(&self) -> MediaDecodeSettings {
+        MediaDecodeSettings {
+            gif_sample_frames: self.gif_sample_frames,
+            gif_max_decode_frames: self.gif_max_decode_frames,
+            gif_preview_frames: self.gif_preview_frames,
+            gif_default_frame_delay_ms: self.gif_default_frame_delay_ms,
+            gif_motion_weight: self.gif_motion_weight,
+            video_frame_stride: self.video_frame_stride,
+            video_max_frames: self.video_max_frames,
+            camera_frame_stride: self.camera_frame_stride,
+            camera_max_frames: self.camera_max_frames,
+            pdf_render_dpi: self.pdf_render_dpi,
+            pdf_max_pages: self.pdf_max_pages,
+            pdf_summary_pages: self.pdf_summary_pages,
+            max_upload_mb: self.max_upload_mb,
+        }
+    }
+
+    pub fn visual_model_settings(&self) -> VisualModelSettings {
+        VisualModelSettings {
+            clip_model_name: self.clip_model_name.clone(),
+            visual_embedding_enabled: self.visual_embedding_enabled,
+            visual_embedding_backend: self.visual_embedding_backend.clone(),
+            visual_embedding_model_path: self.visual_embedding_model_path.clone(),
+            visual_embedding_preprocessor_path: self.visual_embedding_preprocessor_path.clone(),
+            visual_embedding_vector_size: self.visual_embedding_vector_size,
+            visual_embedding_batch_size: self.visual_embedding_batch_size,
+            vector_size: self.vector_size,
+            model_bundle_dir: self.model_bundle_dir.clone(),
+            model_hf_cache_dir: self.model_hf_cache_dir.clone(),
+            model_hf_token: self.model_hf_token.clone(),
+        }
+    }
+
+    pub fn face_settings(&self) -> FaceSettings {
+        FaceSettings {
+            face_analysis_enabled: self.face_analysis_enabled,
+            face_detection_model_path: self.face_detection_model_path.clone(),
+            face_embedding_model_path: self.face_embedding_model_path.clone(),
+            face_embedding_vector_size: self.face_embedding_vector_size,
+            face_detection_min_confidence: self.face_detection_min_confidence,
+            face_cluster_threshold: self.face_cluster_threshold,
+            face_min_cluster_images: self.face_min_cluster_images,
+            face_max_frames_per_media: self.face_max_frames_per_media,
+        }
+    }
+
+    pub fn ocr_settings(&self) -> OcrSettings {
+        OcrSettings {
+            ocr_enabled: self.ocr_enabled,
+            ocr_command: self.ocr_command.clone(),
+            ocr_language: self.ocr_language.clone(),
+            ocr_max_frames: self.ocr_max_frames,
+        }
+    }
+
+    pub fn audio_transcription_settings(&self) -> AudioTranscriptionSettings {
+        AudioTranscriptionSettings {
+            voice_registry_path: self.voice_registry_path.clone(),
+            audio_transcription_enabled: self.audio_transcription_enabled,
+            audio_transcription_model: self.audio_transcription_model.clone(),
+            audio_transcription_language: self.audio_transcription_language.clone(),
+            audio_transcription_threads: self.audio_transcription_threads,
+            audio_transcription_auto_download: self.audio_transcription_auto_download,
+            audio_transcription_cache_dir: self.audio_transcription_cache_dir.clone(),
+        }
+    }
+
+    pub fn search_settings(&self) -> SearchSettings {
+        SearchSettings {
+            default_search_limit: self.default_search_limit,
+            duplicate_hash_distance: self.duplicate_hash_distance,
+        }
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {

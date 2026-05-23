@@ -9,8 +9,12 @@ use crate::config::Settings;
 use crate::domain::models::{
     GeneratedArtifactPayload, ImagePayload, IndexResponse, OcrAnalysis, PhotoMetadataPayload,
 };
-use crate::storage::qdrant::QdrantImageStore;
+use crate::storage::MediaVectorStore;
 use crate::workers::deletion::delete_indexed_media;
+use crate::workers::indexing::planner::{
+    legacy_source_item_uri, payload_analysis_complete, record_is_current, source_is_current,
+    IndexedSourceRecord, PendingSource, SourceIndexPlan,
+};
 use crate::workers::media::audio::{
     decode_source_audio_segments, expose_source_audio, SourceAudioSegment,
 };
@@ -29,14 +33,14 @@ use crate::workers::sources::{build_image_sources, SourceImage, SourceUnavailabl
 #[derive(Clone)]
 pub struct ImageIndexer {
     settings: Settings,
-    store: QdrantImageStore,
+    store: Arc<dyn MediaVectorStore>,
     embedder: Arc<dyn VisualEmbeddingBackend>,
 }
 
 impl ImageIndexer {
     pub fn new(
         settings: Settings,
-        store: QdrantImageStore,
+        store: Arc<dyn MediaVectorStore>,
         embedder: Arc<dyn VisualEmbeddingBackend>,
     ) -> Self {
         Self {
@@ -357,7 +361,7 @@ impl ImageIndexer {
         let media_id = image_id_for_uri(&source_image.id_base);
         let face_analysis = analyze_faces_for_media(
             &self.settings,
-            &self.store,
+            self.store.as_ref(),
             &media,
             &media_id,
             Some(source_image.source_uri.clone()),
@@ -380,7 +384,8 @@ impl ImageIndexer {
         let mut deleted = 0;
         let mut errors = Vec::new();
         for point_id in point_ids {
-            let response = delete_indexed_media(&self.settings, &self.store, point_id).await;
+            let response =
+                delete_indexed_media(&self.settings, self.store.as_ref(), point_id).await;
             deleted += response.deleted_points;
             errors.extend(response.errors);
         }
@@ -402,7 +407,7 @@ impl ImageIndexer {
             let media_id = image_id_for_uri(&id_base);
             let face_analysis = analyze_faces_for_media(
                 &self.settings,
-                &self.store,
+                self.store.as_ref(),
                 &scene.media,
                 &media_id,
                 Some(source_image.source_uri.clone()),
@@ -770,50 +775,6 @@ struct PdfPayloadContext {
     pdf_page_count: Option<usize>,
 }
 
-struct SourceIndexPlan {
-    source_uris: Vec<String>,
-    pending: Vec<PendingSource>,
-    already_indexed: usize,
-    skipped: usize,
-    prune_point_ids: Vec<String>,
-    errors: Vec<String>,
-}
-
-struct PendingSource {
-    source_image: SourceImage,
-    indexed_point_ids: Vec<String>,
-}
-
-#[derive(Clone, Debug)]
-struct IndexedSourceRecord {
-    point_id: String,
-    size_bytes: u64,
-    modified_at: f64,
-    indexing_profile: Option<String>,
-    analysis_complete: bool,
-}
-
-fn source_is_current(
-    indexed_records: &[IndexedSourceRecord],
-    source_image: &SourceImage,
-    indexing_profile: &str,
-) -> bool {
-    indexed_records
-        .iter()
-        .any(|record| record_is_current(record, source_image, indexing_profile))
-}
-
-fn record_is_current(
-    record: &IndexedSourceRecord,
-    source_image: &SourceImage,
-    indexing_profile: &str,
-) -> bool {
-    record.size_bytes == source_image.size_bytes
-        && (record.modified_at - source_image.modified_at).abs() <= 0.001
-        && record.indexing_profile.as_deref() == Some(indexing_profile)
-        && record.analysis_complete
-}
-
 #[derive(Default)]
 struct IndexOneOutcome {
     indexed: usize,
@@ -831,27 +792,6 @@ impl IndexOneOutcome {
         self.indexed += 1;
         self.point_ids.insert(point_id);
     }
-}
-
-fn payload_analysis_complete(payload: &ImagePayload, settings: &Settings) -> bool {
-    if payload.media_kind == "video_scene"
-        && (payload.scene_index.is_none()
-            || payload.scene_start_seconds.is_none()
-            || payload.scene_end_seconds.is_none())
-    {
-        return false;
-    }
-
-    if settings.audio_transcription_enabled && payload.media_kind == "audio" {
-        let Some(analysis) = &payload.audio_analysis else {
-            return false;
-        };
-        if analysis.speech_detected && analysis.transcript_text.trim().is_empty() {
-            return false;
-        }
-    }
-
-    true
 }
 
 fn generated_artifacts(
@@ -968,18 +908,6 @@ struct IndexingProfile<'a> {
     ocr_command: &'a str,
     ocr_language: Option<&'a str>,
     ocr_max_frames: usize,
-}
-
-fn legacy_source_item_uri(payload: &ImagePayload) -> Option<String> {
-    let source_path = payload
-        .path
-        .split_once('#')
-        .map_or(payload.path.as_str(), |(path, _)| path);
-    if source_path.is_empty() {
-        None
-    } else {
-        Some(source_path.to_string())
-    }
 }
 
 fn index_progress(

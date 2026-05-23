@@ -1,0 +1,79 @@
+use std::sync::{Arc, RwLock};
+
+use crate::config::Settings;
+use crate::storage::qdrant::QdrantImageStore;
+use crate::storage::MediaVectorStore;
+use crate::workers::jobs::JobManager;
+use crate::workers::media::visual_embedding::{build_visual_embedder, VisualEmbeddingBackend};
+
+use super::EditableIndexingConfig;
+
+pub struct AppState {
+    pub settings: Settings,
+    indexing_config: RwLock<EditableIndexingConfig>,
+    source_specs: RwLock<Vec<String>>,
+    pub store: Arc<dyn MediaVectorStore>,
+    pub embedder: Arc<dyn VisualEmbeddingBackend>,
+    pub jobs: JobManager,
+}
+
+impl AppState {
+    pub fn new(settings: Settings) -> Self {
+        let store = Arc::new(QdrantImageStore::new(
+            settings.qdrant_url.clone(),
+            settings.qdrant_collection.clone(),
+            settings.visual_embedding_vector_size,
+            settings.face_embedding_vector_size,
+        ));
+        let embedder = build_visual_embedder(&settings);
+        let indexing_config = RwLock::new(EditableIndexingConfig::from_settings(&settings));
+        let source_specs = RwLock::new(settings.source_specs());
+        Self {
+            settings,
+            indexing_config,
+            source_specs,
+            store,
+            embedder,
+            jobs: JobManager::default(),
+        }
+    }
+
+    pub fn indexing_settings(&self) -> Settings {
+        let mut settings = self.settings.clone();
+        settings.image_sources = read_source_specs(&self.source_specs);
+        read_indexing_config(&self.indexing_config).apply_to_settings(&mut settings);
+        settings
+    }
+
+    pub(super) fn replace_source_specs(&self, sources: Vec<String>) {
+        let mut source_specs = self
+            .source_specs
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *source_specs = sources;
+    }
+
+    pub(super) fn replace_indexing_config(&self, indexing_config: EditableIndexingConfig) {
+        let mut current = self
+            .indexing_config
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        *current = indexing_config;
+    }
+}
+
+fn read_indexing_config(
+    indexing_config: &RwLock<EditableIndexingConfig>,
+) -> EditableIndexingConfig {
+    indexing_config
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}
+
+fn read_source_specs(source_specs: &RwLock<Vec<String>>) -> Vec<String> {
+    source_specs
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
+}

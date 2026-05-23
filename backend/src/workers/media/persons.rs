@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::config::Settings;
 use crate::domain::models::{FaceDetectionPayload, FacePointPayload, PersonSummary};
-use crate::storage::qdrant::{QdrantImageStore, ScoredPoint};
+use crate::storage::{MediaVectorStore, ScoredPoint};
 
 const PERSON_NAMESPACE: Uuid = Uuid::from_u128(0x2f26cf00_2f65_4df1_8a46_9b0d5fc7e4d3);
 
@@ -17,7 +17,7 @@ pub struct PersonAssignment {
 }
 
 pub async fn assign_person(
-    store: &QdrantImageStore,
+    store: &dyn MediaVectorStore,
     settings: &Settings,
     face_id: &str,
     embedding: Vec<f32>,
@@ -146,7 +146,7 @@ mod tests {
     use serde_json::json;
 
     use super::assign_person_from_matches;
-    use crate::storage::qdrant::ScoredPoint;
+    use crate::storage::ScoredPoint;
 
     #[test]
     fn face_threshold_assignment_reuses_close_person() {

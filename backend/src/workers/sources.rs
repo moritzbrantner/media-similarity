@@ -27,6 +27,31 @@ pub struct SourceImage {
 }
 
 impl SourceImage {
+    #[cfg(test)]
+    pub(crate) fn test_local_image(path: &str, size_bytes: u64, modified_at: f64) -> Self {
+        let path = PathBuf::from(path);
+        Self {
+            source_type: "local".to_string(),
+            source_uri: "/images".to_string(),
+            item_uri: path.to_string_lossy().to_string(),
+            id_base: path.to_string_lossy().to_string(),
+            display_path: path.to_string_lossy().to_string(),
+            relative_path: path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default()
+                .to_string(),
+            filename: path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default()
+                .to_string(),
+            size_bytes,
+            modified_at,
+            loader: SourceLoader::LocalImage(path),
+        }
+    }
+
     pub fn is_video(&self) -> bool {
         matches!(self.loader, SourceLoader::LocalVideo(_))
     }

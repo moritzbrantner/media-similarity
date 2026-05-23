@@ -4,6 +4,7 @@ use serde_json::Value;
 use url::Url;
 
 use crate::domain::models::{FacePointPayload, ImagePayload};
+use crate::storage::{MediaVectorStore, ScoredPoint, StoredPoint};
 
 const EXPECTED_DISTANCE: &str = "Cosine";
 const VISUAL_VECTOR_NAME: &str = "visual";
@@ -16,18 +17,6 @@ pub struct QdrantImageStore {
     collection: String,
     visual_vector_size: usize,
     face_vector_size: usize,
-}
-
-#[derive(Clone, Debug)]
-pub struct ScoredPoint {
-    pub payload: Option<Value>,
-    pub score: f32,
-}
-
-#[derive(Clone, Debug)]
-pub struct StoredPoint {
-    pub id: String,
-    pub payload: Option<Value>,
 }
 
 impl QdrantImageStore {
@@ -425,6 +414,73 @@ impl QdrantImageStore {
             "Qdrant request failed for all configured URLs: {}",
             errors.join("; ")
         ))
+    }
+}
+
+#[async_trait::async_trait]
+impl MediaVectorStore for QdrantImageStore {
+    async fn ensure_collection(&self) -> Result<(), String> {
+        QdrantImageStore::ensure_collection(self).await
+    }
+
+    async fn upsert_media(&self, payload: &ImagePayload, vector: Vec<f32>) -> Result<(), String> {
+        QdrantImageStore::upsert_media(self, payload, vector).await
+    }
+
+    async fn upsert_face(
+        &self,
+        payload: &FacePointPayload,
+        vector: Vec<f32>,
+    ) -> Result<(), String> {
+        QdrantImageStore::upsert_face(self, payload, vector).await
+    }
+
+    async fn set_media_payload(&self, payload: &ImagePayload) -> Result<(), String> {
+        QdrantImageStore::set_media_payload(self, payload).await
+    }
+
+    async fn delete_points(&self, ids: &[String]) -> Result<(), String> {
+        QdrantImageStore::delete_points(self, ids).await
+    }
+
+    async fn delete_points_by_ids(&self, ids: &[String]) -> Result<(), String> {
+        QdrantImageStore::delete_points_by_ids(self, ids).await
+    }
+
+    async fn search_visual(
+        &self,
+        vector: Vec<f32>,
+        limit: u32,
+    ) -> Result<Vec<ScoredPoint>, String> {
+        QdrantImageStore::search_visual(self, vector, limit).await
+    }
+
+    async fn search_faces(&self, vector: Vec<f32>, limit: u32) -> Result<Vec<ScoredPoint>, String> {
+        QdrantImageStore::search_faces(self, vector, limit).await
+    }
+
+    async fn scroll_media_points(&self) -> Result<Vec<StoredPoint>, String> {
+        QdrantImageStore::scroll_media_points(self).await
+    }
+
+    async fn scroll_face_points(&self) -> Result<Vec<StoredPoint>, String> {
+        QdrantImageStore::scroll_face_points(self).await
+    }
+
+    async fn scroll_media_points_by_filter(
+        &self,
+        id: Option<&str>,
+        source_uri: Option<&str>,
+        source_item_uri: Option<&str>,
+    ) -> Result<Vec<StoredPoint>, String> {
+        QdrantImageStore::scroll_media_points_by_filter(self, id, source_uri, source_item_uri).await
+    }
+
+    async fn scroll_face_points_by_media_ids(
+        &self,
+        media_ids: &[String],
+    ) -> Result<Vec<StoredPoint>, String> {
+        QdrantImageStore::scroll_face_points_by_media_ids(self, media_ids).await
     }
 }
 
