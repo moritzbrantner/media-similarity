@@ -14,7 +14,11 @@
     "format:rust": "cargo fmt --manifest-path backend/Cargo.toml",
     "format:check:rust": "cargo fmt --manifest-path backend/Cargo.toml -- --check",
     "lint": "bun run typecheck && bun run format:check:rust && cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings",
+    "sample:check": "cargo run --manifest-path backend/Cargo.toml --bin sample_corpus -- check",
+    "sample:download": "cargo run --manifest-path backend/Cargo.toml --bin sample_corpus -- download",
+    "sample:showcase": "cargo run --manifest-path backend/Cargo.toml --bin sample_corpus -- showcase",
     "test": "cargo test --manifest-path backend/Cargo.toml",
+    "test:sample": "cargo test --manifest-path backend/Cargo.toml sample_corpus",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "typecheck": "tsc --noEmit",
@@ -23,7 +27,8 @@
     "services:down": "docker compose stop qdrant",
     "services:clean": "docker compose down -v --remove-orphans",
     "services:ps": "docker compose ps",
-    "test:with-services": "COMPOSE_SERVICES=\"qdrant\" bash scripts/run-with-compose-services.sh bun run test"
+    "test:with-services": "COMPOSE_SERVICES=\"qdrant\" bash scripts/run-with-compose-services.sh bun run test",
+    "test:sample:with-services": "COMPOSE_SERVICES=\"qdrant\" bash scripts/run-with-compose-services.sh bun run test:sample"
   },
   "dependencies": {
     "@moritzbrantner/ui": "^0.5.4",

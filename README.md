@@ -69,6 +69,64 @@ MinIO, `video://`, and camera source URI parsing is retained, but those source b
 
 6. Click **Index configured sources**, then upload a query image, video, audio file, or PDF and search.
 
+## Sample Corpus And Showcase Data
+
+The repository includes a manifest-driven sample corpus for tests and demos. The
+manifest lives at `tests/fixtures/sample-corpus/manifest.json`; downloaded media
+is written to the ignored `sample-images/showcase` directory so large public
+media does not churn the repository.
+
+Validate the corpus contract:
+
+```bash
+bun run sample:check
+```
+
+Download the showcase corpus:
+
+```bash
+bun run sample:download
+```
+
+The downloader fetches popular public sample media:
+
+- Wikimedia Commons `Example.jpg` for static image search.
+- Wikimedia Commons rotating Earth GIF for animation-aware GIF search.
+- Wikimedia Commons `Example.ogg` for audio search.
+- Blender Foundation Big Buck Bunny MP4 for video scene search.
+- W3C WAI dummy PDF for PDF page and document search.
+
+It also creates exact-match query copies under `sample-images/showcase/queries`
+and writes `sample-images/showcase/ATTRIBUTION.md` with source pages, license
+labels, and attribution text.
+
+To run the sample-corpus tests:
+
+```bash
+bun run test:sample
+```
+
+By default, the end-to-end showcase test looks for
+`sample-images/showcase`. To test a corpus generated elsewhere, set
+`SAMPLE_CORPUS_DIR`:
+
+```bash
+SAMPLE_CORPUS_DIR=/tmp/image-sim-sample-corpus bun run test:sample
+```
+
+To try the corpus in the UI, set a local source to the generated source folder,
+start the app, index, then upload matching files from the generated query
+folder:
+
+```env
+HOST_PICTURES_DIR=./sample-images/showcase/sources
+HOST_VIDEO_DIR=./sample-images/showcase/sources
+HOST_AUDIO_DIR=./sample-images/showcase/sources
+```
+
+For Docker Compose, use absolute host paths in `.env` if relative paths do not
+mount as expected.
+
 ## API
 
 ### Health
@@ -253,6 +311,9 @@ bun run dev:containers
 | `bun run build` | Build the frontend into `frontend/dist`. |
 | `bun run build:rust` | Build Rust service binaries. |
 | `bun run check:hygiene` | Report dirty status, upstream state, and ignored/generated directory issues. |
+| `bun run sample:check` | Validate the internet sample-corpus manifest. |
+| `bun run sample:download` | Download showcase sample media into `sample-images/showcase`. |
+| `bun run test:sample` | Run sample-corpus tests. |
 | `bun run verify` | Full local confidence check. |
 
 `frontend/dist` is generated Vite output that is intentionally checked in for the Rust service to serve. Update it only by running `bun run build`.

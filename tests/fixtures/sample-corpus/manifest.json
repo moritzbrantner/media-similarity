@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "name": "internet-showcase-corpus",
+  "description": "Small, popular, freely licensed media samples for local capability demos and sample-corpus tests.",
+  "default_output_dir": "sample-images/showcase",
+  "assets": [
+    {
+      "id": "wikimedia-example-jpg",
+      "kind": "static_image",
+      "role": "source",
+      "filename": "sources/wikimedia-example.jpg",
+      "title": "Wikimedia Commons Example.jpg",
+      "download_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Example.jpg",
+      "page_url": "https://commons.wikimedia.org/wiki/File:Example.jpg",
+      "license": "Wikimedia Commons file license; see page_url",
+      "attribution": "Wikimedia Commons contributors"
+    },
+    {
+      "id": "wikimedia-example-jpg-query",
+      "kind": "static_image",
+      "role": "query",
+      "filename": "queries/wikimedia-example-query.jpg",
+      "copy_of": "wikimedia-example-jpg",
+      "title": "Exact-match query for Wikimedia Commons Example.jpg",
+      "license": "Derived local query copy for testing",
+      "attribution": "Wikimedia Commons contributors"
+    },
+    {
+      "id": "wikimedia-rotating-earth-gif",
+      "kind": "animated_gif",
+      "role": "source",
+      "filename": "sources/rotating-earth.gif",
+      "title": "Wikimedia Commons Rotating earth (Very small).gif",
+      "download_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Rotating_earth_(Very_small).gif",
+      "page_url": "https://commons.wikimedia.org/wiki/File:Rotating_earth_(Very_small).gif",
+      "license": "CC BY-SA 3.0 / GFDL 1.2 or later",
+      "attribution": "Raman Sethi / Wikimedia Commons contributors"
+    },
+    {
+      "id": "wikimedia-rotating-earth-gif-query",
+      "kind": "animated_gif",
+      "role": "query",
+      "filename": "queries/rotating-earth-query.gif",
+      "copy_of": "wikimedia-rotating-earth-gif",
+      "title": "Exact-match query for Rotating earth GIF",
+      "license": "Derived local query copy for testing",
+      "attribution": "Raman Sethi / Wikimedia Commons contributors"
+    },
+    {
+      "id": "wikimedia-example-ogg",
+      "kind": "audio",
+      "role": "source",
+      "filename": "sources/wikimedia-example.ogg",
+      "title": "Wikimedia Commons Example.ogg",
+      "download_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Example.ogg",
+      "page_url": "https://commons.wikimedia.org/wiki/File:Example.ogg",
+      "license": "CC BY-SA 3.0 / GFDL 1.2 or later",
+      "attribution": "JesseW / Wikimedia Commons contributors"
+    },
+    {
+      "id": "wikimedia-example-ogg-query",
+      "kind": "audio",
+      "role": "query",
+      "filename": "queries/wikimedia-example-query.ogg",
+      "copy_of": "wikimedia-example-ogg",
+      "title": "Exact-match query for Wikimedia Commons Example.ogg",
+      "license": "Derived local query copy for testing",
+      "attribution": "JesseW / Wikimedia Commons contributors"
+    },
+    {
+      "id": "big-buck-bunny-320",
+      "kind": "video",
+      "role": "source",
+      "filename": "sources/big-buck-bunny-320x180.mp4",
+      "title": "Big Buck Bunny 320x180 MP4",
+      "download_url": "https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4",
+      "page_url": "https://peach.blender.org/about/",
+      "license": "Creative Commons Attribution 3.0",
+      "attribution": "Blender Foundation / www.bigbuckbunny.org"
+    },
+    {
+      "id": "big-buck-bunny-320-query",
+      "kind": "video",
+      "role": "query",
+      "filename": "queries/big-buck-bunny-320x180-query.mp4",
+      "copy_of": "big-buck-bunny-320",
+      "title": "Exact-match query for Big Buck Bunny sample",
+      "license": "Derived local query copy for testing",
+      "attribution": "Blender Foundation / www.bigbuckbunny.org"
+    },
+    {
+      "id": "w3c-dummy-pdf",
+      "kind": "pdf",
+      "role": "source",
+      "filename": "sources/w3c-dummy.pdf",
+      "title": "W3C WAI dummy PDF",
+      "download_url": "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+      "page_url": "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+      "license": "W3C document license; see page_url",
+      "attribution": "W3C Web Accessibility Initiative"
+    },
+    {
+      "id": "w3c-dummy-pdf-query",
+      "kind": "pdf",
+      "role": "query",
+      "filename": "queries/w3c-dummy-query.pdf",
+      "copy_of": "w3c-dummy-pdf",
+      "title": "Exact-match query for W3C dummy PDF",
+      "license": "Derived local query copy for testing",
+      "attribution": "W3C Web Accessibility Initiative"
+    }
+  ],
+  "searches": [
+    {
+      "id": "image-exact-match",
+      "query_asset": "wikimedia-example-jpg-query",
+      "expected_top_match": "wikimedia-example-jpg",
+      "capability": "static image duplicate search"
+    },
+    {
+      "id": "gif-motion-match",
+      "query_asset": "wikimedia-rotating-earth-gif-query",
+      "expected_top_match": "wikimedia-rotating-earth-gif",
+      "capability": "animated GIF frame and motion search"
+    },
+    {
+      "id": "audio-spectrogram-match",
+      "query_asset": "wikimedia-example-ogg-query",
+      "expected_top_match": "wikimedia-example-ogg",
+      "capability": "audio spectrogram similarity search"
+    },
+    {
+      "id": "video-scene-match",
+      "query_asset": "big-buck-bunny-320-query",
+      "expected_top_match": "big-buck-bunny-320",
+      "capability": "video scene similarity search"
+    },
+    {
+      "id": "pdf-page-match",
+      "query_asset": "w3c-dummy-pdf-query",
+      "expected_top_match": "w3c-dummy-pdf",
+      "capability": "PDF page and document search"
+    }
+  ]
+}

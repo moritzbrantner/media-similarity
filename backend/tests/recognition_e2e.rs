@@ -739,6 +739,141 @@ async fn generic_model_catalog_reports_runtime_roles() {
     assert!(roles.contains(&"audio_transcription".to_string()));
 }
 
+#[tokio::test]
+async fn sample_corpus_showcase_files_can_be_indexed_and_searched_when_downloaded() {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    let corpus_dir = std::env::var("SAMPLE_CORPUS_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| repo_root.join("sample-images/showcase"));
+    if !corpus_dir.join("ATTRIBUTION.md").exists() {
+        eprintln!("skipping sample corpus e2e test; run `bun run sample:download` first");
+        return;
+    }
+    if !has_tool("ffmpeg")
+        || !has_tool("ffprobe")
+        || !has_tool("pdfinfo")
+        || !has_tool("pdftoppm")
+        || !has_tool("pdftotext")
+    {
+        eprintln!("skipping sample corpus e2e test because ffmpeg/ffprobe/poppler is unavailable");
+        return;
+    }
+
+    let manifest_path = repo_root.join("tests/fixtures/sample-corpus/manifest.json");
+    let manifest: SampleCorpusManifest =
+        serde_json::from_str(&fs::read_to_string(manifest_path).unwrap()).unwrap();
+    let assets_by_id = manifest
+        .assets
+        .iter()
+        .map(|asset| (asset.id.as_str(), asset))
+        .collect::<BTreeMap<_, _>>();
+
+    let app = TestApp::new(|settings| {
+        settings.image_extensions =
+            parse_extensions(".jpg,.jpeg,.png,.gif,.mp4,.ogg,.pdf").unwrap();
+        settings.audio_extensions = parse_extensions(".ogg").unwrap();
+        settings.pdf_extensions = parse_extensions(".pdf").unwrap();
+        settings.default_search_limit = 12;
+        settings.video_frame_stride = 60;
+        settings.video_max_frames = Some(4);
+        settings.gif_sample_frames = 8;
+        settings.pdf_max_pages = 4;
+        settings.pdf_summary_pages = 2;
+        settings.ocr_enabled = false;
+    })
+    .await;
+
+    for asset in manifest
+        .assets
+        .iter()
+        .filter(|asset| asset.role == "source")
+    {
+        let source = corpus_dir.join(&asset.filename);
+        assert!(
+            source.exists(),
+            "missing downloaded sample {}",
+            source.display()
+        );
+        let file_name = Path::new(&asset.filename).file_name().unwrap();
+        fs::copy(&source, app.source_dir.join(file_name)).unwrap();
+    }
+
+    let indexed = app.index().await;
+    assert_eq!(indexed.failed, 0, "{:?}", indexed.errors);
+    assert!(indexed.indexed >= 5, "{indexed:?}");
+
+    for search in &manifest.searches {
+        let query = assets_by_id
+            .get(search.query_asset.as_str())
+            .expect("query asset should exist");
+        let expected = assets_by_id
+            .get(search.expected_top_match.as_str())
+            .expect("expected match should exist");
+        let query_path = corpus_dir.join(&query.filename);
+        let expected_filename = Path::new(&expected.filename)
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+        let response = app
+            .search_upload(
+                Path::new(&query.filename)
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .as_ref(),
+                sample_content_type(&query.kind),
+                fs::read(&query_path).unwrap(),
+                Some(12),
+            )
+            .await;
+        assert!(
+            response
+                .results
+                .iter()
+                .any(|result| result.image.filename == expected_filename),
+            "search `{}` did not include expected match `{expected_filename}` in {:?}",
+            search.id,
+            response.results
+        );
+    }
+}
+
+#[derive(Deserialize)]
+struct SampleCorpusManifest {
+    assets: Vec<SampleCorpusAsset>,
+    searches: Vec<SampleCorpusSearch>,
+}
+
+#[derive(Deserialize)]
+struct SampleCorpusAsset {
+    id: String,
+    kind: String,
+    role: String,
+    filename: String,
+}
+
+#[derive(Deserialize)]
+struct SampleCorpusSearch {
+    id: String,
+    query_asset: String,
+    expected_top_match: String,
+}
+
+fn sample_content_type(kind: &str) -> &'static str {
+    match kind {
+        "static_image" => "image/jpeg",
+        "animated_gif" => "image/gif",
+        "audio" => "audio/ogg",
+        "video" => "video/mp4",
+        "pdf" => "application/pdf",
+        _ => "application/octet-stream",
+    }
+}
+
 struct TestApp {
     base_url: String,
     client: reqwest::Client,
