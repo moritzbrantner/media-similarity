@@ -59,6 +59,7 @@ import {
   fetchSourceConfig,
   searchMedia,
   startIndexJob,
+  updateIndexedMediaTags,
   updateIndexingConfig,
   updateSourceConfig,
 } from "./api";
@@ -286,6 +287,14 @@ export function App() {
     },
   });
 
+  const updateMediaTagsMutation = useMutation({
+    mutationFn: updateIndexedMediaTags,
+    onSuccess: (media) => {
+      updateMediaInSearchHistory(media);
+      queryClient.invalidateQueries({ queryKey: ["inverse-index"] });
+    },
+  });
+
   const sourceConfigMutation = useMutation({
     mutationFn: updateSourceConfig,
     onSuccess: (response) => {
@@ -403,6 +412,15 @@ export function App() {
       history.map((item) => ({
         ...item,
         response: removeResultFromResponse(item.response, id),
+      })),
+    );
+  }
+
+  function updateMediaInSearchHistory(media: SearchResult["image"]) {
+    updateSearchHistory((history) =>
+      history.map((item) => ({
+        ...item,
+        response: updateMediaInResponse(item.response, media),
       })),
     );
   }
@@ -792,11 +810,17 @@ export function App() {
                     }
                     filters={metadataFilters}
                     onDelete={(id) => deleteMediaMutation.mutate(id)}
+                    onUpdateTags={(id, tags) => updateMediaTagsMutation.mutate({ id, tags })}
                     onSelectScene={setSelectedQuerySceneIndex}
                     scenes={activeResponse.scenes}
                     selectedSceneIndex={selectedQuerySceneIndex}
                     resultLimit={activeSearch?.limit ?? limit}
                     sortMode={resultSortMode}
+                    tagSavingId={
+                      updateMediaTagsMutation.isPending
+                        ? updateMediaTagsMutation.variables?.id
+                        : undefined
+                    }
                   />
                 ) : (
                   <ResultsGrid
@@ -809,6 +833,12 @@ export function App() {
                         : undefined
                     }
                     onDelete={(id) => deleteMediaMutation.mutate(id)}
+                    onUpdateTags={(id, tags) => updateMediaTagsMutation.mutate({ id, tags })}
+                    tagSavingId={
+                      updateMediaTagsMutation.isPending
+                        ? updateMediaTagsMutation.variables?.id
+                        : undefined
+                    }
                   />
                 )}
               </div>
@@ -3204,6 +3234,23 @@ function removeResultFromResponse(response: SearchResponse, id: string): SearchR
   };
 }
 
+function updateMediaInResponse(
+  response: SearchResponse,
+  media: SearchResult["image"],
+): SearchResponse {
+  const updateResult = (result: SearchResult): SearchResult =>
+    result.image.id === media.id ? { ...result, image: media } : result;
+
+  return {
+    ...response,
+    results: response.results.map(updateResult),
+    scenes: response.scenes.map((scene) => ({
+      ...scene,
+      results: scene.results.map(updateResult),
+    })),
+  };
+}
+
 function normalizeSearchResult(result: SearchResult): SearchResult {
   return {
     ...result,
@@ -3219,9 +3266,31 @@ function normalizeSearchResult(result: SearchResult): SearchResult {
       pdf_page_count: result.image.pdf_page_count ?? null,
       visual_embedding_model: result.image.visual_embedding_model ?? null,
       artifacts: Array.isArray(result.image.artifacts) ? result.image.artifacts : [],
+      tags: Array.isArray(result.image.tags) ? result.image.tags : [],
       photo_metadata: normalizePhotoMetadata(result.image.photo_metadata),
     },
   };
+}
+
+function parseTagDraft(value: string) {
+  const seen = new Set<string>();
+  const tags: string[] = [];
+
+  for (const rawTag of value.split(",")) {
+    const tag = rawTag.trim();
+    const key = tag.toLocaleLowerCase();
+    if (!tag || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    tags.push(tag);
+  }
+
+  return tags;
+}
+
+function sameTags(left: string[], right: string[]) {
+  return left.length === right.length && left.every((tag, index) => tag === right[index]);
 }
 
 function normalizePhotoMetadata(metadata: SearchResult["image"]["photo_metadata"]) {
@@ -3464,15 +3533,19 @@ function Message({
 function ResultsGrid({
   deletingId,
   onDelete,
+  onUpdateTags,
   pending,
   results,
   searched,
+  tagSavingId,
 }: {
   deletingId?: string;
   onDelete?: (id: string) => void;
+  onUpdateTags?: (id: string, tags: string[]) => void;
   pending: boolean;
   results: SearchResult[];
   searched: boolean;
+  tagSavingId?: string;
 }) {
   if (pending) {
     return (
@@ -3497,7 +3570,9 @@ function ResultsGrid({
           deleting={deletingId === result.image.id}
           key={result.image.id}
           onDelete={onDelete}
+          onUpdateTags={onUpdateTags}
           result={result}
+          tagSaving={tagSavingId === result.image.id}
         />
       ))}
     </div>
@@ -3508,20 +3583,24 @@ function SceneResultsList({
   deletingId,
   filters,
   onDelete,
+  onUpdateTags,
   onSelectScene,
   resultLimit,
   scenes,
   selectedSceneIndex,
   sortMode,
+  tagSavingId,
 }: {
   deletingId?: string;
   filters: MetadataFilters;
   onDelete?: (id: string) => void;
+  onUpdateTags?: (id: string, tags: string[]) => void;
   onSelectScene: (sceneIndex: number) => void;
   resultLimit: number;
   scenes: SearchSceneResponse[];
   selectedSceneIndex: number | null;
   sortMode: ResultSortMode;
+  tagSavingId?: string;
 }) {
   const selectedScene =
     scenes.find((scene) => scene.scene_index === selectedSceneIndex) ?? scenes[0];
@@ -3603,9 +3682,11 @@ function SceneResultsList({
           <ResultsGrid
             deletingId={deletingId}
             onDelete={onDelete}
+            onUpdateTags={onUpdateTags}
             pending={false}
             results={selectedResults}
             searched
+            tagSavingId={tagSavingId}
           />
         </section>
       ) : null}
@@ -3780,11 +3861,15 @@ function EmptyResults({ text }: { text: string }) {
 function ResultCard({
   deleting = false,
   onDelete,
+  onUpdateTags,
   result,
+  tagSaving = false,
 }: {
   deleting?: boolean;
   onDelete?: (id: string) => void;
+  onUpdateTags?: (id: string, tags: string[]) => void;
   result: SearchResult;
+  tagSaving?: boolean;
 }) {
   const image = result.image;
   const faces = image.faces ?? [];
@@ -3918,6 +4003,8 @@ function ResultCard({
           ) : null}
         </dl>
 
+        <MediaTagEditor image={image} onUpdateTags={onUpdateTags} saving={tagSaving} />
+
         {photoMetadata?.raw?.length ? <PhotoMetadataDetails metadata={photoMetadata} /> : null}
 
         <VideoSceneLinks image={image} />
@@ -3984,6 +4071,96 @@ function ResultCard({
         </div>
       </div>
     </article>
+  );
+}
+
+function MediaTagEditor({
+  image,
+  onUpdateTags,
+  saving,
+}: {
+  image: SearchResult["image"];
+  onUpdateTags?: (id: string, tags: string[]) => void;
+  saving: boolean;
+}) {
+  const tags = image.tags ?? [];
+  const [draft, setDraft] = useState(tags.join(", "));
+
+  useEffect(() => {
+    setDraft(tags.join(", "));
+  }, [image.id, tags.join("\u0000")]);
+
+  const draftTags = parseTagDraft(draft);
+  const dirty = !sameTags(draftTags, tags);
+
+  function removeTag(tag: string) {
+    setDraft(draftTags.filter((item) => item !== tag).join(", "));
+  }
+
+  return (
+    <form
+      className="grid gap-2 rounded-md border border-neutral-200 bg-neutral-50 p-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (onUpdateTags && dirty && !saving) {
+          onUpdateTags(image.id, draftTags);
+        }
+      }}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <Label
+          className="text-xs font-semibold uppercase text-neutral-500"
+          htmlFor={`tags-${image.id}`}
+        >
+          Tags
+        </Label>
+        <Button
+          aria-label={`Save tags for ${image.filename}`}
+          className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-neutral-300 bg-white px-2 text-xs font-semibold text-neutral-800 transition hover:border-neutral-500 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={!onUpdateTags || !dirty || saving}
+          type="submit"
+          variant="outline"
+        >
+          {saving ? (
+            <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+          ) : (
+            <Save className="size-3.5" aria-hidden="true" />
+          )}
+          <span>Save</span>
+        </Button>
+      </div>
+      <Input
+        aria-label={`Tags for ${image.filename}`}
+        className="h-9 rounded-md border-neutral-300 bg-white text-sm"
+        disabled={!onUpdateTags || saving}
+        id={`tags-${image.id}`}
+        onChange={(event) => setDraft(event.target.value)}
+        placeholder="travel, family"
+        value={draft}
+      />
+      {draftTags.length ? (
+        <div className="flex flex-wrap gap-1.5">
+          {draftTags.map((tag) => (
+            <Badge
+              className="inline-flex max-w-full items-center gap-1 rounded-md border border-neutral-300 bg-white px-2 py-1 text-xs font-semibold text-neutral-800"
+              key={tag}
+              variant="outline"
+            >
+              <span className="truncate">{tag}</span>
+              <button
+                aria-label={`Remove tag ${tag}`}
+                className="inline-grid size-4 shrink-0 place-items-center rounded text-neutral-500 transition hover:bg-neutral-200 hover:text-neutral-950"
+                disabled={!onUpdateTags || saving}
+                onClick={() => removeTag(tag)}
+                type="button"
+              >
+                <X className="size-3" aria-hidden="true" />
+              </button>
+            </Badge>
+          ))}
+        </div>
+      ) : null}
+    </form>
   );
 }
 

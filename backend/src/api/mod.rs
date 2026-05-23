@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::sync::{Arc, RwLock};
@@ -45,6 +45,9 @@ use crate::workers::media::video::{
 use crate::workers::media::visual_embedding::{build_visual_embedder, VisualEmbeddingBackend};
 use crate::workers::search::ImageSearchService;
 use crate::workers::sources::build_image_sources;
+
+const MAX_MEDIA_TAGS: usize = 64;
+const MAX_MEDIA_TAG_LENGTH: usize = 80;
 
 pub struct AppState {
     pub settings: Settings,
@@ -1013,6 +1016,40 @@ pub async fn delete_indexed_media_route(
     Ok(Json(response))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct UpdateMediaTagsRequest {
+    tags: Vec<String>,
+}
+
+pub async fn update_indexed_media_tags_route(
+    State(state): State<Arc<AppState>>,
+    AxumPath(id): AxumPath<String>,
+    Json(request): Json<UpdateMediaTagsRequest>,
+) -> Result<Json<ImagePayload>, ApiError> {
+    let tags = normalize_media_tags(request.tags)?;
+    let point = state
+        .store
+        .scroll_media_points_by_filter(Some(&id), None, None)
+        .await
+        .map_err(ApiError::internal)?
+        .into_iter()
+        .next()
+        .ok_or_else(|| ApiError::not_found(format!("Unknown indexed media `{id}`")))?;
+    let payload_value = point
+        .payload
+        .ok_or_else(|| ApiError::internal(format!("Indexed media `{id}` has no payload")))?;
+    let mut payload = serde_json::from_value::<ImagePayload>(payload_value)
+        .map_err(|error| ApiError::internal(format!("could not decode media payload: {error}")))?;
+
+    payload.tags = tags;
+    state
+        .store
+        .set_media_payload(&payload)
+        .await
+        .map_err(ApiError::internal)?;
+    Ok(Json(payload))
+}
+
 pub async fn delete_indexed_sources_route(
     State(state): State<Arc<AppState>>,
     Query(filter): Query<DeleteIndexedSourceFilter>,
@@ -1024,6 +1061,39 @@ pub async fn delete_indexed_sources_route(
     }
     let response = delete_indexed_source(&state.indexing_settings(), &state.store, filter).await;
     Ok(Json(response))
+}
+
+fn normalize_media_tags(tags: Vec<String>) -> Result<Vec<String>, ApiError> {
+    let mut normalized = Vec::new();
+    let mut seen = BTreeSet::new();
+
+    for tag in tags {
+        let tag = tag.trim();
+        if tag.is_empty() {
+            continue;
+        }
+        if tag.chars().any(char::is_control) {
+            return Err(ApiError::bad_request(
+                "Tags cannot contain control characters",
+            ));
+        }
+        if tag.chars().count() > MAX_MEDIA_TAG_LENGTH {
+            return Err(ApiError::bad_request(format!(
+                "Tags must be {MAX_MEDIA_TAG_LENGTH} characters or fewer"
+            )));
+        }
+        if seen.insert(tag.to_lowercase()) {
+            normalized.push(tag.to_string());
+        }
+    }
+
+    if normalized.len() > MAX_MEDIA_TAGS {
+        return Err(ApiError::bad_request(format!(
+            "Media can have at most {MAX_MEDIA_TAGS} tags"
+        )));
+    }
+
+    Ok(normalized)
 }
 
 #[derive(Debug, Serialize)]
@@ -1818,6 +1888,7 @@ fn search_error(error: String) -> ApiError {
     }
 }
 
+#[derive(Debug)]
 pub struct ApiError {
     status: StatusCode,
     detail: String,
@@ -1873,5 +1944,32 @@ impl ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         (self.status, Json(json!({ "detail": self.detail }))).into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::http::StatusCode;
+
+    use super::normalize_media_tags;
+
+    #[test]
+    fn media_tags_are_trimmed_and_deduplicated() {
+        assert_eq!(
+            normalize_media_tags(vec![
+                " travel ".to_string(),
+                "Travel".to_string(),
+                "".to_string(),
+                "archive".to_string(),
+            ])
+            .unwrap(),
+            vec!["travel", "archive"]
+        );
+    }
+
+    #[test]
+    fn media_tags_reject_control_characters() {
+        let error = normalize_media_tags(vec!["bad\ntag".to_string()]).unwrap_err();
+        assert_eq!(error.status, StatusCode::BAD_REQUEST);
     }
 }

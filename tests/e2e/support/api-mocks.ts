@@ -31,6 +31,7 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
   let currentSourceConfig = options.sourceConfig ?? sourceConfigResponse;
   const cancelledJobIds: string[] = [];
   const deletedMediaIds: string[] = [];
+  const mediaTagUpdates: Array<{ id: string; tags: string[] }> = [];
   const sourceConfigPuts: unknown[] = [];
   const indexingConfigPuts: unknown[] = [];
 
@@ -154,12 +155,30 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
     await route.fulfill({ json: options.searchResponse ?? searchResponse });
   });
 
+  await page.route("**/api/indexed-media/*/tags", async (route) => {
+    const url = route.request().url();
+    const tagMatch = url.match(/\/api\/indexed-media\/([^/?]+)\/tags/);
+    if (tagMatch && route.request().method() === "PUT") {
+      const id = decodeURIComponent(tagMatch[1]);
+      const request = route.request().postDataJSON() as { tags?: string[] };
+      const tags = request.tags ?? [];
+      mediaTagUpdates.push({ id, tags });
+      await route.fulfill({
+        json: {
+          ...findMockImage(id, options.searchResponse ?? searchResponse),
+          id,
+          tags,
+        },
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
   await page.route("**/api/indexed-media/*", async (route) => {
-    const match = route
-      .request()
-      .url()
-      .match(/\/api\/indexed-media\/([^/?]+)/);
-    if (match) {
+    const url = route.request().url();
+    const match = url.match(/\/api\/indexed-media\/([^/?]+)/);
+    if (match && route.request().method() === "DELETE") {
       deletedMediaIds.push(decodeURIComponent(match[1]));
     }
     await route.fulfill({
@@ -178,6 +197,7 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
     cancelledJobIds,
     deletedMediaIds,
     indexingConfigPuts,
+    mediaTagUpdates,
     sourceConfigPuts,
   };
 }
@@ -235,4 +255,21 @@ function isJobWithSpec(value: unknown): value is { spec: { id: string } } {
     "id" in value.spec &&
     typeof value.spec.id === "string",
   );
+}
+
+function findMockImage(id: string, response: unknown) {
+  if (response && typeof response === "object" && "results" in response) {
+    const result = (response.results as Array<{ image?: unknown }>).find(
+      (item) =>
+        item.image &&
+        typeof item.image === "object" &&
+        "id" in item.image &&
+        (item.image as { id?: unknown }).id === id,
+    );
+    if (result?.image) {
+      return result.image;
+    }
+  }
+
+  return {};
 }

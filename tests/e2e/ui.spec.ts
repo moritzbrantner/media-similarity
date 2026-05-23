@@ -341,6 +341,7 @@ async function resetApiMocks(
     "**/api/models",
     "**/api/models/*/download",
     "**/api/models/*/enable",
+    "**/api/indexed-media/*/tags",
     "**/api/indexed-media/*",
     "**/api/source-config",
     "**/api/search?**",
@@ -592,6 +593,32 @@ test("deletes a search result from the index", async ({ page }) => {
 
   await expect.poll(() => mocks.deletedMediaIds).toEqual(["local-sunrise"]);
   await expect(page.getByRole("heading", { name: "sunrise.jpg" })).toHaveCount(0);
+});
+
+test("updates tags on an indexed media result", async ({ page }) => {
+  const mocks = await resetApiMocks(page);
+  await page.goto("/");
+  await uploadAndSearch(page);
+
+  const card = resultCard(page, "sunrise.jpg");
+  await card.getByRole("textbox", { name: "Tags for sunrise.jpg" }).fill("travel, favorite");
+  await card.getByRole("button", { name: "Save tags for sunrise.jpg" }).click();
+
+  await expect
+    .poll(() => mocks.mediaTagUpdates)
+    .toEqual([{ id: "local-sunrise", tags: ["travel", "favorite"] }]);
+  await expect(card.getByText("favorite", { exact: true })).toBeVisible();
+
+  await card.getByRole("button", { name: "Remove tag favorite" }).click();
+  await card.getByRole("textbox", { name: "Tags for sunrise.jpg" }).fill("travel, archive");
+  await card.getByRole("button", { name: "Save tags for sunrise.jpg" }).click();
+
+  await expect
+    .poll(() => mocks.mediaTagUpdates)
+    .toEqual([
+      { id: "local-sunrise", tags: ["travel", "favorite"] },
+      { id: "local-sunrise", tags: ["travel", "archive"] },
+    ]);
 });
 
 test("keeps search disabled until media is selected and clears the selected media", async ({

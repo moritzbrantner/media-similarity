@@ -166,6 +166,27 @@ impl QdrantImageStore {
         Ok(())
     }
 
+    pub async fn set_media_payload(&self, payload: &ImagePayload) -> Result<(), String> {
+        let mut payload_value = serde_json::to_value(payload).map_err(|error| error.to_string())?;
+        set_payload_kind(&mut payload_value, "media");
+        let request = SetPayloadRequest {
+            payload: payload_value,
+            points: vec![payload.id.clone()],
+        };
+        self.send_with_fallback(|base_url| {
+            self.client
+                .post(format!(
+                    "{base_url}/collections/{}/points/payload?wait=true",
+                    self.collection
+                ))
+                .json(&request)
+        })
+        .await?
+        .error_for_status()
+        .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
     pub async fn delete_points(&self, ids: &[String]) -> Result<(), String> {
         if ids.is_empty() {
             return Ok(());
@@ -484,6 +505,12 @@ struct UpsertRequest {
 
 #[derive(Serialize)]
 struct DeletePointsRequest {
+    points: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct SetPayloadRequest {
+    payload: Value,
     points: Vec<String>,
 }
 

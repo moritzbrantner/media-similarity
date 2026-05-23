@@ -6,6 +6,7 @@ import type {
   JobSnapshot,
   DeleteIndexResponse,
   ModelsResponse,
+  ImagePayload,
   SearchResponse,
   SourceConfigResponse,
   SourceIndexingConfig,
@@ -113,6 +114,21 @@ export async function deleteIndexedMedia(id: string): Promise<DeleteIndexRespons
     method: "DELETE",
   });
   return parseResponse<DeleteIndexResponse>(response);
+}
+
+export async function updateIndexedMediaTags({
+  id,
+  tags,
+}: {
+  id: string;
+  tags: string[];
+}): Promise<ImagePayload> {
+  const response = await fetch(`/api/indexed-media/${encodeURIComponent(id)}/tags`, {
+    body: JSON.stringify({ tags }),
+    headers: { "Content-Type": "application/json" },
+    method: "PUT",
+  });
+  return parseResponse<ImagePayload>(response);
 }
 
 export async function deleteIndexedSource(filter: {

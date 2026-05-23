@@ -330,6 +330,7 @@ export type ImagePayload = {
   faces: FaceDetectionPayload[];
   people: PersonSummary[];
   artifacts: { kind: string; url: string }[];
+  tags: string[];
   photo_metadata: PhotoMetadataPayload | null;
   scene_clip_url: string | null;
   scene_index: number | null;

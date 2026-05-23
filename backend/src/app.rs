@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use axum::Router;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
@@ -13,7 +13,8 @@ use crate::api::{
     delete_indexed_sources_route, download_audio_transcription_model, download_model,
     enable_audio_transcription_model, enable_model, get_job, get_job_events, get_models,
     get_source_config, health, index_images, inverse_index, list_jobs, search_upload,
-    spawn_index_job, spawn_startup_index_job, update_source_config, AppState,
+    spawn_index_job, spawn_startup_index_job, update_indexed_media_tags_route,
+    update_source_config, AppState,
 };
 use crate::config::Settings;
 
@@ -64,6 +65,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             post(enable_audio_transcription_model),
         )
         .route("/api/indexed-media/:id", delete(delete_indexed_media_route))
+        .route(
+            "/api/indexed-media/:id/tags",
+            put(update_indexed_media_tags_route),
+        )
         .route("/api/indexed-sources", delete(delete_indexed_sources_route))
         .route("/api/search", post(search_upload))
         .nest_service("/static", ServeDir::new(static_dir.clone()))

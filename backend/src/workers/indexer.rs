@@ -688,6 +688,7 @@ impl ImageIndexer {
             faces: options.face_analysis.faces.clone(),
             people: options.face_analysis.person_clusters.clone(),
             artifacts,
+            tags: Vec::new(),
             photo_metadata: options.photo_metadata.clone(),
             scene_clip_url,
             scene_index: video_scene

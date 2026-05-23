@@ -330,6 +330,7 @@ const defaultImage = {
   source_item_uri: null as string | null,
   source_type: "local",
   source_uri: null as string | null,
+  tags: [] as string[],
   thumbnail_url: "/thumbnails/sunrise.jpg",
   visual_embedding_model: null as string | null,
   width: 1280,

@@ -223,6 +223,8 @@ pub struct ImagePayload {
     #[serde(default)]
     pub artifacts: Vec<GeneratedArtifactPayload>,
     #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
     pub photo_metadata: Option<PhotoMetadataPayload>,
     #[serde(default)]
     pub scene_clip_url: Option<String>,
@@ -378,6 +380,7 @@ mod tests {
         assert_eq!(payload.visual_embedding_model, None);
         assert!(payload.faces.is_empty());
         assert!(payload.people.is_empty());
+        assert!(payload.tags.is_empty());
         assert_eq!(payload.scene_clip_url, None);
         assert_eq!(payload.scene_index, None);
         assert_eq!(payload.source_item_uri, None);
@@ -448,6 +451,7 @@ mod tests {
             faces: Vec::new(),
             people: Vec::new(),
             artifacts: Vec::new(),
+            tags: Vec::new(),
             photo_metadata: None,
             scene_clip_url: None,
             scene_index: None,
@@ -503,6 +507,7 @@ mod tests {
             faces: Vec::new(),
             people: Vec::new(),
             artifacts: Vec::new(),
+            tags: Vec::new(),
             photo_metadata: None,
             scene_clip_url: Some("/uploads/source-scenes/id/scene-001.mp4".to_string()),
             scene_index: Some(0),
@@ -593,6 +598,7 @@ mod tests {
             faces: Vec::new(),
             people: Vec::new(),
             artifacts: Vec::new(),
+            tags: Vec::new(),
             photo_metadata: None,
             scene_clip_url: None,
             scene_index: None,
