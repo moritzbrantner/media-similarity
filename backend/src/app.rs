@@ -12,7 +12,7 @@ use crate::api::{
     audio_transcription_models, cancel_job, delete_indexed_media_route,
     delete_indexed_sources_route, download_audio_transcription_model, download_model,
     enable_audio_transcription_model, enable_model, get_job, get_job_events, get_models,
-    get_source_config, health, index_images, inverse_index, list_jobs, search_upload,
+    get_source_config, health, index_images, inverse_index, list_jobs, ready, search_upload,
     spawn_index_job, spawn_startup_index_job, update_indexed_media_tags_route,
     update_source_config, AppState,
 };
@@ -38,6 +38,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     let app = Router::new()
         .route("/api/health", get(health))
+        .route("/api/ready", get(ready))
         .route("/api/index", post(index_images))
         .route("/api/inverse-index", get(inverse_index))
         .route(

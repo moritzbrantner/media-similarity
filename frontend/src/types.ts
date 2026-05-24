@@ -65,6 +65,8 @@ export type JobEvent = {
 
 export type SourceConfigResponse = {
   media_sources_file: string;
+  media_sources_seed_file: string | null;
+  media_sources_writable: boolean;
   default_source_dir: string;
   sources: SourceConfigSource[];
   supported_source_types: SupportedSourceType[];

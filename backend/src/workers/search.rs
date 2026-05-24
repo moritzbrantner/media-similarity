@@ -71,11 +71,13 @@ impl ImageSearchService {
         ocr_text: Option<&str>,
         person_id: Option<&str>,
     ) -> Result<SearchResponse, String> {
-        let mut filters = SearchFilters::default();
-        filters.person_id = person_id
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned);
+        let filters = SearchFilters {
+            person_id: person_id
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(ToOwned::to_owned),
+            ..Default::default()
+        };
         self.search_media_filtered(media, limit, ocr_text, filters)
             .await
     }

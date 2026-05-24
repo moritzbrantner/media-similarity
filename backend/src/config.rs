@@ -36,6 +36,7 @@ pub struct Settings {
     pub audio_transcription_auto_download: bool,
     pub audio_transcription_cache_dir: Option<PathBuf>,
     pub media_sources_file: PathBuf,
+    pub media_sources_seed_file: Option<PathBuf>,
     pub image_sources: Vec<String>,
     pub minio_endpoint: Option<String>,
     pub minio_access_key: Option<String>,
@@ -91,6 +92,7 @@ pub struct StorageSettings {
 pub struct SourceSettings {
     pub source_image_dir: PathBuf,
     pub media_sources_file: PathBuf,
+    pub media_sources_seed_file: Option<PathBuf>,
     pub image_sources: Vec<String>,
     pub image_extensions: BTreeSet<String>,
     pub audio_extensions: BTreeSet<String>,
@@ -195,6 +197,7 @@ impl Settings {
         SourceSettings {
             source_image_dir: self.source_image_dir.clone(),
             media_sources_file: self.media_sources_file.clone(),
+            media_sources_seed_file: self.media_sources_seed_file.clone(),
             image_sources: self.image_sources.clone(),
             image_extensions: self.image_extensions.clone(),
             audio_extensions: self.audio_extensions.clone(),
@@ -325,6 +328,7 @@ impl Default for Settings {
             audio_transcription_auto_download: false,
             audio_transcription_cache_dir: None,
             media_sources_file: PathBuf::from("config/media-sources.txt"),
+            media_sources_seed_file: None,
             image_sources: Vec::new(),
             minio_endpoint: None,
             minio_access_key: None,
@@ -370,10 +374,17 @@ impl Settings {
         dotenvy::dotenv().ok();
         let defaults = Self::default();
         let media_sources_file = path_var("MEDIA_SOURCES_FILE", defaults.media_sources_file);
+        let media_sources_seed_file = optional_string_var("MEDIA_SOURCES_SEED_FILE")
+            .map(PathBuf::from)
+            .or(defaults.media_sources_seed_file);
         let media_sources_file_is_set = optional_string_var("MEDIA_SOURCES_FILE").is_some();
         let image_sources = match optional_string_var("IMAGE_SOURCES") {
             Some(value) => parse_image_sources(&value)?,
-            None => read_media_sources_file(&media_sources_file, media_sources_file_is_set)?,
+            None => read_media_sources_files(
+                &media_sources_file,
+                media_sources_seed_file.as_deref(),
+                media_sources_file_is_set,
+            )?,
         };
         Ok(Self {
             source_image_dir: path_var("SOURCE_IMAGE_DIR", defaults.source_image_dir),
@@ -459,6 +470,7 @@ impl Settings {
                 .map(PathBuf::from)
                 .or(defaults.audio_transcription_cache_dir),
             media_sources_file,
+            media_sources_seed_file,
             image_sources,
             minio_endpoint: optional_string_var("MINIO_ENDPOINT"),
             minio_access_key: optional_string_var("MINIO_ACCESS_KEY"),
@@ -649,15 +661,46 @@ pub fn parse_media_sources_file(value: &str) -> Result<Vec<String>, String> {
         .collect())
 }
 
-fn read_media_sources_file(path: &Path, required: bool) -> Result<Vec<String>, String> {
-    match fs::read_to_string(path) {
-        Ok(value) => parse_media_sources_file(&value),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound && !required => Ok(Vec::new()),
-        Err(error) => Err(format!(
-            "Could not read MEDIA_SOURCES_FILE {}: {error}",
-            path.display()
-        )),
+fn read_media_sources_files(
+    target_path: &Path,
+    seed_path: Option<&Path>,
+    target_required: bool,
+) -> Result<Vec<String>, String> {
+    match read_media_sources_file(target_path) {
+        Ok(sources) => return Ok(sources),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(format!(
+                "Could not read MEDIA_SOURCES_FILE {}: {error}",
+                target_path.display()
+            ));
+        }
     }
+
+    if let Some(seed_path) = seed_path {
+        return read_media_sources_file(seed_path).map_err(|error| {
+            format!(
+                "Could not read MEDIA_SOURCES_SEED_FILE {}: {error}",
+                seed_path.display()
+            )
+        });
+    }
+
+    if target_required {
+        return Err(format!(
+            "Could not read MEDIA_SOURCES_FILE {}: file does not exist",
+            target_path.display()
+        ));
+    }
+
+    Ok(Vec::new())
+}
+
+fn read_media_sources_file(path: &Path) -> std::io::Result<Vec<String>> {
+    fs::read_to_string(path).and_then(|value| {
+        parse_media_sources_file(&value)
+            .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+    })
 }
 
 fn expand_local_source_spec(value: &str) -> String {
@@ -844,7 +887,14 @@ fn bounded_f32_var(name: &str, default: f32, min: f32, max: f32) -> Result<f32, 
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::sync::Mutex;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
     use super::{parse_extensions, parse_image_sources, parse_media_sources_file, Settings};
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn extensions_are_normalized() {
@@ -903,5 +953,182 @@ mod tests {
     #[test]
     fn default_pdf_extensions_include_pdf() {
         assert!(Settings::default().pdf_extensions.contains(".pdf"));
+    }
+
+    #[test]
+    fn image_sources_env_wins_over_media_source_files() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let temp = TestTempDir::new();
+        let target = temp.path().join("target-sources.txt");
+        let seed = temp.path().join("seed-sources.txt");
+        fs::write(&target, "/target\n").unwrap();
+        fs::write(&seed, "/seed\n").unwrap();
+        let _env = EnvGuard::set([
+            ("IMAGE_SOURCES", Some("/env-a,/env-b")),
+            ("MEDIA_SOURCES_FILE", Some(target.to_str().unwrap())),
+            ("MEDIA_SOURCES_SEED_FILE", Some(seed.to_str().unwrap())),
+        ]);
+
+        let settings = Settings::from_env().unwrap();
+
+        assert_eq!(settings.image_sources, vec!["/env-a", "/env-b"]);
+        assert_eq!(settings.media_sources_file, target);
+        assert_eq!(settings.media_sources_seed_file, Some(seed));
+    }
+
+    #[test]
+    fn missing_media_source_target_loads_seed_file() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let temp = TestTempDir::new();
+        let target = temp.path().join("target-sources.txt");
+        let seed = temp.path().join("seed-sources.txt");
+        fs::write(&seed, "/seed\n").unwrap();
+        let _env = EnvGuard::set([
+            ("IMAGE_SOURCES", None),
+            ("MEDIA_SOURCES_FILE", Some(target.to_str().unwrap())),
+            ("MEDIA_SOURCES_SEED_FILE", Some(seed.to_str().unwrap())),
+        ]);
+
+        let settings = Settings::from_env().unwrap();
+
+        assert_eq!(settings.image_sources, vec!["/seed"]);
+        assert_eq!(settings.media_sources_file, target);
+        assert_eq!(settings.media_sources_seed_file, Some(seed));
+    }
+
+    #[test]
+    fn existing_media_source_target_wins_over_seed_file() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let temp = TestTempDir::new();
+        let target = temp.path().join("target-sources.txt");
+        let seed = temp.path().join("seed-sources.txt");
+        fs::write(&target, "/target\n").unwrap();
+        fs::write(&seed, "/seed\n").unwrap();
+        let _env = EnvGuard::set([
+            ("IMAGE_SOURCES", None),
+            ("MEDIA_SOURCES_FILE", Some(target.to_str().unwrap())),
+            ("MEDIA_SOURCES_SEED_FILE", Some(seed.to_str().unwrap())),
+        ]);
+
+        let settings = Settings::from_env().unwrap();
+
+        assert_eq!(settings.image_sources, vec!["/target"]);
+    }
+
+    #[test]
+    fn explicit_missing_media_source_target_without_seed_errors() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let temp = TestTempDir::new();
+        let target = temp.path().join("missing-sources.txt");
+        let _env = EnvGuard::set([
+            ("IMAGE_SOURCES", None),
+            ("MEDIA_SOURCES_FILE", Some(target.to_str().unwrap())),
+            ("MEDIA_SOURCES_SEED_FILE", None),
+        ]);
+
+        let error = Settings::from_env().unwrap_err();
+
+        assert!(error.contains("MEDIA_SOURCES_FILE"));
+        assert!(error.contains("file does not exist"));
+    }
+
+    #[test]
+    fn implicit_missing_media_source_target_without_seed_falls_back_to_default_source_dir() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let temp = TestTempDir::new();
+        let source_dir = temp.path().join("sources");
+        let _dir = CurrentDirGuard::set(temp.path());
+        let _env = EnvGuard::set([
+            ("IMAGE_SOURCES", None),
+            ("MEDIA_SOURCES_FILE", None),
+            ("MEDIA_SOURCES_SEED_FILE", None),
+            ("SOURCE_IMAGE_DIR", Some(source_dir.to_str().unwrap())),
+        ]);
+
+        let settings = Settings::from_env().unwrap();
+
+        assert!(settings.image_sources.is_empty());
+        assert_eq!(
+            settings.source_specs(),
+            vec![source_dir.to_string_lossy().to_string()]
+        );
+    }
+
+    struct EnvGuard {
+        previous: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvGuard {
+        fn set<const N: usize>(values: [(&'static str, Option<&str>); N]) -> Self {
+            let previous = values
+                .iter()
+                .map(|(name, _)| (*name, std::env::var(name).ok()))
+                .collect::<Vec<_>>();
+            for (name, value) in values {
+                match value {
+                    Some(value) => std::env::set_var(name, value),
+                    None => std::env::remove_var(name),
+                }
+            }
+            Self { previous }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (name, value) in &self.previous {
+                match value {
+                    Some(value) => std::env::set_var(name, value),
+                    None => std::env::remove_var(name),
+                }
+            }
+        }
+    }
+
+    struct TestTempDir {
+        path: PathBuf,
+    }
+
+    impl TestTempDir {
+        fn new() -> Self {
+            let unique = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "image-sim-config-test-{}-{unique}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&path).unwrap();
+            Self { path }
+        }
+
+        fn path(&self) -> &Path {
+            &self.path
+        }
+    }
+
+    impl Drop for TestTempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.path);
+        }
+    }
+
+    struct CurrentDirGuard {
+        previous: PathBuf,
+    }
+
+    impl CurrentDirGuard {
+        fn set(path: &Path) -> Self {
+            let previous = std::env::current_dir().unwrap();
+            std::env::set_current_dir(path).unwrap();
+            Self { previous }
+        }
+    }
+
+    impl Drop for CurrentDirGuard {
+        fn drop(&mut self) {
+            let _ = std::env::set_current_dir(&self.previous);
+        }
     }
 }

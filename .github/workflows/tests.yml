@@ -39,6 +39,20 @@ jobs:
       - name: Type-check and build frontend
         run: bun run build
 
+      - name: Check generated frontend bundle
+        run: |
+          set -euo pipefail
+          if ! git diff --exit-code -- frontend/dist; then
+            echo "::error::frontend/dist is out of date; run \`bun run build\` and commit the generated bundle."
+            exit 1
+          fi
+
+      - name: Install Playwright Chromium
+        run: bunx playwright install chromium --with-deps
+
+      - name: Run Playwright tests
+        run: bun run test:e2e
+
   rust-tests:
     runs-on: ubuntu-latest
     steps:

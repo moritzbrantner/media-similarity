@@ -45,10 +45,12 @@ use crate::workers::search::{
 
 mod error;
 mod health;
+mod readiness;
 mod state;
 
 pub use error::ApiError;
 pub use health::health;
+pub use readiness::ready;
 pub use state::AppState;
 
 const MAX_MEDIA_TAGS: usize = 64;
@@ -441,6 +443,8 @@ pub fn spawn_startup_index_job(state: Arc<AppState>) -> jobs_core::Result<JobSna
 #[derive(Debug, Serialize)]
 pub struct SourceConfigResponse {
     pub media_sources_file: String,
+    pub media_sources_seed_file: Option<String>,
+    pub media_sources_writable: bool,
     pub default_source_dir: String,
     pub sources: Vec<SourceConfigSource>,
     pub supported_source_types: Vec<SupportedSourceType>,
@@ -644,6 +648,11 @@ fn source_config_response(state: &AppState) -> SourceConfigResponse {
     let settings = state.indexing_settings();
     SourceConfigResponse {
         media_sources_file: settings.media_sources_file.to_string_lossy().to_string(),
+        media_sources_seed_file: settings
+            .media_sources_seed_file
+            .as_ref()
+            .map(|path| path.to_string_lossy().to_string()),
+        media_sources_writable: media_sources_file_is_writable(&settings.media_sources_file),
         default_source_dir: settings.source_image_dir.to_string_lossy().to_string(),
         sources: settings
             .source_specs()
@@ -783,7 +792,36 @@ fn write_media_sources_file(path: &std::path::Path, sources: &[String]) -> Resul
     })
 }
 
-fn source_config_source(spec: String, settings: &Settings) -> SourceConfigSource {
+fn media_sources_file_is_writable(path: &std::path::Path) -> bool {
+    if path.is_file() {
+        return fs::OpenOptions::new().append(true).open(path).is_ok();
+    }
+
+    let Some(parent) = path.parent() else {
+        return false;
+    };
+    if fs::create_dir_all(parent).is_err() {
+        return false;
+    }
+    let probe = parent.join(format!(
+        ".media-sources-writable-{}-{}",
+        std::process::id(),
+        Uuid::new_v4()
+    ));
+    match fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(&probe)
+    {
+        Ok(_) => {
+            let _ = fs::remove_file(probe);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+pub(super) fn source_config_source(spec: String, settings: &Settings) -> SourceConfigSource {
     let kind = source_kind(&spec);
     let (status, detail) = match kind.as_str() {
         "local" => {
@@ -1494,9 +1532,9 @@ fn validate_media_kind(value: String) -> Result<String, ApiError> {
     match value.as_str() {
         "static_image" | "animated_gif" | "video_scene" | "audio" | "pdf_page"
         | "pdf_document" => Ok(value),
-        _ => Err(ApiError::bad_request(format!(
-            "media_kind must be one of all, static_image, animated_gif, video_scene, audio, pdf_page, pdf_document"
-        ))),
+        _ => Err(ApiError::bad_request(
+            "media_kind must be one of all, static_image, animated_gif, video_scene, audio, pdf_page, pdf_document",
+        )),
     }
 }
 

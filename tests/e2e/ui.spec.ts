@@ -53,6 +53,8 @@ const sourceConfigResponse = {
     visual_embedding_vector_size: 512,
   },
   media_sources_file: "config/media-sources.txt",
+  media_sources_seed_file: null,
+  media_sources_writable: true,
   sources: [
     {
       detail: null,
@@ -1553,6 +1555,24 @@ test("renders source save failures and non-ready source statuses", async ({ page
 
   await expect(page.getByText("source save failed")).toBeVisible();
   await expect(page.getByText("Saved source configuration.")).toHaveCount(0);
+});
+
+test("disables source saves when the source file is read-only", async ({ page }) => {
+  await resetApiMocks(page, {
+    sourceConfig: makeSourceConfigResponse({
+      media_sources_file: "/app/data/media-sources.txt",
+      media_sources_seed_file: "/app/config/media-sources.txt",
+      media_sources_writable: false,
+    }),
+  });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Open media configuration" }).click();
+
+  await expect(page.getByText("Stored in /app/data/media-sources.txt")).toBeVisible();
+  await expect(page.getByText("Seeded from /app/config/media-sources.txt")).toBeVisible();
+  await expect(page.getByText("Source configuration file is not writable.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save" })).toBeDisabled();
 });
 
 test("covers indexing configuration edge cases", async ({ page }) => {

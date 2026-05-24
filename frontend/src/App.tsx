@@ -1428,7 +1428,8 @@ function SourceConfigurationPage({
   }
 
   const configuredSources = drafts.map((source) => source.spec.trim()).filter(Boolean);
-  const canSave = configuredSources.length > 0 && !savePending;
+  const mediaSourcesWritable = config?.media_sources_writable ?? true;
+  const canSave = configuredSources.length > 0 && mediaSourcesWritable && !savePending;
 
   if (loading) {
     return (
@@ -1461,6 +1462,14 @@ function SourceConfigurationPage({
               >
                 Stored in {config.media_sources_file}
               </p>
+              {config.media_sources_seed_file ? (
+                <p
+                  className="mt-1 truncate text-xs text-neutral-500"
+                  title={config.media_sources_seed_file}
+                >
+                  Seeded from {config.media_sources_seed_file}
+                </p>
+              ) : null}
             </div>
             <Button
               variant="outline"
@@ -1510,6 +1519,12 @@ function SourceConfigurationPage({
                   icon={<CheckCircle2 className="size-4" />}
                   text="Saved source configuration."
                   tone="ok"
+                />
+              ) : !mediaSourcesWritable ? (
+                <Message
+                  icon={<AlertCircle className="size-4" />}
+                  text="Source configuration file is not writable."
+                  tone="error"
                 />
               ) : (
                 <Message

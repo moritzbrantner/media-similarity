@@ -7,7 +7,8 @@ x-app-build: &app-build
 
 x-app-environment: &app-environment
   SOURCE_IMAGE_DIR: ${SOURCE_IMAGE_DIR:-/images}
-  MEDIA_SOURCES_FILE: ${MEDIA_SOURCES_FILE:-/app/config/media-sources.txt}
+  MEDIA_SOURCES_FILE: ${MEDIA_SOURCES_FILE:-/app/data/media-sources.txt}
+  MEDIA_SOURCES_SEED_FILE: ${MEDIA_SOURCES_SEED_FILE:-/app/config/media-sources.txt}
   QDRANT_URL: ${QDRANT_URL:-http://qdrant:6333}
   QDRANT_COLLECTION: ${QDRANT_COLLECTION:-image_similarity}
   CLIP_MODEL_NAME: ${CLIP_MODEL_NAME:-sentence-transformers/clip-ViT-B-32}

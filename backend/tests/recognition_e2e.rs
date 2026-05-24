@@ -24,7 +24,7 @@ use image_similarity_service::api::{
     audio_transcription_models, cancel_job, delete_indexed_media_route,
     delete_indexed_sources_route, download_audio_transcription_model, download_model,
     enable_audio_transcription_model, enable_model, get_job, get_job_events, get_models,
-    get_source_config, health, index_images, list_jobs, search_upload, spawn_index_job,
+    get_source_config, health, index_images, list_jobs, ready, search_upload, spawn_index_job,
     update_source_config, AppState,
 };
 use image_similarity_service::config::{parse_extensions, Settings};
@@ -519,6 +519,7 @@ async fn source_config_api_persists_sources_and_reports_planned_types() {
     );
     assert_eq!(initial["sources"][0]["kind"], "local");
     assert_eq!(initial["sources"][0]["status"], "ready");
+    assert_eq!(initial["media_sources_writable"], true);
     assert_eq!(
         initial["supported_source_types"]
             .as_array()
@@ -576,6 +577,51 @@ async fn source_config_api_persists_sources_and_reports_planned_types() {
         body["detail"],
         "At least one media source must be configured"
     );
+}
+
+#[tokio::test]
+async fn source_config_api_reports_seed_file_and_writes_target_file() {
+    let app = TestApp::new(|settings| {
+        settings.media_sources_seed_file = Some(
+            settings
+                .media_sources_file
+                .with_file_name("seed-media-sources.txt"),
+        );
+    })
+    .await;
+    let seed_file = app
+        .state
+        .settings
+        .media_sources_seed_file
+        .as_ref()
+        .unwrap()
+        .clone();
+    fs::create_dir_all(seed_file.parent().unwrap()).unwrap();
+    fs::write(&seed_file, "/seed\n").unwrap();
+
+    let initial = app.get_json("/api/source-config").await;
+    assert_eq!(
+        initial["media_sources_file"].as_str(),
+        Some(app.media_sources_file().to_string_lossy().as_ref())
+    );
+    assert_eq!(
+        initial["media_sources_seed_file"].as_str(),
+        Some(seed_file.to_string_lossy().as_ref())
+    );
+    assert_eq!(initial["media_sources_writable"], true);
+
+    let target_source = app.root_path().join("target-media");
+    fs::create_dir_all(&target_source).unwrap();
+    app.put_json(
+        "/api/source-config",
+        json!({ "sources": [target_source.to_string_lossy().to_string()] }),
+    )
+    .await;
+
+    assert!(fs::read_to_string(app.media_sources_file())
+        .unwrap()
+        .contains(target_source.to_string_lossy().as_ref()));
+    assert_eq!(fs::read_to_string(seed_file).unwrap(), "/seed\n");
 }
 
 #[tokio::test]
@@ -656,6 +702,79 @@ async fn source_config_api_updates_runtime_indexing_configuration() {
         )
         .await;
     assert_eq!(invalid.status(), reqwest::StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn readiness_reports_ready_when_required_dependencies_are_available() {
+    let app = TestApp::new(|settings| {
+        settings.ocr_enabled = false;
+    })
+    .await;
+
+    let response = app.raw_get("/api/ready").await;
+
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["status"], "ready");
+    assert!(body["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|check| { check["name"] == "qdrant" && check["status"] == "ok" }));
+}
+
+#[tokio::test]
+async fn readiness_reports_not_ready_when_qdrant_is_unavailable() {
+    let app = TestApp::new(|settings| {
+        settings.qdrant_url = "http://127.0.0.1:9".to_string();
+        settings.ocr_enabled = false;
+    })
+    .await;
+
+    let response = app.raw_get("/api/ready").await;
+
+    assert_eq!(response.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["status"], "not_ready");
+    assert!(body["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|check| { check["name"] == "qdrant" && check["status"] == "error" }));
+}
+
+#[tokio::test]
+async fn readiness_keeps_optional_tool_failures_as_warnings() {
+    let app = TestApp::new(|settings| {
+        settings.ocr_enabled = true;
+        settings.ocr_command = "definitely-missing-image-sim-ocr".to_string();
+    })
+    .await;
+
+    let response = app.raw_get("/api/ready").await;
+
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["status"], "ready");
+    assert!(body["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|check| { check["name"] == "ocr" && check["status"] == "warn" }));
+}
+
+#[tokio::test]
+async fn health_remains_liveness_only_when_qdrant_is_unavailable() {
+    let app = TestApp::new(|settings| {
+        settings.qdrant_url = "http://127.0.0.1:9".to_string();
+    })
+    .await;
+
+    let response = app.raw_get("/api/health").await;
+
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["status"], "ok");
 }
 
 #[tokio::test]
@@ -980,6 +1099,7 @@ impl TestApp {
         let state = Arc::new(AppState::new(settings));
         let app = Router::new()
             .route("/api/health", get(health))
+            .route("/api/ready", get(ready))
             .route("/api/index", post(index_images))
             .route(
                 "/api/source-config",
@@ -1175,14 +1295,17 @@ impl TestApp {
     }
 
     async fn get_json(&self, path: &str) -> Value {
-        let response = self
-            .client
+        let response = self.raw_get(path).await;
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        response.json().await.unwrap()
+    }
+
+    async fn raw_get(&self, path: &str) -> reqwest::Response {
+        self.client
             .get(format!("{}{}", self.base_url, path))
             .send()
             .await
-            .unwrap();
-        assert_eq!(response.status(), reqwest::StatusCode::OK);
-        response.json().await.unwrap()
+            .unwrap()
     }
 
     async fn post_json(&self, path: &str, body: Value) -> Value {

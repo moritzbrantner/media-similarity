@@ -133,7 +133,12 @@ mount as expected.
 
 ```bash
 curl http://localhost:8000/api/health
+curl http://localhost:8000/api/ready
 ```
+
+`/api/health` is a cheap liveness check. `/api/ready` verifies operational
+dependencies such as Qdrant, writable data directories, configured sources, and
+optional media tools.
 
 ### Index Configured Sources
 
@@ -209,7 +214,8 @@ Set these values in `.env`:
 | `HOST_PICTURES_DIR` | `${HOME}/Pictures` | Host pictures folder mounted into the app container. |
 | `HOST_VIDEO_DIR` | `${HOME}/Videos` | Host video folder mounted into the app container. |
 | `HOST_AUDIO_DIR` | `${HOME}/Music` | Host audio folder mounted into the app container. |
-| `MEDIA_SOURCES_FILE` | `/app/config/media-sources.txt` | Source list file read by the Rust service when `IMAGE_SOURCES` is empty. |
+| `MEDIA_SOURCES_FILE` | `/app/data/media-sources.txt` | Writable source list file read by the Rust service when `IMAGE_SOURCES` is empty. In Docker this persists UI edits in the app data volume. |
+| `MEDIA_SOURCES_SEED_FILE` | `/app/config/media-sources.txt` | Optional read-only seed source list used when `MEDIA_SOURCES_FILE` does not exist. |
 | `SOURCE_IMAGE_DIR` | `/images` | Legacy fallback path scanned only when `IMAGE_SOURCES` is empty and no media sources file is available. |
 | `IMAGE_SOURCES` | empty | Optional source list override. When set, this takes precedence over `MEDIA_SOURCES_FILE`. Use a JSON array, comma-separated list, semicolon-separated list, or newline-separated list. |
 | `MINIO_ENDPOINT` | empty | MinIO/S3-compatible endpoint for `minio://` sources. Include a scheme or pair with `MINIO_SECURE`. |

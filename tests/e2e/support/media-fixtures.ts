@@ -228,6 +228,8 @@ const defaultSourceConfigResponse = {
     visual_embedding_vector_size: 512,
   },
   media_sources_file: "config/media-sources.txt",
+  media_sources_seed_file: null as string | null,
+  media_sources_writable: true,
   sources: [
     {
       detail: null as string | null,

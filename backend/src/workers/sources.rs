@@ -199,6 +199,7 @@ enum SourceLoader {
     Unavailable(String),
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Clone, Debug)]
 pub enum ImageSource {
     Local(LocalFolderSource),
