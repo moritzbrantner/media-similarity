@@ -251,9 +251,15 @@ const defaultSourceConfigResponse = {
     },
     {
       example: "minio://bucket/prefix",
-      implemented: false,
+      implemented: true,
       kind: "minio",
       label: "MinIO bucket",
+    },
+    {
+      example: "s3://bucket/prefix",
+      implemented: true,
+      kind: "s3",
+      label: "S3 bucket",
     },
     {
       example: "video:///clips/demo.mp4",

@@ -248,7 +248,7 @@ impl ImageIndexer {
         let mut scanned_source_items = BTreeSet::new();
         let mut prune_point_ids = Vec::new();
         for source in &sources {
-            match source.iter_images() {
+            match source.iter_images().await {
                 Ok(images) => {
                     for source_image in images {
                         scanned_source_items.insert(source_image.item_uri.clone());
@@ -347,17 +347,23 @@ impl ImageIndexer {
             return self.index_pdf(source_image).await;
         }
 
-        let photo_metadata = source_image
-            .local_path()
-            .filter(|_| !source_image.is_video() && !source_image.is_audio() && !source_image.is_pdf())
-            .and_then(|path| match extract_photo_metadata(path) {
-                Ok(metadata) => metadata,
-                Err(error) => {
-                    tracing::warn!(%error, path = %path.display(), "photo metadata extraction failed");
-                    None
-                }
-            });
-        let media = source_image.load_media(&self.settings)?;
+        let photo_metadata = if !source_image.is_video()
+            && !source_image.is_audio()
+            && !source_image.is_pdf()
+        {
+            source_image
+                    .with_local_media_path(&self.settings, |path| match extract_photo_metadata(path) {
+                        Ok(metadata) => Ok(metadata),
+                        Err(error) => {
+                            tracing::warn!(%error, path = %path.display(), "photo metadata extraction failed");
+                            Ok(None)
+                        }
+                    })
+                    .await?
+        } else {
+            None
+        };
+        let media = source_image.load_media(&self.settings).await?;
         let media_id = image_id_for_uri(&source_image.id_base);
         let face_analysis = analyze_faces_for_media(
             &self.settings,
@@ -397,10 +403,11 @@ impl ImageIndexer {
     }
 
     async fn index_video(&self, source_image: &SourceImage) -> Result<IndexOneOutcome, String> {
-        let path = source_image
-            .local_path()
-            .ok_or_else(|| "Video source does not have a local path".to_string())?;
-        let scenes = decode_source_video_scenes(path, &source_image.id_base, &self.settings)?;
+        let scenes = source_image
+            .with_local_media_path(&self.settings, |path| {
+                decode_source_video_scenes(path, &source_image.id_base, &self.settings)
+            })
+            .await?;
         let mut outcome = IndexOneOutcome::default();
         for scene in &scenes {
             let id_base = format!("{}#scene={}", source_image.id_base, scene.scene_index + 1);
@@ -430,10 +437,11 @@ impl ImageIndexer {
     }
 
     async fn index_audio(&self, source_image: &SourceImage) -> Result<IndexOneOutcome, String> {
-        let path = source_image
-            .local_path()
-            .ok_or_else(|| "Audio source does not have a local path".to_string())?;
-        let segments = decode_source_audio_segments(path, &source_image.id_base, &self.settings)?;
+        let segments = source_image
+            .with_local_media_path(&self.settings, |path| {
+                decode_source_audio_segments(path, &source_image.id_base, &self.settings)
+            })
+            .await?;
         let mut outcome = IndexOneOutcome::default();
         for segment in &segments {
             let face_analysis = FaceAnalysis::default();
@@ -454,12 +462,14 @@ impl ImageIndexer {
     }
 
     async fn index_pdf(&self, source_image: &SourceImage) -> Result<IndexOneOutcome, String> {
-        let path = source_image
-            .local_path()
-            .ok_or_else(|| "PDF source does not have a local path".to_string())?;
-        let pdf = decode_pdf(path, &self.settings)?;
         let source_pdf_id = image_id_for_uri(&source_image.id_base);
-        let full_pdf_url = expose_source_pdf(path, &source_pdf_id, &self.settings)?;
+        let (pdf, full_pdf_url) = source_image
+            .with_local_media_path(&self.settings, |path| {
+                let pdf = decode_pdf(path, &self.settings)?;
+                let full_pdf_url = expose_source_pdf(path, &source_pdf_id, &self.settings)?;
+                Ok((pdf, full_pdf_url))
+            })
+            .await?;
         let document_id_base = format!("{}#document", source_image.id_base);
         let document_id = image_id_for_uri(&document_id_base);
         let mut outcome = IndexOneOutcome::default();

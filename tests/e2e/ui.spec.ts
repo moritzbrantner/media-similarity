@@ -76,9 +76,15 @@ const sourceConfigResponse = {
     },
     {
       example: "minio://bucket/prefix",
-      implemented: false,
+      implemented: true,
       kind: "minio",
       label: "MinIO bucket",
+    },
+    {
+      example: "s3://bucket/prefix",
+      implemented: true,
+      kind: "s3",
+      label: "S3 bucket",
     },
     {
       example: "video:///clips/demo.mp4",
@@ -501,7 +507,8 @@ test("configures media sources from the UI", async ({ page }) => {
   await expect(page.locator('input[value="/images"]')).toBeVisible();
   await expect(page.getByRole("heading", { name: "Local folder" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "MinIO bucket" })).toBeVisible();
-  await expect(page.getByRole("option", { name: "MinIO bucket (planned)" }).first()).toBeDisabled();
+  await expect(page.getByRole("heading", { name: "S3 bucket" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "MinIO bucket" }).first()).toBeEnabled();
   await expect(page.getByText("Images", { exact: true })).toBeVisible();
   await expect(page.getByText("PDF", { exact: true })).toBeVisible();
   await expect(page.getByText("PDF page cap", { exact: true })).toBeVisible();
@@ -863,7 +870,7 @@ test("renders media-specific result cards", async ({ page }) => {
   await expect(resultCard(page, "missing-thumb.png").locator("img")).toHaveCount(0);
 });
 
-test("metadata-filtered searches request a wider candidate set", async ({ page }) => {
+test("metadata-filtered searches keep requested server-side limit", async ({ page }) => {
   let requestedLimit: string | null = null;
   await page.unroute("**/api/search?**");
   await page.route("**/api/search?**", async (route) => {
@@ -881,7 +888,7 @@ test("metadata-filtered searches request a wider candidate set", async ({ page }
   await page.getByLabel("Media type").selectOption("static_image");
   await page.getByRole("button", { name: "Search" }).click();
 
-  await expect.poll(() => requestedLimit).toBe("8");
+  await expect.poll(() => requestedLimit).toBe("1");
   await expect(page.locator("article h3")).toHaveCount(1);
 });
 
@@ -1322,8 +1329,24 @@ test("sends OCR and person search parameters and caps filtered candidate limit",
               person_id: "person-1",
             },
           ],
+          photo_metadata: {
+            camera_make: "Acme",
+            camera_model: "Pocket 7",
+            capture_time: null,
+            copyright: null,
+            creator: null,
+            description: null,
+            gps: { altitude_meters: null, latitude: 52.5, longitude: 13.4 },
+            keywords: [],
+            lens_model: null,
+            orientation: null,
+            rating: null,
+            raw: [],
+            title: null,
+          },
           relative_path: "people/person-match.jpg",
         },
+        near_duplicate: false,
       }),
       makeResult({
         image: {
@@ -1350,15 +1373,26 @@ test("sends OCR and person search parameters and caps filtered candidate limit",
   await page.getByLabel("Result limit").fill("100");
   await page.getByLabel("Text in media").fill("invoice");
   await page.getByLabel("Person ID").fill("person-1");
+  await page.getByLabel("Media type").selectOption("static_image");
+  await page.getByLabel("Camera/lens").fill("Pocket");
+  await page.getByLabel("Minimum width").fill("640");
+  await page.getByLabel("GPS metadata").selectOption("yes");
+  await page.getByLabel("Duplicate status").selectOption("exclude");
   await page.getByRole("button", { name: "Search" }).click();
 
   await expect.poll(() => capture.count).toBe(1);
   await expect
     .poll(() => capture.requests[0])
     .toEqual({
-      limit: "500",
+      cameraQuery: "Pocket",
+      hasGps: "yes",
+      limit: "100",
+      mediaKind: "static_image",
+      minWidth: "640",
+      nearDuplicate: "exclude",
       ocrText: "invoice",
       personId: "person-1",
+      sourceType: null,
     });
   await expectResultOrder(page, ["person-match.jpg"]);
 });

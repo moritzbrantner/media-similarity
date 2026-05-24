@@ -41,6 +41,11 @@ pub struct Settings {
     pub minio_access_key: Option<String>,
     pub minio_secret_key: Option<String>,
     pub minio_secure: bool,
+    pub s3_endpoint: Option<String>,
+    pub s3_access_key_id: Option<String>,
+    pub s3_secret_access_key: Option<String>,
+    pub s3_region: String,
+    pub s3_allow_http: bool,
     pub video_frame_stride: u32,
     pub video_max_frames: Option<u32>,
     pub camera_frame_stride: u32,
@@ -94,6 +99,11 @@ pub struct SourceSettings {
     pub minio_access_key: Option<String>,
     pub minio_secret_key: Option<String>,
     pub minio_secure: bool,
+    pub s3_endpoint: Option<String>,
+    pub s3_access_key_id: Option<String>,
+    pub s3_secret_access_key: Option<String>,
+    pub s3_region: String,
+    pub s3_allow_http: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -193,6 +203,11 @@ impl Settings {
             minio_access_key: self.minio_access_key.clone(),
             minio_secret_key: self.minio_secret_key.clone(),
             minio_secure: self.minio_secure,
+            s3_endpoint: self.s3_endpoint.clone(),
+            s3_access_key_id: self.s3_access_key_id.clone(),
+            s3_secret_access_key: self.s3_secret_access_key.clone(),
+            s3_region: self.s3_region.clone(),
+            s3_allow_http: self.s3_allow_http,
         }
     }
 
@@ -315,6 +330,11 @@ impl Default for Settings {
             minio_access_key: None,
             minio_secret_key: None,
             minio_secure: true,
+            s3_endpoint: None,
+            s3_access_key_id: None,
+            s3_secret_access_key: None,
+            s3_region: "us-east-1".to_string(),
+            s3_allow_http: false,
             video_frame_stride: 30,
             video_max_frames: None,
             camera_frame_stride: 30,
@@ -444,6 +464,11 @@ impl Settings {
             minio_access_key: optional_string_var("MINIO_ACCESS_KEY"),
             minio_secret_key: optional_string_var("MINIO_SECRET_KEY"),
             minio_secure: bool_var("MINIO_SECURE", defaults.minio_secure),
+            s3_endpoint: optional_string_var("S3_ENDPOINT"),
+            s3_access_key_id: optional_string_var("S3_ACCESS_KEY_ID"),
+            s3_secret_access_key: optional_string_var("S3_SECRET_ACCESS_KEY"),
+            s3_region: string_var("S3_REGION", defaults.s3_region),
+            s3_allow_http: bool_var("S3_ALLOW_HTTP", defaults.s3_allow_http),
             video_frame_stride: bounded_u32_var(
                 "VIDEO_FRAME_STRIDE",
                 defaults.video_frame_stride,
@@ -833,8 +858,13 @@ mod tests {
     #[test]
     fn image_sources_accept_delimited_strings_and_json() {
         assert_eq!(
-            parse_image_sources("local:///images; minio://bucket/prefix").unwrap(),
-            vec!["local:///images", "minio://bucket/prefix"]
+            parse_image_sources("local:///images; minio://bucket/prefix; s3://archive/photos")
+                .unwrap(),
+            vec![
+                "local:///images",
+                "minio://bucket/prefix",
+                "s3://archive/photos"
+            ]
         );
         assert_eq!(
             parse_image_sources(r#"["/images", "video:///clips/demo.mp4"]"#).unwrap(),

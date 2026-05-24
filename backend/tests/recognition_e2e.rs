@@ -107,6 +107,63 @@ async fn static_image_recognition_covers_content_type_extension_limits_and_dupli
 }
 
 #[tokio::test]
+async fn search_api_applies_server_side_metadata_filters() {
+    let app = TestApp::new(|settings| {
+        settings.image_extensions = parse_extensions(".png,.jpg").unwrap();
+        settings.default_search_limit = 10;
+        settings.duplicate_hash_distance = 0;
+    })
+    .await;
+
+    let landscape = app.source_path("landscape.png");
+    let portrait = app.source_path("blue-portrait.jpg");
+    write_pattern_image(&landscape, 80, 40, [220, 20, 20], [20, 20, 20]);
+    write_pattern_image(&portrait, 40, 80, [30, 70, 220], [20, 20, 20]);
+    inject_xmp_metadata(&portrait, test_photo_xmp());
+
+    let indexed = app.index().await;
+    assert_eq!(indexed.indexed, 2);
+    assert_eq!(indexed.failed, 0, "{:?}", indexed.errors);
+
+    let filtered = app
+        .search_upload_with_params(
+            "query.jpg",
+            "image/jpeg",
+            fs::read(&portrait).unwrap(),
+            vec![
+                ("limit", "10".to_string()),
+                ("orientation", "portrait".to_string()),
+                ("camera_query", "Pocket".to_string()),
+                ("keyword_query", "sunrise".to_string()),
+                ("min_width", "30".to_string()),
+                ("max_width", "60".to_string()),
+                ("captured_from", "1710230000".to_string()),
+                ("captured_to", "1710240000".to_string()),
+            ],
+        )
+        .await;
+
+    assert_eq!(filtered.count, 1);
+    assert_eq!(filtered.results[0].image.filename, "blue-portrait.jpg");
+
+    let duplicate_excluded = app
+        .search_upload_with_params(
+            "query.jpg",
+            "image/jpeg",
+            fs::read(&portrait).unwrap(),
+            vec![
+                ("limit", "10".to_string()),
+                ("near_duplicate", "exclude".to_string()),
+            ],
+        )
+        .await;
+    assert!(duplicate_excluded
+        .results
+        .iter()
+        .all(|result| !result.near_duplicate));
+}
+
+#[tokio::test]
 async fn index_skips_files_that_are_already_current() {
     let app = TestApp::new(|settings| {
         settings.image_extensions = parse_extensions(".png").unwrap();
@@ -469,7 +526,7 @@ async fn source_config_api_persists_sources_and_reports_planned_types() {
             .iter()
             .find(|source_type| source_type["kind"] == "minio")
             .unwrap()["implemented"],
-        false
+        true
     );
 
     let updated = app
@@ -480,6 +537,7 @@ async fn source_config_api_persists_sources_and_reports_planned_types() {
                     format!("  {}  ", extra_source.display()),
                     "",
                     "minio://bucket/prefix",
+                    "s3://archive/photos",
                     "video:///clips/demo.mp4",
                     "camera://front-door"
                 ]
@@ -492,16 +550,19 @@ async fn source_config_api_persists_sources_and_reports_planned_types() {
     );
     assert_eq!(updated["sources"][0]["status"], "ready");
     assert_eq!(updated["sources"][1]["kind"], "minio");
-    assert_eq!(updated["sources"][1]["status"], "not_implemented");
-    assert_eq!(updated["sources"][2]["kind"], "video");
-    assert_eq!(updated["sources"][2]["status"], "not_implemented");
-    assert_eq!(updated["sources"][3]["kind"], "camera");
+    assert_eq!(updated["sources"][1]["status"], "unavailable");
+    assert_eq!(updated["sources"][2]["kind"], "s3");
+    assert_eq!(updated["sources"][2]["status"], "ready");
+    assert_eq!(updated["sources"][3]["kind"], "video");
     assert_eq!(updated["sources"][3]["status"], "not_implemented");
+    assert_eq!(updated["sources"][4]["kind"], "camera");
+    assert_eq!(updated["sources"][4]["status"], "not_implemented");
 
     let persisted = fs::read_to_string(app.media_sources_file()).unwrap();
     assert!(persisted.contains("# Managed by image-similarity-service."));
     assert!(persisted.contains(&extra_source.to_string_lossy().to_string()));
     assert!(persisted.contains("minio://bucket/prefix"));
+    assert!(persisted.contains("s3://archive/photos"));
 
     let reloaded = app.get_json("/api/source-config").await;
     assert_eq!(reloaded["sources"], updated["sources"]);
@@ -1056,10 +1117,53 @@ impl TestApp {
         bytes: Vec<u8>,
         limit: Option<u32>,
     ) -> reqwest::Response {
+        let mut params = Vec::new();
+        if let Some(limit) = limit {
+            params.push(("limit".to_string(), limit.to_string()));
+        }
+        self.raw_search_upload_with_params(filename, content_type, bytes, params)
+            .await
+    }
+
+    async fn search_upload_with_params(
+        &self,
+        filename: &str,
+        content_type: &str,
+        bytes: Vec<u8>,
+        params: Vec<(&str, String)>,
+    ) -> SearchResponse {
+        let response = self
+            .raw_search_upload_with_params(
+                filename,
+                content_type,
+                bytes,
+                params
+                    .into_iter()
+                    .map(|(key, value)| (key.to_string(), value))
+                    .collect(),
+            )
+            .await;
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        response.json().await.unwrap()
+    }
+
+    async fn raw_search_upload_with_params(
+        &self,
+        filename: &str,
+        content_type: &str,
+        bytes: Vec<u8>,
+        params: Vec<(String, String)>,
+    ) -> reqwest::Response {
         let (request_content_type, body) = multipart_body(filename, content_type, bytes);
         let mut url = format!("{}/api/search", self.base_url);
-        if let Some(limit) = limit {
-            url.push_str(&format!("?limit={limit}"));
+        if !params.is_empty() {
+            let query = params
+                .into_iter()
+                .map(|(key, value)| format!("{key}={value}"))
+                .collect::<Vec<_>>()
+                .join("&");
+            url.push('?');
+            url.push_str(&query);
         }
         self.client
             .post(url)
@@ -1435,15 +1539,35 @@ fn payload_matches_filter(payload: &Value, filter: Option<&Value>) -> bool {
         let Some(key) = condition.get("key").and_then(Value::as_str) else {
             return true;
         };
-        let expected = condition
-            .get("match")
-            .and_then(|value| value.get("value"))
-            .and_then(Value::as_str);
-        match expected {
-            Some(expected) => payload.get(key).and_then(Value::as_str) == Some(expected),
-            None => true,
+        let actual = payload_value(payload, key);
+        if let Some(expected) = condition.get("match").and_then(|value| value.get("value")) {
+            return actual.map(|actual| actual == expected).unwrap_or(false);
         }
+        if let Some(range) = condition.get("range") {
+            let Some(actual) = actual.and_then(Value::as_f64) else {
+                return false;
+            };
+            if let Some(gte) = range.get("gte").and_then(Value::as_f64) {
+                if actual < gte {
+                    return false;
+                }
+            }
+            if let Some(lte) = range.get("lte").and_then(Value::as_f64) {
+                if actual > lte {
+                    return false;
+                }
+            }
+        }
+        true
     })
+}
+
+fn payload_value<'a>(payload: &'a Value, key: &str) -> Option<&'a Value> {
+    let mut value = payload;
+    for part in key.split('.') {
+        value = value.get(part)?;
+    }
+    Some(value)
 }
 
 fn multipart_body(filename: &str, content_type: &str, bytes: Vec<u8>) -> (String, Vec<u8>) {

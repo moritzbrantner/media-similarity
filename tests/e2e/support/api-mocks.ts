@@ -21,9 +21,15 @@ export type ApiMockOptions = {
 };
 
 export type CapturedSearchRequest = {
+  cameraQuery: string | null;
+  hasGps: string | null;
   limit: string | null;
+  mediaKind: string | null;
+  minWidth: string | null;
+  nearDuplicate: string | null;
   ocrText: string | null;
   personId: string | null;
+  sourceType: string | null;
 };
 
 export async function installDefaultApiMocks(page: Page, options: ApiMockOptions = {}) {
@@ -141,7 +147,8 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
             detail: null,
             kind: spec.includes("://") ? spec.split("://")[0] : "local",
             spec,
-            status: spec.startsWith("minio:") ? "not_implemented" : "ready",
+            status:
+              spec.startsWith("video:") || spec.startsWith("camera:") ? "not_implemented" : "ready",
           })) ?? currentSourceConfig.sources,
       };
       await route.fulfill({ json: currentSourceConfig });
@@ -230,9 +237,15 @@ export async function captureSearchRequests(page: Page, response: unknown) {
   await page.route("**/api/search?**", async (route) => {
     const params = new URL(route.request().url()).searchParams;
     requests.push({
+      cameraQuery: params.get("camera_query"),
+      hasGps: params.get("has_gps"),
       limit: params.get("limit"),
+      mediaKind: params.get("media_kind"),
+      minWidth: params.get("min_width"),
+      nearDuplicate: params.get("near_duplicate"),
       ocrText: params.get("ocr_text"),
       personId: params.get("person_id"),
+      sourceType: params.get("source_type"),
     });
     await route.fulfill({ json: response });
   });

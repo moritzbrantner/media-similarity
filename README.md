@@ -27,7 +27,7 @@ The repository is organized as a Rust-only backend plus a conventional React/Vit
 - React UI built with Bun, TypeScript, React Query, Tailwind CSS, and oxfmt.
 - Docker Compose setup with the Rust app, Qdrant, and default host media folder mounts.
 
-MinIO, `video://`, and camera source URI parsing is retained, but those source backends are currently reported as unavailable by the Rust service. Local video files inside configured local source folders are indexed as scene records, and local audio files are indexed as spectrogram records.
+MinIO/S3 object-store sources are supported through `minio://bucket/prefix` and `s3://bucket/prefix` source specs. `video://` and camera source URI parsing is retained, but those source backends are currently reported as unavailable by the Rust service. Local video files inside configured local source folders are indexed as scene records, and local audio files are indexed as spectrogram records.
 
 ## Quick Start
 
@@ -163,6 +163,13 @@ The response includes:
 - Matched source audio records include `audio_analysis` with `speech_detected`, `speech_ratio`, `speech_segments`, `audio_segments`, `recognized_voices`, `tempo_bpm`, `tempo_confidence`, and `tempo_onset_count`.
 - Audio upload responses include `query_audio_analysis` with the same analysis shape for the query audio.
 
+Search accepts server-side metadata filters as query parameters:
+
+- `source_type`, `media_kind`, `name_query`, `camera_query`, `keyword_query`, and `person_id`.
+- `has_gps=all|yes|no`, `near_duplicate=all|only|exclude`, and `orientation=all|landscape|portrait|square`.
+- `min_width`, `max_width`, `min_height`, `max_height`, `min_size_bytes`, `max_size_bytes`.
+- `modified_from`, `modified_to`, `captured_from`, and `captured_to` as Unix timestamps in seconds.
+
 GIF vector search uses sampled frame content plus frame-to-frame motion deltas. `query_phash`, `hash_distance`, and `near_duplicate` remain based on the representative poster frame so the duplicate contract stays compatible with static images.
 
 ### Model Status
@@ -205,6 +212,15 @@ Set these values in `.env`:
 | `MEDIA_SOURCES_FILE` | `/app/config/media-sources.txt` | Source list file read by the Rust service when `IMAGE_SOURCES` is empty. |
 | `SOURCE_IMAGE_DIR` | `/images` | Legacy fallback path scanned only when `IMAGE_SOURCES` is empty and no media sources file is available. |
 | `IMAGE_SOURCES` | empty | Optional source list override. When set, this takes precedence over `MEDIA_SOURCES_FILE`. Use a JSON array, comma-separated list, semicolon-separated list, or newline-separated list. |
+| `MINIO_ENDPOINT` | empty | MinIO/S3-compatible endpoint for `minio://` sources. Include a scheme or pair with `MINIO_SECURE`. |
+| `MINIO_ACCESS_KEY` | empty | Access key for `minio://` sources. |
+| `MINIO_SECRET_KEY` | empty | Secret key for `minio://` sources. |
+| `MINIO_SECURE` | `true` | Use HTTPS for MinIO endpoints without an explicit scheme. |
+| `S3_ENDPOINT` | empty | Optional custom endpoint for `s3://` sources. Leave empty for AWS S3 defaults. |
+| `S3_ACCESS_KEY_ID` | empty | Optional access key for `s3://` sources. AWS environment credentials remain supported by the object-store client. |
+| `S3_SECRET_ACCESS_KEY` | empty | Optional secret key for `s3://` sources. |
+| `S3_REGION` | `us-east-1` | Region for `s3://` sources. |
+| `S3_ALLOW_HTTP` | `false` | Allow HTTP custom S3 endpoints. |
 | `QDRANT_URL` | `http://qdrant:6333` | Qdrant URL from inside the app container. |
 | `QDRANT_COLLECTION` | `image_similarity` | Qdrant collection name. |
 | `VECTOR_SIZE` | `512` | Qdrant vector size for the Rust embedder. |
@@ -252,6 +268,15 @@ By default, source folders are configured in `config/media-sources.txt`:
 ```
 
 The file uses a small `.gitignore`-style convention: blank lines and lines starting with `#` are ignored. Each remaining line is a local path or supported source URI. Local paths may use `~`, `$VAR`, or `${VAR}` expansion. The indexer scans configured image, video, audio, and PDF extensions under each listed folder.
+
+Object-store sources use AWS S3-compatible listing and object fetches:
+
+```txt
+minio://media-bucket/photos
+s3://archive-bucket/family/2024
+```
+
+Remote objects are downloaded into an ephemeral cache under `UPLOAD_DIR/source-cache` while they are decoded by the existing image, FFmpeg, and Poppler pipelines. The cache entry is removed after each object is indexed; generated thumbnails and clips still live under the configured data directories.
 
 `IMAGE_SOURCES` still accepts multiple local source paths and overrides the file when set. Local folder support remains backward compatible with `SOURCE_IMAGE_DIR`.
 

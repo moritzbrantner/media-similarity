@@ -39,7 +39,9 @@ use crate::workers::media::video::{
     write_video_upload,
 };
 use crate::workers::media::visual_embedding::VisualEmbeddingBackend;
-use crate::workers::search::ImageSearchService;
+use crate::workers::search::{
+    ImageSearchService, NearDuplicateFilter, OrientationFilter, SearchFilters,
+};
 
 mod error;
 mod health;
@@ -57,6 +59,24 @@ pub struct SearchQuery {
     limit: Option<u32>,
     ocr_text: Option<String>,
     person_id: Option<String>,
+    source_type: Option<String>,
+    media_kind: Option<String>,
+    name_query: Option<String>,
+    camera_query: Option<String>,
+    keyword_query: Option<String>,
+    has_gps: Option<String>,
+    near_duplicate: Option<String>,
+    orientation: Option<String>,
+    min_width: Option<u32>,
+    max_width: Option<u32>,
+    min_height: Option<u32>,
+    max_height: Option<u32>,
+    min_size_bytes: Option<u64>,
+    max_size_bytes: Option<u64>,
+    modified_from: Option<f64>,
+    modified_to: Option<f64>,
+    captured_from: Option<f64>,
+    captured_to: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -628,7 +648,7 @@ fn source_config_response(state: &AppState) -> SourceConfigResponse {
         sources: settings
             .source_specs()
             .into_iter()
-            .map(source_config_source)
+            .map(|spec| source_config_source(spec, &settings))
             .collect(),
         supported_source_types: supported_source_types(),
         indexing: SourceIndexingConfig {
@@ -763,7 +783,7 @@ fn write_media_sources_file(path: &std::path::Path, sources: &[String]) -> Resul
     })
 }
 
-fn source_config_source(spec: String) -> SourceConfigSource {
+fn source_config_source(spec: String, settings: &Settings) -> SourceConfigSource {
     let kind = source_kind(&spec);
     let (status, detail) = match kind.as_str() {
         "local" => {
@@ -777,10 +797,7 @@ fn source_config_source(spec: String) -> SourceConfigSource {
                 )
             }
         }
-        "minio" => (
-            "not_implemented".to_string(),
-            Some("MinIO sources are not implemented in the native Rust service yet".to_string()),
-        ),
+        "minio" | "s3" => object_source_config_status(&spec, &kind, settings),
         "video" => (
             "not_implemented".to_string(),
             Some(
@@ -804,6 +821,77 @@ fn source_config_source(spec: String) -> SourceConfigSource {
         status,
         detail,
     }
+}
+
+fn object_source_config_status(
+    spec: &str,
+    kind: &str,
+    settings: &Settings,
+) -> (String, Option<String>) {
+    let Ok(url) = url::Url::parse(spec) else {
+        return (
+            "unavailable".to_string(),
+            Some(format!("Invalid object-store source URI: {spec}")),
+        );
+    };
+    if url.host_str().filter(|bucket| !bucket.is_empty()).is_none() {
+        return (
+            "unavailable".to_string(),
+            Some(format!("Missing bucket in object-store source URI: {spec}")),
+        );
+    }
+
+    let endpoint = match kind {
+        "minio" => settings
+            .minio_endpoint
+            .clone()
+            .or_else(|| settings.s3_endpoint.clone()),
+        "s3" => settings
+            .s3_endpoint
+            .clone()
+            .or_else(|| settings.minio_endpoint.clone()),
+        _ => None,
+    };
+    let access_key = match kind {
+        "minio" => settings
+            .minio_access_key
+            .clone()
+            .or_else(|| settings.s3_access_key_id.clone()),
+        "s3" => settings
+            .s3_access_key_id
+            .clone()
+            .or_else(|| settings.minio_access_key.clone()),
+        _ => None,
+    };
+    let secret_key = match kind {
+        "minio" => settings
+            .minio_secret_key
+            .clone()
+            .or_else(|| settings.s3_secret_access_key.clone()),
+        "s3" => settings
+            .s3_secret_access_key
+            .clone()
+            .or_else(|| settings.minio_secret_key.clone()),
+        _ => None,
+    };
+
+    if kind == "minio" && endpoint.is_none() {
+        return (
+            "unavailable".to_string(),
+            Some("MINIO_ENDPOINT or S3_ENDPOINT is required for MinIO sources".to_string()),
+        );
+    }
+    if endpoint.is_some() && (access_key.is_none() || secret_key.is_none()) {
+        return (
+            "unavailable".to_string(),
+            Some(format!(
+                "{} object-store credentials are incomplete",
+                kind.to_ascii_uppercase()
+            )),
+        );
+    }
+
+    ("ready".to_string(), None)
 }
 
 fn source_kind(spec: &str) -> String {
@@ -849,8 +937,14 @@ fn supported_source_types() -> Vec<SupportedSourceType> {
         SupportedSourceType {
             kind: "minio".to_string(),
             label: "MinIO bucket".to_string(),
-            implemented: false,
+            implemented: true,
             example: "minio://bucket/prefix".to_string(),
+        },
+        SupportedSourceType {
+            kind: "s3".to_string(),
+            label: "S3 bucket".to_string(),
+            implemented: true,
+            example: "s3://bucket/prefix".to_string(),
         },
         SupportedSourceType {
             kind: "video".to_string(),
@@ -1235,6 +1329,7 @@ pub async fn search_upload(
     Query(query): Query<SearchQuery>,
     mut multipart: Multipart,
 ) -> Result<Json<SearchResponse>, ApiError> {
+    let filters = query.search_filters()?;
     let mut uploaded = None;
     let mut upload_kind = None;
     while let Some(field) = multipart
@@ -1310,7 +1405,7 @@ pub async fn search_upload(
             state,
             query.limit,
             query.ocr_text.as_deref(),
-            query.person_id.as_deref(),
+            filters,
             &raw,
             upload_kind.filename.as_deref(),
         )
@@ -1323,7 +1418,7 @@ pub async fn search_upload(
             state,
             query.limit,
             query.ocr_text.as_deref(),
-            query.person_id.as_deref(),
+            filters,
             &raw,
             upload_kind.filename.as_deref(),
         )
@@ -1336,7 +1431,7 @@ pub async fn search_upload(
             state,
             query.limit,
             query.ocr_text.as_deref(),
-            query.person_id.as_deref(),
+            filters,
             &raw,
             upload_kind.filename.as_deref(),
         )
@@ -1352,15 +1447,98 @@ pub async fn search_upload(
         state.embedder.clone(),
     );
     service
-        .search_media(
-            &media,
-            query.limit,
-            query.ocr_text.as_deref(),
-            query.person_id.as_deref(),
-        )
+        .search_media_filtered(&media, query.limit, query.ocr_text.as_deref(), filters)
         .await
         .map(Json)
         .map_err(search_error)
+}
+
+impl SearchQuery {
+    fn search_filters(&self) -> Result<SearchFilters, ApiError> {
+        Ok(SearchFilters {
+            source_type: normalized_filter(self.source_type.as_deref())
+                .filter(|value| value != "all"),
+            media_kind: normalized_filter(self.media_kind.as_deref())
+                .filter(|value| value != "all")
+                .map(validate_media_kind)
+                .transpose()?,
+            name_query: normalized_filter(self.name_query.as_deref()),
+            camera_query: normalized_filter(self.camera_query.as_deref()),
+            keyword_query: normalized_filter(self.keyword_query.as_deref()),
+            has_gps: parse_has_gps(self.has_gps.as_deref())?,
+            near_duplicate: parse_near_duplicate(self.near_duplicate.as_deref())?,
+            orientation: parse_orientation(self.orientation.as_deref())?,
+            min_width: self.min_width,
+            max_width: self.max_width,
+            min_height: self.min_height,
+            max_height: self.max_height,
+            min_size_bytes: self.min_size_bytes,
+            max_size_bytes: self.max_size_bytes,
+            modified_from: validate_optional_seconds("modified_from", self.modified_from)?,
+            modified_to: validate_optional_seconds("modified_to", self.modified_to)?,
+            captured_from: validate_optional_seconds("captured_from", self.captured_from)?,
+            captured_to: validate_optional_seconds("captured_to", self.captured_to)?,
+            person_id: normalized_filter(self.person_id.as_deref()),
+        })
+    }
+}
+
+fn normalized_filter(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn validate_media_kind(value: String) -> Result<String, ApiError> {
+    match value.as_str() {
+        "static_image" | "animated_gif" | "video_scene" | "audio" | "pdf_page"
+        | "pdf_document" => Ok(value),
+        _ => Err(ApiError::bad_request(format!(
+            "media_kind must be one of all, static_image, animated_gif, video_scene, audio, pdf_page, pdf_document"
+        ))),
+    }
+}
+
+fn parse_has_gps(value: Option<&str>) -> Result<Option<bool>, ApiError> {
+    match normalized_filter(value).as_deref() {
+        None | Some("all") => Ok(None),
+        Some("yes") => Ok(Some(true)),
+        Some("no") => Ok(Some(false)),
+        Some(_) => Err(ApiError::bad_request("has_gps must be one of all, yes, no")),
+    }
+}
+
+fn parse_near_duplicate(value: Option<&str>) -> Result<Option<NearDuplicateFilter>, ApiError> {
+    match normalized_filter(value).as_deref() {
+        None | Some("all") => Ok(None),
+        Some("only") => Ok(Some(NearDuplicateFilter::Only)),
+        Some("exclude") => Ok(Some(NearDuplicateFilter::Exclude)),
+        Some(_) => Err(ApiError::bad_request(
+            "near_duplicate must be one of all, only, exclude",
+        )),
+    }
+}
+
+fn parse_orientation(value: Option<&str>) -> Result<Option<OrientationFilter>, ApiError> {
+    match normalized_filter(value).as_deref() {
+        None | Some("all") => Ok(None),
+        Some("landscape") => Ok(Some(OrientationFilter::Landscape)),
+        Some("portrait") => Ok(Some(OrientationFilter::Portrait)),
+        Some("square") => Ok(Some(OrientationFilter::Square)),
+        Some(_) => Err(ApiError::bad_request(
+            "orientation must be one of all, landscape, portrait, square",
+        )),
+    }
+}
+
+fn validate_optional_seconds(name: &str, value: Option<f64>) -> Result<Option<f64>, ApiError> {
+    match value {
+        Some(value) if !value.is_finite() || value < 0.0 => Err(ApiError::bad_request(format!(
+            "{name} must be a non-negative Unix timestamp in seconds"
+        ))),
+        _ => Ok(value),
+    }
 }
 
 struct UploadedFileKind {
@@ -1374,7 +1552,7 @@ async fn search_pdf_upload(
     state: Arc<AppState>,
     limit: Option<u32>,
     ocr_text: Option<&str>,
-    person_id: Option<&str>,
+    filters: SearchFilters,
     raw: &[u8],
     filename: Option<&str>,
 ) -> Result<SearchResponse, ApiError> {
@@ -1400,7 +1578,7 @@ async fn search_pdf_upload(
 
     for page in &pdf.pages {
         let mut response = service
-            .search_media(&page.media, limit, ocr_text, person_id)
+            .search_media_filtered(&page.media, limit, ocr_text, filters.clone())
             .await
             .map_err(search_error)?;
         for result in &mut response.results {
@@ -1445,7 +1623,7 @@ async fn search_audio_upload(
     state: Arc<AppState>,
     limit: Option<u32>,
     ocr_text: Option<&str>,
-    person_id: Option<&str>,
+    filters: SearchFilters,
     raw: &[u8],
     filename: Option<&str>,
 ) -> Result<SearchResponse, ApiError> {
@@ -1471,7 +1649,7 @@ async fn search_audio_upload(
 
     for segment in &segments {
         let mut response = service
-            .search_media(&segment.media, limit, ocr_text, person_id)
+            .search_media_filtered(&segment.media, limit, ocr_text, filters.clone())
             .await
             .map_err(search_error)?;
         for result in &mut response.results {
@@ -1518,7 +1696,7 @@ async fn search_video_upload(
     state: Arc<AppState>,
     limit: Option<u32>,
     ocr_text: Option<&str>,
-    person_id: Option<&str>,
+    filters: SearchFilters,
     raw: &[u8],
     filename: Option<&str>,
 ) -> Result<SearchResponse, ApiError> {
@@ -1544,7 +1722,7 @@ async fn search_video_upload(
 
     for scene in &scenes {
         let mut response = service
-            .search_media(&scene.media, limit, ocr_text, person_id)
+            .search_media_filtered(&scene.media, limit, ocr_text, filters.clone())
             .await
             .map_err(search_error)?;
         for result in &mut response.results {

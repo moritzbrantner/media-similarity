@@ -4,7 +4,7 @@ use serde_json::Value;
 use url::Url;
 
 use crate::domain::models::{FacePointPayload, ImagePayload};
-use crate::storage::{MediaVectorStore, ScoredPoint, StoredPoint};
+use crate::storage::{MediaSearchFilter, MediaVectorStore, ScoredPoint, StoredPoint};
 
 const EXPECTED_DISTANCE: &str = "Cosine";
 const VISUAL_VECTOR_NAME: &str = "visual";
@@ -106,6 +106,7 @@ impl QdrantImageStore {
     ) -> Result<(), String> {
         let mut payload_value = serde_json::to_value(payload).map_err(|error| error.to_string())?;
         set_payload_kind(&mut payload_value, "media");
+        add_media_filter_payload_fields(&mut payload_value, payload);
         let request = UpsertRequest {
             points: vec![PointStruct {
                 id: payload.id.clone(),
@@ -158,6 +159,7 @@ impl QdrantImageStore {
     pub async fn set_media_payload(&self, payload: &ImagePayload) -> Result<(), String> {
         let mut payload_value = serde_json::to_value(payload).map_err(|error| error.to_string())?;
         set_payload_kind(&mut payload_value, "media");
+        add_media_filter_payload_fields(&mut payload_value, payload);
         let request = SetPayloadRequest {
             payload: payload_value,
             points: vec![payload.id.clone()],
@@ -211,6 +213,17 @@ impl QdrantImageStore {
             .await
     }
 
+    pub async fn search_visual_filtered(
+        &self,
+        vector: Vec<f32>,
+        limit: u32,
+        filter: Option<MediaSearchFilter>,
+    ) -> Result<Vec<ScoredPoint>, String> {
+        let filter = media_search_filter(filter);
+        self.search_named_with_filter(VISUAL_VECTOR_NAME, vector, limit, filter)
+            .await
+    }
+
     pub async fn search_faces(
         &self,
         vector: Vec<f32>,
@@ -227,11 +240,22 @@ impl QdrantImageStore {
         limit: u32,
         point_kind: Option<&'static str>,
     ) -> Result<Vec<ScoredPoint>, String> {
+        self.search_named_with_filter(name, vector, limit, point_kind.map(kind_filter))
+            .await
+    }
+
+    async fn search_named_with_filter(
+        &self,
+        name: &'static str,
+        vector: Vec<f32>,
+        limit: u32,
+        filter: Option<Filter>,
+    ) -> Result<Vec<ScoredPoint>, String> {
         let request = SearchRequest {
             vector: NamedSearchVector { name, vector },
             limit,
             with_payload: true,
-            filter: point_kind.map(kind_filter),
+            filter,
         };
         let response = self
             .send_with_fallback(|base_url| {
@@ -453,6 +477,15 @@ impl MediaVectorStore for QdrantImageStore {
         limit: u32,
     ) -> Result<Vec<ScoredPoint>, String> {
         QdrantImageStore::search_visual(self, vector, limit).await
+    }
+
+    async fn search_visual_filtered(
+        &self,
+        vector: Vec<f32>,
+        limit: u32,
+        filter: Option<MediaSearchFilter>,
+    ) -> Result<Vec<ScoredPoint>, String> {
+        QdrantImageStore::search_visual_filtered(self, vector, limit, filter).await
     }
 
     async fn search_faces(&self, vector: Vec<f32>, limit: u32) -> Result<Vec<ScoredPoint>, String> {
@@ -768,13 +801,23 @@ struct Filter {
 #[derive(Clone, Serialize)]
 struct FieldCondition {
     key: String,
-    #[serde(rename = "match")]
-    condition_match: MatchValue,
+    #[serde(rename = "match", skip_serializing_if = "Option::is_none")]
+    condition_match: Option<MatchValue>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    range: Option<RangeCondition>,
+}
+
+#[derive(Clone, Serialize)]
+struct RangeCondition {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    gte: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lte: Option<f64>,
 }
 
 #[derive(Clone, Serialize)]
 struct MatchValue {
-    value: String,
+    value: Value,
 }
 
 fn kind_filter(kind: &'static str) -> Filter {
@@ -783,12 +826,93 @@ fn kind_filter(kind: &'static str) -> Filter {
     }
 }
 
+fn media_search_filter(filter: Option<MediaSearchFilter>) -> Option<Filter> {
+    let mut conditions = vec![field_condition("point_kind", "media")];
+    let Some(filter) = filter else {
+        return Some(Filter { must: conditions });
+    };
+    if let Some(source_type) = filter.source_type {
+        conditions.push(field_condition("source_type", source_type));
+    }
+    if let Some(media_kind) = filter.media_kind {
+        conditions.push(field_condition("media_kind", media_kind));
+    }
+    if let Some(has_gps) = filter.has_gps {
+        conditions.push(bool_field_condition("photo_has_gps", has_gps));
+    }
+    push_range(
+        &mut conditions,
+        "width",
+        filter.min_width.map(f64::from),
+        filter.max_width.map(f64::from),
+    );
+    push_range(
+        &mut conditions,
+        "height",
+        filter.min_height.map(f64::from),
+        filter.max_height.map(f64::from),
+    );
+    push_range(
+        &mut conditions,
+        "size_bytes",
+        filter.min_size_bytes.map(|value| value as f64),
+        filter.max_size_bytes.map(|value| value as f64),
+    );
+    push_range(
+        &mut conditions,
+        "modified_at",
+        filter.modified_from,
+        filter.modified_to,
+    );
+    push_range(
+        &mut conditions,
+        "photo_capture_time_epoch",
+        filter.captured_from,
+        filter.captured_to,
+    );
+    Some(Filter { must: conditions })
+}
+
+fn push_range(
+    conditions: &mut Vec<FieldCondition>,
+    key: &'static str,
+    gte: Option<f64>,
+    lte: Option<f64>,
+) {
+    if gte.is_some() || lte.is_some() {
+        conditions.push(range_field_condition(key, gte, lte));
+    }
+}
+
 fn field_condition(key: impl Into<String>, value: impl Into<String>) -> FieldCondition {
     FieldCondition {
         key: key.into(),
-        condition_match: MatchValue {
-            value: value.into(),
-        },
+        condition_match: Some(MatchValue {
+            value: Value::String(value.into()),
+        }),
+        range: None,
+    }
+}
+
+fn bool_field_condition(key: impl Into<String>, value: bool) -> FieldCondition {
+    FieldCondition {
+        key: key.into(),
+        condition_match: Some(MatchValue {
+            value: Value::Bool(value),
+        }),
+        range: None,
+    }
+}
+
+fn range_field_condition(
+    key: impl Into<String>,
+    gte: Option<f64>,
+    lte: Option<f64>,
+) -> FieldCondition {
+    FieldCondition {
+        key: key.into(),
+        condition_match: None,
+        range: Some(RangeCondition { gte, lte }),
     }
 }
 
@@ -798,11 +922,72 @@ fn set_payload_kind(payload: &mut Value, kind: &'static str) {
     }
 }
 
+fn add_media_filter_payload_fields(payload: &mut Value, media: &ImagePayload) {
+    let Some(object) = payload.as_object_mut() else {
+        return;
+    };
+    let Some(metadata) = &media.photo_metadata else {
+        object.insert("photo_has_gps".to_string(), Value::Bool(false));
+        return;
+    };
+    object.insert(
+        "photo_has_gps".to_string(),
+        Value::Bool(metadata.gps.is_some()),
+    );
+    if let Some(capture_time) = metadata
+        .capture_time
+        .as_deref()
+        .and_then(parse_capture_time_epoch)
+    {
+        if let Some(number) = serde_json::Number::from_f64(capture_time) {
+            object.insert(
+                "photo_capture_time_epoch".to_string(),
+                Value::Number(number),
+            );
+        }
+    }
+    let camera_text = [
+        metadata.camera_make.as_deref(),
+        metadata.camera_model.as_deref(),
+        metadata.lens_model.as_deref(),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>()
+    .join(" ");
+    if !camera_text.is_empty() {
+        object.insert("photo_camera_text".to_string(), Value::String(camera_text));
+    }
+    if !metadata.keywords.is_empty() {
+        object.insert(
+            "photo_keywords".to_string(),
+            Value::Array(
+                metadata
+                    .keywords
+                    .iter()
+                    .cloned()
+                    .map(Value::String)
+                    .collect(),
+            ),
+        );
+    }
+}
+
+fn parse_capture_time_epoch(value: &str) -> Option<f64> {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .ok()
+        .map(|datetime| {
+            datetime.timestamp() as f64
+                + f64::from(datetime.timestamp_subsec_nanos()) / 1_000_000_000.0
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
 
-    use super::{qdrant_base_urls, validate_collection_vectors};
+    use super::{media_search_filter, qdrant_base_urls, validate_collection_vectors};
+    use crate::storage::MediaSearchFilter;
 
     #[test]
     fn qdrant_service_hostname_falls_back_to_host_port() {
@@ -856,5 +1041,34 @@ mod tests {
         let error = validate_collection_vectors("images", 512, 256, &vectors).unwrap_err();
 
         assert!(error.contains("uses legacy vector schema"));
+    }
+
+    #[test]
+    fn media_search_filter_serializes_exact_and_range_conditions() {
+        let filter = media_search_filter(Some(MediaSearchFilter {
+            source_type: Some("s3".to_string()),
+            media_kind: Some("static_image".to_string()),
+            has_gps: Some(true),
+            min_width: Some(640),
+            max_width: Some(1920),
+            modified_from: Some(1_700_000_000.0),
+            ..MediaSearchFilter::default()
+        }))
+        .unwrap();
+
+        let value = serde_json::to_value(filter).unwrap();
+        assert_eq!(
+            value,
+            json!({
+                "must": [
+                    { "key": "point_kind", "match": { "value": "media" } },
+                    { "key": "source_type", "match": { "value": "s3" } },
+                    { "key": "media_kind", "match": { "value": "static_image" } },
+                    { "key": "photo_has_gps", "match": { "value": true } },
+                    { "key": "width", "range": { "gte": 640.0, "lte": 1920.0 } },
+                    { "key": "modified_at", "range": { "gte": 1_700_000_000.0 } }
+                ]
+            })
+        );
     }
 }

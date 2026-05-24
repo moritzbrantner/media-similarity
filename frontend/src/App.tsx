@@ -85,8 +85,6 @@ import type {
 
 const DEFAULT_LIMIT = 12;
 const DEFAULT_RESULT_SORT: ResultSortMode = "phash_distance";
-const FILTERED_SEARCH_CANDIDATE_MULTIPLIER = 8;
-const MAX_SEARCH_CANDIDATES = 500;
 const MAX_SEARCH_HISTORY = 8;
 const SEARCH_HISTORY_STORAGE_KEY = "image-similarity-search-history";
 const SEARCH_HISTORY_QUERY_KEY = ["search-history"] as const;
@@ -313,12 +311,7 @@ export function App() {
 
   const searchMutation = useMutation({
     mutationFn: ({ filters, ocrTextQuery, queryFile, resultLimit }: SearchVariables) =>
-      searchMedia(
-        queryFile,
-        searchCandidateLimit(resultLimit, filters),
-        ocrTextQuery,
-        filters.personId,
-      ),
+      searchMedia(queryFile, resultLimit, ocrTextQuery, filters),
     onSuccess: (response, variables) => {
       const nextItem: SearchHistoryItem = {
         id: createHistoryId(),
@@ -2377,6 +2370,7 @@ function sourceKindIcon(kind: string) {
     case "camera":
       return Camera;
     case "minio":
+    case "s3":
       return Cloud;
     case "video":
       return Film;
@@ -4171,14 +4165,6 @@ function countActiveFilters(filters: MetadataFilters) {
     const defaultValue = DEFAULT_METADATA_FILTERS[key as keyof MetadataFilters];
     return value !== defaultValue;
   }).length;
-}
-
-function searchCandidateLimit(resultLimit: number, filters: MetadataFilters) {
-  if (countActiveFilters(filters) === 0) {
-    return resultLimit;
-  }
-
-  return Math.min(resultLimit * FILTERED_SEARCH_CANDIDATE_MULTIPLIER, MAX_SEARCH_CANDIDATES);
 }
 
 function sortPeopleEntries(people: InverseIndexResponse["people"]) {
