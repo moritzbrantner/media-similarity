@@ -1,6 +1,11 @@
-use reqwest::{Client, RequestBuilder, Response};
+use std::fmt;
+use std::time::Duration;
+
+use reqwest::{Client, RequestBuilder, Response, StatusCode};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use thiserror::Error;
 use url::Url;
 
 use crate::domain::models::{FacePointPayload, ImagePayload};
@@ -9,6 +14,26 @@ use crate::storage::{MediaSearchFilter, MediaVectorStore, ScoredPoint, StoredPoi
 const EXPECTED_DISTANCE: &str = "Cosine";
 const VISUAL_VECTOR_NAME: &str = "visual";
 const FACE_VECTOR_NAME: &str = "face";
+const MAX_RETRY_BACKOFF_MS: u64 = 1_000;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct QdrantHttpOptions {
+    pub request_timeout_ms: u64,
+    pub connect_timeout_ms: u64,
+    pub retry_attempts: u32,
+    pub retry_backoff_ms: u64,
+}
+
+impl Default for QdrantHttpOptions {
+    fn default() -> Self {
+        Self {
+            request_timeout_ms: 30_000,
+            connect_timeout_ms: 2_000,
+            retry_attempts: 2,
+            retry_backoff_ms: 100,
+        }
+    }
+}
 
 #[derive(Clone)]
 pub struct QdrantImageStore {
@@ -17,6 +42,7 @@ pub struct QdrantImageStore {
     collection: String,
     visual_vector_size: usize,
     face_vector_size: usize,
+    http_options: QdrantHttpOptions,
 }
 
 impl QdrantImageStore {
@@ -26,24 +52,43 @@ impl QdrantImageStore {
         visual_vector_size: usize,
         face_vector_size: usize,
     ) -> Self {
+        Self::new_with_options(
+            url,
+            collection,
+            visual_vector_size,
+            face_vector_size,
+            QdrantHttpOptions::default(),
+        )
+    }
+
+    pub fn new_with_options(
+        url: impl Into<String>,
+        collection: impl Into<String>,
+        visual_vector_size: usize,
+        face_vector_size: usize,
+        http_options: QdrantHttpOptions,
+    ) -> Self {
         Self {
-            client: Client::new(),
+            client: qdrant_http_client(&http_options),
             base_urls: qdrant_base_urls(&url.into()),
             collection: collection.into(),
             visual_vector_size,
             face_vector_size,
+            http_options,
         }
     }
 
     pub async fn ensure_collection(&self) -> Result<(), String> {
+        let path = "/collections".to_string();
         let response = self
-            .send_with_fallback(|base_url| self.client.get(format!("{base_url}/collections")))
-            .await?
-            .error_for_status()
-            .map_err(|error| error.to_string())?
-            .json::<CollectionsResponse>()
+            .send_qdrant("list_collections", &path, |base_url| {
+                self.client.get(format!("{base_url}{path}"))
+            })
             .await
             .map_err(|error| error.to_string())?;
+        let response = self
+            .parse_json::<CollectionsResponse>("list_collections", response)
+            .await?;
 
         if response
             .result
@@ -51,10 +96,16 @@ impl QdrantImageStore {
             .iter()
             .any(|collection| collection.name == self.collection)
         {
-            self.validate_collection_schema().await?;
+            self.validate_collection_schema_and_indexes().await?;
             return Ok(());
         }
 
+        self.create_collection().await?;
+        self.validate_collection_schema_and_indexes().await?;
+        Ok(())
+    }
+
+    async fn create_collection(&self) -> Result<(), String> {
         let request = CreateCollectionRequest {
             vectors: NamedVectors {
                 visual: VectorParams {
@@ -67,36 +118,75 @@ impl QdrantImageStore {
                 },
             },
         };
-        self.send_with_fallback(|base_url| {
-            self.client
-                .put(format!("{base_url}/collections/{}", self.collection))
-                .json(&request)
-        })
-        .await?
-        .error_for_status()
-        .map_err(|error| error.to_string())?;
-        Ok(())
+        let path = format!("/collections/{}", self.collection);
+        match self
+            .send_qdrant("create_collection", &path, |base_url| {
+                self.client.put(format!("{base_url}{path}")).json(&request)
+            })
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(error) if error.status == Some(StatusCode::CONFLICT) => Ok(()),
+            Err(error) => Err(error.to_string()),
+        }
     }
 
-    async fn validate_collection_schema(&self) -> Result<(), String> {
-        let response = self
-            .send_with_fallback(|base_url| {
-                self.client
-                    .get(format!("{base_url}/collections/{}", self.collection))
-            })
-            .await?
-            .error_for_status()
-            .map_err(|error| error.to_string())?
-            .json::<CollectionInfoResponse>()
-            .await
-            .map_err(|error| error.to_string())?;
+    async fn validate_collection_schema_and_indexes(&self) -> Result<(), String> {
+        let response = self.fetch_collection_info().await?;
 
         validate_collection_vectors(
             &self.collection,
             self.visual_vector_size,
             self.face_vector_size,
             &response.result.config.params.vectors,
-        )
+        )?;
+        self.ensure_payload_indexes(response.result.payload_schema.as_ref())
+            .await?;
+        Ok(())
+    }
+
+    async fn fetch_collection_info(&self) -> Result<CollectionInfoResponse, String> {
+        let path = format!("/collections/{}", self.collection);
+        let response = self
+            .send_qdrant("get_collection", &path, |base_url| {
+                self.client.get(format!("{base_url}{path}"))
+            })
+            .await
+            .map_err(|error| error.to_string())?;
+        self.parse_json::<CollectionInfoResponse>("get_collection", response)
+            .await
+    }
+
+    async fn ensure_payload_indexes(&self, payload_schema: Option<&Value>) -> Result<(), String> {
+        for spec in required_payload_indexes() {
+            match payload_index_type(payload_schema, spec.field_name) {
+                Some(actual) if payload_index_type_matches(actual, spec.field_schema) => {}
+                Some(actual) => {
+                    return Err(payload_index_schema_error(
+                        &self.collection,
+                        spec.field_name,
+                        spec.field_schema,
+                        actual,
+                    ));
+                }
+                None => self.create_payload_index(*spec).await?,
+            }
+        }
+        Ok(())
+    }
+
+    async fn create_payload_index(&self, spec: PayloadIndexSpec) -> Result<(), String> {
+        let request = CreatePayloadIndexRequest {
+            field_name: spec.field_name,
+            field_schema: spec.field_schema,
+        };
+        let path = format!("/collections/{}/index?wait=true", self.collection);
+        self.send_qdrant("create_payload_index", &path, |base_url| {
+            self.client.put(format!("{base_url}{path}")).json(&request)
+        })
+        .await
+        .map(|_| ())
+        .map_err(|error| error.to_string())
     }
 
     pub async fn upsert_media(
@@ -114,16 +204,11 @@ impl QdrantImageStore {
                 payload: payload_value,
             }],
         };
-        self.send_with_fallback(|base_url| {
-            self.client
-                .put(format!(
-                    "{base_url}/collections/{}/points?wait=true",
-                    self.collection
-                ))
-                .json(&request)
+        let path = format!("/collections/{}/points?wait=true", self.collection);
+        self.send_qdrant("upsert_media", &path, |base_url| {
+            self.client.put(format!("{base_url}{path}")).json(&request)
         })
-        .await?
-        .error_for_status()
+        .await
         .map_err(|error| error.to_string())?;
         Ok(())
     }
@@ -142,16 +227,11 @@ impl QdrantImageStore {
                 payload: payload_value,
             }],
         };
-        self.send_with_fallback(|base_url| {
-            self.client
-                .put(format!(
-                    "{base_url}/collections/{}/points?wait=true",
-                    self.collection
-                ))
-                .json(&request)
+        let path = format!("/collections/{}/points?wait=true", self.collection);
+        self.send_qdrant("upsert_face", &path, |base_url| {
+            self.client.put(format!("{base_url}{path}")).json(&request)
         })
-        .await?
-        .error_for_status()
+        .await
         .map_err(|error| error.to_string())?;
         Ok(())
     }
@@ -164,16 +244,11 @@ impl QdrantImageStore {
             payload: payload_value,
             points: vec![payload.id.clone()],
         };
-        self.send_with_fallback(|base_url| {
-            self.client
-                .post(format!(
-                    "{base_url}/collections/{}/points/payload?wait=true",
-                    self.collection
-                ))
-                .json(&request)
+        let path = format!("/collections/{}/points/payload?wait=true", self.collection);
+        self.send_qdrant("set_media_payload", &path, |base_url| {
+            self.client.post(format!("{base_url}{path}")).json(&request)
         })
-        .await?
-        .error_for_status()
+        .await
         .map_err(|error| error.to_string())?;
         Ok(())
     }
@@ -186,16 +261,11 @@ impl QdrantImageStore {
         let request = DeletePointsRequest {
             points: ids.to_vec(),
         };
-        self.send_with_fallback(|base_url| {
-            self.client
-                .post(format!(
-                    "{base_url}/collections/{}/points/delete?wait=true",
-                    self.collection
-                ))
-                .json(&request)
+        let path = format!("/collections/{}/points/delete?wait=true", self.collection);
+        self.send_qdrant("delete_points", &path, |base_url| {
+            self.client.post(format!("{base_url}{path}")).json(&request)
         })
-        .await?
-        .error_for_status()
+        .await
         .map_err(|error| error.to_string())?;
         Ok(())
     }
@@ -257,21 +327,21 @@ impl QdrantImageStore {
             with_payload: true,
             filter,
         };
+        let operation = if name == VISUAL_VECTOR_NAME {
+            "search_visual"
+        } else {
+            "search_faces"
+        };
+        let path = format!("/collections/{}/points/search", self.collection);
         let response = self
-            .send_with_fallback(|base_url| {
-                self.client
-                    .post(format!(
-                        "{base_url}/collections/{}/points/search",
-                        self.collection
-                    ))
-                    .json(&request)
+            .send_qdrant(operation, &path, |base_url| {
+                self.client.post(format!("{base_url}{path}")).json(&request)
             })
-            .await?
-            .error_for_status()
-            .map_err(|error| error.to_string())?
-            .json::<SearchResponse>()
             .await
             .map_err(|error| error.to_string())?;
+        let response = self
+            .parse_json::<SearchResponse>(operation, response)
+            .await?;
         Ok(response
             .result
             .into_iter()
@@ -370,21 +440,16 @@ impl QdrantImageStore {
                 offset: offset.clone(),
                 filter: filter.clone(),
             };
+            let path = format!("/collections/{}/points/scroll", self.collection);
             let response = self
-                .send_with_fallback(|base_url| {
-                    self.client
-                        .post(format!(
-                            "{base_url}/collections/{}/points/scroll",
-                            self.collection
-                        ))
-                        .json(&request)
+                .send_qdrant("scroll_points", &path, |base_url| {
+                    self.client.post(format!("{base_url}{path}")).json(&request)
                 })
-                .await?
-                .error_for_status()
-                .map_err(|error| error.to_string())?
-                .json::<ScrollResponse>()
                 .await
                 .map_err(|error| error.to_string())?;
+            let response = self
+                .parse_json::<ScrollResponse>("scroll_points", response)
+                .await?;
 
             points.extend(response.result.points.into_iter().map(|point| StoredPoint {
                 id: point.id,
@@ -403,41 +468,107 @@ impl QdrantImageStore {
     #[allow(dead_code)]
     pub async fn count(&self) -> Result<u64, String> {
         let request = serde_json::json!({ "exact": true });
+        let path = format!("/collections/{}/points/count", self.collection);
         let response = self
-            .send_with_fallback(|base_url| {
-                self.client
-                    .post(format!(
-                        "{base_url}/collections/{}/points/count",
-                        self.collection
-                    ))
-                    .json(&request)
+            .send_qdrant("count_points", &path, |base_url| {
+                self.client.post(format!("{base_url}{path}")).json(&request)
             })
-            .await?
-            .error_for_status()
-            .map_err(|error| error.to_string())?
-            .json::<CountResponse>()
             .await
             .map_err(|error| error.to_string())?;
+        let response = self
+            .parse_json::<CountResponse>("count_points", response)
+            .await?;
         Ok(response.result.count)
     }
 
-    async fn send_with_fallback(
+    async fn parse_json<T: DeserializeOwned>(
         &self,
-        build_request: impl Fn(&str) -> RequestBuilder,
-    ) -> Result<Response, String> {
-        let mut errors = Vec::new();
+        operation: &'static str,
+        response: Response,
+    ) -> Result<T, String> {
+        let url = response.url().to_string();
+        response.json::<T>().await.map_err(|error| {
+            QdrantJsonError {
+                operation,
+                collection: self.collection.clone(),
+                url,
+                detail: error.to_string(),
+            }
+            .to_string()
+        })
+    }
 
-        for base_url in &self.base_urls {
-            match build_request(base_url).send().await {
-                Ok(response) => return Ok(response),
-                Err(error) => errors.push(format!("{base_url}: {error}")),
+    async fn send_qdrant(
+        &self,
+        operation: &'static str,
+        path: &str,
+        build_request: impl Fn(&str) -> RequestBuilder,
+    ) -> Result<Response, QdrantHttpError> {
+        let max_attempts = self.http_options.retry_attempts.saturating_add(1).max(1);
+        let mut last_error = None;
+
+        for attempt in 1..=max_attempts {
+            for base_url in &self.base_urls {
+                let fallback_url = format!("{base_url}{path}");
+                match build_request(base_url).send().await {
+                    Ok(response) if response.status().is_success() => return Ok(response),
+                    Ok(response) => {
+                        let status = response.status();
+                        let url = response.url().to_string();
+                        let body = response.text().await.unwrap_or_default();
+                        let error = QdrantHttpError::http(
+                            operation,
+                            &self.collection,
+                            url,
+                            attempt,
+                            status,
+                            body,
+                        );
+                        if !is_retryable_status(status) {
+                            return Err(error);
+                        }
+                        last_error = Some(error);
+                    }
+                    Err(error) => {
+                        let url = error.url().map(ToString::to_string).unwrap_or(fallback_url);
+                        let error = QdrantHttpError::request(
+                            operation,
+                            &self.collection,
+                            url,
+                            attempt,
+                            error.to_string(),
+                        );
+                        last_error = Some(error);
+                    }
+                }
+            }
+
+            if attempt < max_attempts {
+                let delay_ms = retry_delay_ms(self.http_options.retry_backoff_ms, attempt - 1);
+                if let Some(error) = &last_error {
+                    tracing::warn!(
+                        operation,
+                        collection = %self.collection,
+                        attempt,
+                        max_attempts,
+                        next_delay_ms = delay_ms,
+                        error = %error,
+                        "retrying transient Qdrant request failure"
+                    );
+                }
+                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
             }
         }
 
-        Err(format!(
-            "Qdrant request failed for all configured URLs: {}",
-            errors.join("; ")
-        ))
+        Err(last_error.unwrap_or_else(|| {
+            QdrantHttpError::request(
+                operation,
+                &self.collection,
+                path.to_string(),
+                max_attempts,
+                "no Qdrant URLs are configured".to_string(),
+            )
+        }))
     }
 }
 
@@ -535,6 +666,121 @@ fn qdrant_local_fallback(base_url: &str) -> Option<String> {
     Some(url.as_str().trim_end_matches('/').to_string())
 }
 
+fn qdrant_http_client(options: &QdrantHttpOptions) -> Client {
+    Client::builder()
+        .timeout(Duration::from_millis(options.request_timeout_ms))
+        .connect_timeout(Duration::from_millis(options.connect_timeout_ms))
+        .build()
+        .expect("Qdrant HTTP client options are valid")
+}
+
+#[derive(Debug, Error)]
+#[error(
+    "Qdrant {operation} failed for collection {collection} at {url} after {attempts} attempt(s): {kind}"
+)]
+struct QdrantHttpError {
+    operation: &'static str,
+    collection: String,
+    url: String,
+    attempts: u32,
+    status: Option<StatusCode>,
+    kind: QdrantHttpErrorKind,
+}
+
+impl QdrantHttpError {
+    fn request(
+        operation: &'static str,
+        collection: &str,
+        url: String,
+        attempts: u32,
+        source: String,
+    ) -> Self {
+        Self {
+            operation,
+            collection: collection.to_string(),
+            url,
+            attempts,
+            status: None,
+            kind: QdrantHttpErrorKind::Request { source },
+        }
+    }
+
+    fn http(
+        operation: &'static str,
+        collection: &str,
+        url: String,
+        attempts: u32,
+        status: StatusCode,
+        body: String,
+    ) -> Self {
+        Self {
+            operation,
+            collection: collection.to_string(),
+            url,
+            attempts,
+            status: Some(status),
+            kind: QdrantHttpErrorKind::Http {
+                status,
+                body: response_body_snippet(&body),
+            },
+        }
+    }
+}
+
+#[derive(Debug)]
+enum QdrantHttpErrorKind {
+    Request { source: String },
+    Http { status: StatusCode, body: String },
+}
+
+impl fmt::Display for QdrantHttpErrorKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Request { source } => write!(formatter, "{source}"),
+            Self::Http { status, body } if body.is_empty() => write!(formatter, "HTTP {status}"),
+            Self::Http { status, body } => write!(formatter, "HTTP {status}: {body}"),
+        }
+    }
+}
+
+#[derive(Debug, Error)]
+#[error("Qdrant {operation} returned invalid JSON for collection {collection} at {url}: {detail}")]
+struct QdrantJsonError {
+    operation: &'static str,
+    collection: String,
+    url: String,
+    detail: String,
+}
+
+fn response_body_snippet(body: &str) -> String {
+    const MAX_BODY_CHARS: usize = 512;
+    let trimmed = body.trim();
+    let snippet = trimmed.chars().take(MAX_BODY_CHARS).collect::<String>();
+    if trimmed.chars().count() > MAX_BODY_CHARS {
+        format!("{snippet}...")
+    } else {
+        snippet
+    }
+}
+
+fn is_retryable_status(status: StatusCode) -> bool {
+    matches!(
+        status,
+        StatusCode::REQUEST_TIMEOUT
+            | StatusCode::TOO_MANY_REQUESTS
+            | StatusCode::INTERNAL_SERVER_ERROR
+            | StatusCode::BAD_GATEWAY
+            | StatusCode::SERVICE_UNAVAILABLE
+            | StatusCode::GATEWAY_TIMEOUT
+    )
+}
+
+fn retry_delay_ms(base_delay_ms: u64, attempt_index: u32) -> u64 {
+    base_delay_ms
+        .saturating_mul(2_u64.saturating_pow(attempt_index))
+        .min(MAX_RETRY_BACKOFF_MS)
+}
+
 #[derive(Deserialize)]
 struct CollectionsResponse {
     result: CollectionsResult,
@@ -558,6 +804,8 @@ struct CollectionInfoResponse {
 #[derive(Deserialize)]
 struct CollectionInfoResult {
     config: CollectionConfig,
+    #[serde(default)]
+    payload_schema: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -573,6 +821,12 @@ struct CollectionParams {
 #[derive(Serialize)]
 struct CreateCollectionRequest {
     vectors: NamedVectors,
+}
+
+#[derive(Serialize)]
+struct CreatePayloadIndexRequest {
+    field_name: &'static str,
+    field_schema: PayloadFieldSchema,
 }
 
 #[derive(Serialize)]
@@ -793,6 +1047,117 @@ fn legacy_collection_schema_error(collection: &str) -> String {
     )
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum PayloadFieldSchema {
+    Keyword,
+    #[serde(rename = "bool")]
+    Bool,
+    Integer,
+    Float,
+}
+
+impl fmt::Display for PayloadFieldSchema {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            Self::Keyword => "keyword",
+            Self::Bool => "bool",
+            Self::Integer => "integer",
+            Self::Float => "float",
+        };
+        formatter.write_str(value)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PayloadIndexSpec {
+    field_name: &'static str,
+    field_schema: PayloadFieldSchema,
+}
+
+fn required_payload_indexes() -> &'static [PayloadIndexSpec] {
+    &[
+        PayloadIndexSpec {
+            field_name: "point_kind",
+            field_schema: PayloadFieldSchema::Keyword,
+        },
+        PayloadIndexSpec {
+            field_name: "id",
+            field_schema: PayloadFieldSchema::Keyword,
+        },
+        PayloadIndexSpec {
+            field_name: "source_uri",
+            field_schema: PayloadFieldSchema::Keyword,
+        },
+        PayloadIndexSpec {
+            field_name: "source_item_uri",
+            field_schema: PayloadFieldSchema::Keyword,
+        },
+        PayloadIndexSpec {
+            field_name: "source_type",
+            field_schema: PayloadFieldSchema::Keyword,
+        },
+        PayloadIndexSpec {
+            field_name: "media_kind",
+            field_schema: PayloadFieldSchema::Keyword,
+        },
+        PayloadIndexSpec {
+            field_name: "photo_has_gps",
+            field_schema: PayloadFieldSchema::Bool,
+        },
+        PayloadIndexSpec {
+            field_name: "width",
+            field_schema: PayloadFieldSchema::Integer,
+        },
+        PayloadIndexSpec {
+            field_name: "height",
+            field_schema: PayloadFieldSchema::Integer,
+        },
+        PayloadIndexSpec {
+            field_name: "size_bytes",
+            field_schema: PayloadFieldSchema::Integer,
+        },
+        PayloadIndexSpec {
+            field_name: "modified_at",
+            field_schema: PayloadFieldSchema::Float,
+        },
+        PayloadIndexSpec {
+            field_name: "photo_capture_time_epoch",
+            field_schema: PayloadFieldSchema::Float,
+        },
+    ]
+}
+
+fn payload_index_type<'a>(payload_schema: Option<&'a Value>, field_name: &str) -> Option<&'a str> {
+    let value = payload_schema?.get(field_name)?;
+    value
+        .as_str()
+        .or_else(|| value.get("data_type").and_then(Value::as_str))
+        .or_else(|| value.get("type").and_then(Value::as_str))
+}
+
+fn payload_index_type_matches(actual: &str, expected: PayloadFieldSchema) -> bool {
+    match expected {
+        PayloadFieldSchema::Keyword => actual.eq_ignore_ascii_case("keyword"),
+        PayloadFieldSchema::Bool => {
+            actual.eq_ignore_ascii_case("bool") || actual.eq_ignore_ascii_case("boolean")
+        }
+        PayloadFieldSchema::Integer => actual.eq_ignore_ascii_case("integer"),
+        PayloadFieldSchema::Float => actual.eq_ignore_ascii_case("float"),
+    }
+}
+
+fn payload_index_schema_error(
+    collection: &str,
+    field_name: &str,
+    expected: PayloadFieldSchema,
+    actual: &str,
+) -> String {
+    format!(
+        "Qdrant collection `{collection}` payload index `{field_name}` is incompatible with this service: expected {expected}, found {actual}. Delete and recreate the payload index, or set QDRANT_COLLECTION to a new empty collection name and re-index media."
+    )
+}
+
 #[derive(Clone, Serialize)]
 struct Filter {
     must: Vec<FieldCondition>,
@@ -984,9 +1349,14 @@ fn parse_capture_time_epoch(value: &str) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
+    use reqwest::StatusCode;
     use serde_json::json;
 
-    use super::{media_search_filter, qdrant_base_urls, validate_collection_vectors};
+    use super::{
+        is_retryable_status, media_search_filter, payload_index_schema_error, payload_index_type,
+        payload_index_type_matches, qdrant_base_urls, required_payload_indexes, retry_delay_ms,
+        validate_collection_vectors, PayloadFieldSchema,
+    };
     use crate::storage::MediaSearchFilter;
 
     #[test]
@@ -1041,6 +1411,109 @@ mod tests {
         let error = validate_collection_vectors("images", 512, 256, &vectors).unwrap_err();
 
         assert!(error.contains("uses legacy vector schema"));
+    }
+
+    #[test]
+    fn required_payload_indexes_cover_filter_fields() {
+        let indexes = required_payload_indexes();
+        let fields = indexes
+            .iter()
+            .map(|index| (index.field_name, index.field_schema))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            fields,
+            vec![
+                ("point_kind", PayloadFieldSchema::Keyword),
+                ("id", PayloadFieldSchema::Keyword),
+                ("source_uri", PayloadFieldSchema::Keyword),
+                ("source_item_uri", PayloadFieldSchema::Keyword),
+                ("source_type", PayloadFieldSchema::Keyword),
+                ("media_kind", PayloadFieldSchema::Keyword),
+                ("photo_has_gps", PayloadFieldSchema::Bool),
+                ("width", PayloadFieldSchema::Integer),
+                ("height", PayloadFieldSchema::Integer),
+                ("size_bytes", PayloadFieldSchema::Integer),
+                ("modified_at", PayloadFieldSchema::Float),
+                ("photo_capture_time_epoch", PayloadFieldSchema::Float),
+            ]
+        );
+    }
+
+    #[test]
+    fn payload_index_schema_accepts_compatible_types() {
+        let schema = json!({
+            "media_kind": { "data_type": "keyword" },
+            "photo_has_gps": { "data_type": "bool" },
+            "width": { "data_type": "integer" },
+            "modified_at": { "data_type": "float" }
+        });
+
+        assert!(payload_index_type_matches(
+            payload_index_type(Some(&schema), "media_kind").unwrap(),
+            PayloadFieldSchema::Keyword
+        ));
+        assert!(payload_index_type_matches(
+            payload_index_type(Some(&schema), "photo_has_gps").unwrap(),
+            PayloadFieldSchema::Bool
+        ));
+        assert!(payload_index_type_matches(
+            payload_index_type(Some(&schema), "width").unwrap(),
+            PayloadFieldSchema::Integer
+        ));
+        assert!(payload_index_type_matches(
+            payload_index_type(Some(&schema), "modified_at").unwrap(),
+            PayloadFieldSchema::Float
+        ));
+    }
+
+    #[test]
+    fn incompatible_payload_index_schema_reports_remediation() {
+        let error = payload_index_schema_error(
+            "images",
+            "modified_at",
+            PayloadFieldSchema::Float,
+            "keyword",
+        );
+
+        assert!(error.contains("payload index `modified_at` is incompatible"));
+        assert!(error.contains("expected float, found keyword"));
+        assert!(error.contains("set QDRANT_COLLECTION to a new empty collection name"));
+    }
+
+    #[test]
+    fn qdrant_retry_classifier_matches_transient_http_statuses() {
+        for status in [
+            StatusCode::REQUEST_TIMEOUT,
+            StatusCode::TOO_MANY_REQUESTS,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            StatusCode::BAD_GATEWAY,
+            StatusCode::SERVICE_UNAVAILABLE,
+            StatusCode::GATEWAY_TIMEOUT,
+        ] {
+            assert!(is_retryable_status(status), "{status} should be retryable");
+        }
+
+        for status in [
+            StatusCode::BAD_REQUEST,
+            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
+            StatusCode::NOT_FOUND,
+            StatusCode::CONFLICT,
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ] {
+            assert!(
+                !is_retryable_status(status),
+                "{status} should not be retryable"
+            );
+        }
+    }
+
+    #[test]
+    fn retry_backoff_is_exponential_and_capped() {
+        assert_eq!(retry_delay_ms(100, 0), 100);
+        assert_eq!(retry_delay_ms(100, 1), 200);
+        assert_eq!(retry_delay_ms(100, 4), 1_000);
     }
 
     #[test]

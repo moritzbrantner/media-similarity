@@ -1,6 +1,6 @@
 use image::RgbImage;
 use image_analysis_core::{ImagePixelFormat, ImageView};
-use image_analysis_models::ImageEmbedderBackend;
+use image_analysis_embeddings::ImageEmbedderBackend;
 use image_analysis_onnx::{NativeOnnxRunner, OnnxImageEmbedder};
 
 use crate::config::Settings;

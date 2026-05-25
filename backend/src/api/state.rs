@@ -1,7 +1,7 @@
 use std::sync::{Arc, RwLock};
 
 use crate::config::Settings;
-use crate::storage::qdrant::QdrantImageStore;
+use crate::storage::qdrant::{QdrantHttpOptions, QdrantImageStore};
 use crate::storage::MediaVectorStore;
 use crate::workers::jobs::JobManager;
 use crate::workers::media::visual_embedding::{build_visual_embedder, VisualEmbeddingBackend};
@@ -19,11 +19,17 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(settings: Settings) -> Self {
-        let store = Arc::new(QdrantImageStore::new(
+        let store = Arc::new(QdrantImageStore::new_with_options(
             settings.qdrant_url.clone(),
             settings.qdrant_collection.clone(),
             settings.visual_embedding_vector_size,
             settings.face_embedding_vector_size,
+            QdrantHttpOptions {
+                request_timeout_ms: settings.qdrant_request_timeout_ms,
+                connect_timeout_ms: settings.qdrant_connect_timeout_ms,
+                retry_attempts: settings.qdrant_retry_attempts,
+                retry_backoff_ms: settings.qdrant_retry_backoff_ms,
+            },
         ));
         let embedder = build_visual_embedder(&settings);
         let indexing_config = RwLock::new(EditableIndexingConfig::from_settings(&settings));

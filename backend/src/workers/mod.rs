@@ -5,3 +5,4 @@ pub mod jobs;
 pub mod media;
 pub mod search;
 pub mod sources;
+pub mod watcher;

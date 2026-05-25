@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use image_analysis_models::{FaceDetectionPreset, FaceEmbeddingPreset, ImageEmbeddingPreset};
+use image_analysis_detection::FaceDetectionPreset;
+use image_analysis_embeddings::{FaceEmbeddingPreset, ImageEmbeddingPreset};
 use model_runtime::{HuggingFaceDownloader, HuggingFaceModelSpec, ModelBundle, ModelBundleStore};
 use serde::Serialize;
 use text_transcripts::{WhisperCppModel, WhisperCppModelStore};

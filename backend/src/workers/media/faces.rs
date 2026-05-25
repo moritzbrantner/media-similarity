@@ -1,8 +1,9 @@
 use image::RgbImage;
 use image_analysis_core::{ImagePixelFormat, ImageView};
-use image_analysis_models::{
-    FaceDetection as SharedFaceDetection, FaceDetectorBackend, FaceEmbedderBackend,
+use image_analysis_detection::{
+    FaceBox as SharedFaceBox, FaceDetection as SharedFaceDetection, FaceDetectorBackend,
 };
+use image_analysis_embeddings::FaceEmbedderBackend;
 use image_analysis_onnx::{
     NativeOnnxRunner, OnnxFaceDetectionOptions, OnnxFaceDetector, OnnxFaceEmbedder,
 };
@@ -306,7 +307,7 @@ impl From<FaceBox> for FaceBoxPayload {
 }
 
 impl FaceBox {
-    fn from_shared(value: &image_analysis_models::FaceBox) -> Self {
+    fn from_shared(value: &SharedFaceBox) -> Self {
         Self {
             x: value.x,
             y: value.y,
@@ -330,7 +331,7 @@ fn rgb_image_view(image: &RgbImage) -> Result<ImageView<'_>, String> {
 mod tests {
     use image::{ImageBuffer, Rgb};
 
-    use super::{FaceBox, FaceDetector};
+    use super::{FaceBox, FaceDetector, SharedFaceBox};
     use crate::config::Settings;
 
     #[test]
@@ -349,7 +350,7 @@ mod tests {
 
     #[test]
     fn shared_face_box_maps_to_service_payload_box() {
-        let shared = image_analysis_models::FaceBox::new(0.1, 0.2, 0.3, 0.4).unwrap();
+        let shared = SharedFaceBox::new(0.1, 0.2, 0.3, 0.4).unwrap();
 
         let service = FaceBox::from_shared(&shared);
 

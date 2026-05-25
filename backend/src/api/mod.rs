@@ -1841,7 +1841,7 @@ fn model_job_spec(kind: &str, name: &str, model: WhisperCppModel) -> Result<JobS
     .map_err(ApiError::from_job)
 }
 
-fn run_index_job(
+pub(crate) fn run_index_job(
     context: JobContext,
     settings: Settings,
     store: Arc<dyn MediaVectorStore>,

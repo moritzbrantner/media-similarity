@@ -4,7 +4,7 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use axum::extract::{Path as AxumPath, State};
 use axum::http::StatusCode as AxumStatusCode;
@@ -724,9 +724,62 @@ async fn readiness_reports_ready_when_required_dependencies_are_available() {
 }
 
 #[tokio::test]
-async fn readiness_reports_not_ready_when_qdrant_is_unavailable() {
+async fn readiness_creates_qdrant_payload_indexes() {
     let app = TestApp::new(|settings| {
-        settings.qdrant_url = "http://127.0.0.1:9".to_string();
+        settings.ocr_enabled = false;
+    })
+    .await;
+
+    let response = app.raw_get("/api/ready").await;
+
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let schema = app
+        ._qdrant
+        .payload_schema(&app.state.settings.qdrant_collection);
+    for (field, data_type) in [
+        ("point_kind", "keyword"),
+        ("id", "keyword"),
+        ("source_uri", "keyword"),
+        ("source_item_uri", "keyword"),
+        ("source_type", "keyword"),
+        ("media_kind", "keyword"),
+        ("photo_has_gps", "bool"),
+        ("width", "integer"),
+        ("height", "integer"),
+        ("size_bytes", "integer"),
+        ("modified_at", "float"),
+        ("photo_capture_time_epoch", "float"),
+    ] {
+        assert_eq!(
+            schema
+                .get(field)
+                .and_then(|value| value.get("data_type"))
+                .and_then(Value::as_str),
+            Some(data_type),
+            "missing or invalid payload index {field}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn readiness_succeeds_when_qdrant_payload_indexes_already_exist() {
+    let app = TestApp::new(|settings| {
+        settings.ocr_enabled = false;
+    })
+    .await;
+
+    let first = app.raw_get("/api/ready").await;
+    let second = app.raw_get("/api/ready").await;
+
+    assert_eq!(first.status(), reqwest::StatusCode::OK);
+    assert_eq!(second.status(), reqwest::StatusCode::OK);
+}
+
+#[tokio::test]
+async fn readiness_fails_when_qdrant_payload_index_creation_fails() {
+    let app = TestApp::new(|settings| {
+        settings.qdrant_collection = format!("fail-payload-index-{}", Uuid::new_v4());
+        settings.qdrant_retry_attempts = 0;
         settings.ocr_enabled = false;
     })
     .await;
@@ -734,6 +787,36 @@ async fn readiness_reports_not_ready_when_qdrant_is_unavailable() {
     let response = app.raw_get("/api/ready").await;
 
     assert_eq!(response.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
+    let body: Value = response.json().await.unwrap();
+    let qdrant = body["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|check| check["name"] == "qdrant")
+        .unwrap();
+    assert_eq!(qdrant["status"], "error");
+    let detail = qdrant["detail"].as_str().unwrap();
+    assert!(detail.contains("Qdrant create_payload_index failed"));
+    assert!(detail.contains("fail-payload-index"));
+    assert!(detail.contains("HTTP 503"));
+}
+
+#[tokio::test]
+async fn readiness_reports_not_ready_when_qdrant_is_unavailable() {
+    let app = TestApp::new(|settings| {
+        settings.qdrant_url = "http://127.0.0.1:9".to_string();
+        settings.qdrant_request_timeout_ms = 1_000;
+        settings.qdrant_connect_timeout_ms = 100;
+        settings.qdrant_retry_attempts = 0;
+        settings.ocr_enabled = false;
+    })
+    .await;
+
+    let start = Instant::now();
+    let response = app.raw_get("/api/ready").await;
+
+    assert_eq!(response.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
+    assert!(start.elapsed() < Duration::from_secs(2));
     let body: Value = response.json().await.unwrap();
     assert_eq!(body["status"], "not_ready");
     assert!(body["checks"]
@@ -1377,12 +1460,18 @@ impl Drop for TempDir {
 
 struct FakeQdrant {
     base_url: String,
+    state: Arc<Mutex<FakeQdrantState>>,
 }
 
 #[derive(Default)]
 struct FakeQdrantState {
-    collections: BTreeMap<String, Value>,
+    collections: BTreeMap<String, FakeCollection>,
     points: BTreeMap<(String, String), FakePoint>,
+}
+
+struct FakeCollection {
+    vectors: Value,
+    payload_schema: BTreeMap<String, Value>,
 }
 
 #[derive(Clone)]
@@ -1394,6 +1483,12 @@ struct FakePoint {
 #[derive(Deserialize)]
 struct FakeCreateCollectionRequest {
     vectors: Value,
+}
+
+#[derive(Deserialize)]
+struct FakeCreatePayloadIndexRequest {
+    field_name: String,
+    field_schema: Value,
 }
 
 #[derive(Deserialize)]
@@ -1436,6 +1531,10 @@ impl FakeQdrant {
                 "/collections/:collection",
                 get(fake_get_collection).put(fake_create_collection),
             )
+            .route(
+                "/collections/:collection/index",
+                put(fake_create_payload_index),
+            )
             .route("/collections/:collection/points", put(fake_upsert_points))
             .route(
                 "/collections/:collection/points/delete",
@@ -1449,7 +1548,7 @@ impl FakeQdrant {
                 "/collections/:collection/points/search",
                 post(fake_search_points),
             )
-            .with_state(state);
+            .with_state(state.clone());
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr: SocketAddr = listener.local_addr().unwrap();
         tokio::spawn(async move {
@@ -1457,7 +1556,18 @@ impl FakeQdrant {
         });
         Self {
             base_url: format!("http://{addr}"),
+            state,
         }
+    }
+
+    fn payload_schema(&self, collection: &str) -> BTreeMap<String, Value> {
+        self.state
+            .lock()
+            .unwrap()
+            .collections
+            .get(collection)
+            .map(|collection| collection.payload_schema.clone())
+            .unwrap_or_default()
     }
 }
 
@@ -1476,12 +1586,44 @@ async fn fake_create_collection(
     State(state): State<Arc<Mutex<FakeQdrantState>>>,
     Json(request): Json<FakeCreateCollectionRequest>,
 ) -> Json<Value> {
-    state
-        .lock()
-        .unwrap()
-        .collections
-        .insert(collection, request.vectors);
+    state.lock().unwrap().collections.insert(
+        collection,
+        FakeCollection {
+            vectors: request.vectors,
+            payload_schema: BTreeMap::new(),
+        },
+    );
     Json(json!({ "result": true }))
+}
+
+async fn fake_create_payload_index(
+    AxumPath(collection): AxumPath<String>,
+    State(state): State<Arc<Mutex<FakeQdrantState>>>,
+    Json(request): Json<FakeCreatePayloadIndexRequest>,
+) -> Result<Json<Value>, AxumStatusCode> {
+    if collection.starts_with("fail-payload-index") {
+        return Err(AxumStatusCode::SERVICE_UNAVAILABLE);
+    }
+    let mut state = state.lock().unwrap();
+    let Some(collection) = state.collections.get_mut(&collection) else {
+        return Err(AxumStatusCode::NOT_FOUND);
+    };
+    let data_type = request
+        .field_schema
+        .as_str()
+        .map(str::to_string)
+        .or_else(|| {
+            request
+                .field_schema
+                .get("type")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .ok_or(AxumStatusCode::UNPROCESSABLE_ENTITY)?;
+    collection
+        .payload_schema
+        .insert(request.field_name, json!({ "data_type": data_type }));
+    Ok(Json(json!({ "result": { "status": "completed" } })))
 }
 
 async fn fake_get_collection(
@@ -1489,14 +1631,15 @@ async fn fake_get_collection(
     State(state): State<Arc<Mutex<FakeQdrantState>>>,
 ) -> Result<Json<Value>, AxumStatusCode> {
     let state = state.lock().unwrap();
-    let Some(vectors) = state.collections.get(&collection) else {
+    let Some(collection) = state.collections.get(&collection) else {
         return Err(AxumStatusCode::NOT_FOUND);
     };
     Ok(Json(json!({
         "result": {
+            "payload_schema": &collection.payload_schema,
             "config": {
                 "params": {
-                    "vectors": vectors
+                    "vectors": &collection.vectors
                 }
             }
         }

@@ -54,10 +54,10 @@ name = "audio-analysis-core"
 version = "0.1.0"
 dependencies = [
  "math-signal-core",
- "runtime-contracts",
  "serde_json",
  "tensor-data",
  "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -65,10 +65,10 @@ name = "audio-analysis-fourier"
 version = "0.1.0"
 dependencies = [
  "audio-analysis-core",
- "runtime-contracts",
  "rustfft",
  "serde_json",
  "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -77,11 +77,11 @@ version = "0.1.0"
 dependencies = [
  "audio-analysis-core",
  "hound",
- "runtime-contracts",
  "serde_json",
  "video-analysis-core",
  "video-analysis-ffmpeg",
  "video-analysis-ingest",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -91,11 +91,11 @@ dependencies = [
  "audio-analysis-core",
  "audio-analysis-fourier",
  "model-runtime",
- "runtime-contracts",
  "serde",
  "serde_json",
  "text-transcripts",
  "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -103,9 +103,9 @@ name = "audio-analysis-rhythm"
 version = "0.1.0"
 dependencies = [
  "audio-analysis-core",
- "runtime-contracts",
  "serde_json",
  "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -114,10 +114,10 @@ version = "0.1.0"
 dependencies = [
  "audio-analysis-core",
  "audio-analysis-recognition",
- "runtime-contracts",
  "serde",
  "serde_json",
  "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -399,9 +399,9 @@ dependencies = [
 name = "data-inversion-core"
 version = "0.1.0"
 dependencies = [
- "runtime-contracts",
  "serde_json",
  "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -547,6 +547,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
 dependencies = [
  "percent-encoding",
+]
+
+[[package]]
+name = "fsevent-sys"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76ee7a02da4d231650c7cea31349b889be2f45ddb3ef3032d2ec8185f6313fd2"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
@@ -1019,13 +1028,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "image-analysis-classification"
+version = "0.1.0"
+dependencies = [
+ "image-analysis-core",
+ "image-analysis-detection",
+ "image-analysis-ocr",
+ "image-analysis-segmentation",
+ "image-analysis-synthesis",
+ "model-runtime",
+ "serde",
+ "serde_json",
+ "video-analysis-core",
+ "video-analysis-runtime-contracts",
+]
+
+[[package]]
 name = "image-analysis-core"
 version = "0.1.0"
 dependencies = [
- "runtime-contracts",
  "serde_json",
  "tensor-data",
  "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1035,9 +1060,25 @@ dependencies = [
  "image-analysis-core",
  "image-analysis-segmentation",
  "model-runtime",
- "runtime-contracts",
  "serde_json",
  "video-analysis-core",
+ "video-analysis-runtime-contracts",
+]
+
+[[package]]
+name = "image-analysis-embeddings"
+version = "0.1.0"
+dependencies = [
+ "image-analysis-core",
+ "image-analysis-detection",
+ "image-analysis-ocr",
+ "image-analysis-segmentation",
+ "image-analysis-synthesis",
+ "model-runtime",
+ "serde",
+ "serde_json",
+ "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1046,20 +1087,9 @@ version = "0.1.0"
 dependencies = [
  "image",
  "image-analysis-core",
- "runtime-contracts",
  "serde_json",
  "video-analysis-core",
-]
-
-[[package]]
-name = "image-analysis-models"
-version = "0.1.0"
-dependencies = [
- "image-analysis-detection",
- "image-analysis-segmentation",
- "image-analysis-tasks",
- "runtime-contracts",
- "serde_json",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1068,24 +1098,25 @@ version = "0.1.0"
 dependencies = [
  "image-analysis-core",
  "model-runtime",
- "runtime-contracts",
  "serde_json",
  "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
 name = "image-analysis-onnx"
 version = "0.1.0"
 dependencies = [
+ "image-analysis-classification",
  "image-analysis-core",
  "image-analysis-detection",
+ "image-analysis-embeddings",
  "image-analysis-processing",
- "image-analysis-tasks",
  "model-runtime",
  "ort",
- "runtime-contracts",
  "serde_json",
  "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1096,9 +1127,9 @@ dependencies = [
  "image-analysis-core",
  "math-geometry-2d",
  "math-linear",
- "runtime-contracts",
  "serde_json",
  "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1107,9 +1138,9 @@ version = "0.1.0"
 dependencies = [
  "image-analysis-core",
  "model-runtime",
- "runtime-contracts",
  "serde_json",
  "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1118,25 +1149,9 @@ version = "0.1.0"
 dependencies = [
  "data-inversion-core",
  "image-analysis-core",
- "runtime-contracts",
  "serde_json",
  "video-analysis-core",
-]
-
-[[package]]
-name = "image-analysis-tasks"
-version = "0.1.0"
-dependencies = [
- "image-analysis-core",
- "image-analysis-detection",
- "image-analysis-ocr",
- "image-analysis-segmentation",
- "image-analysis-synthesis",
- "model-runtime",
- "runtime-contracts",
- "serde",
- "serde_json",
- "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1153,13 +1168,15 @@ dependencies = [
  "futures-util",
  "image",
  "image-analysis-core",
+ "image-analysis-detection",
+ "image-analysis-embeddings",
  "image-analysis-io",
- "image-analysis-models",
  "image-analysis-onnx",
  "image-analysis-processing",
  "jobs-core",
  "metastrip",
  "model-runtime",
+ "notify",
  "num-rational",
  "object_store",
  "reqwest",
@@ -1179,7 +1196,6 @@ dependencies = [
  "video-analysis-core",
  "video-analysis-detectors",
  "video-analysis-ffmpeg",
- "video-analysis-models",
  "video-analysis-split",
  "walkdir",
 ]
@@ -1220,6 +1236,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "inotify"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd5b3eaf1a28b758ac0faa5a4254e8ab2705605496f1b1f3fbbc3988ad73d199"
+dependencies = [
+ "bitflags",
+ "inotify-sys",
+ "libc",
+]
+
+[[package]]
+name = "inotify-sys"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e05c02b5e89bff3b946cedeca278abc628fe811e604f027c45a8aa3cf793d0eb"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "ipnet"
 version = "2.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1242,12 +1278,12 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "jobs-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "chrono",
- "runtime-contracts",
  "serde",
  "serde_json",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1269,6 +1305,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef4fc70d0ab7e5b6bafa30216a6b48705ea964cdfc29c050f2412295eba58077"
 dependencies = [
  "mutate_once",
+]
+
+[[package]]
+name = "kqueue"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eac30106d7dce88daf4a3fcb4879ea939476d5074a9b7ddd0fb97fa4bed5596a"
+dependencies = [
+ "kqueue-sys",
+ "libc",
+]
+
+[[package]]
+name = "kqueue-sys"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07293a4e297ac234359b510362495713f75ea345d5307140414f20c69ffeb087"
+dependencies = [
+ "bitflags",
+ "libc",
 ]
 
 [[package]]
@@ -1360,21 +1416,21 @@ checksum = "0e7465ac9959cc2b1404e8e2367b43684a6d13790fe23056cc8c6c5a6b7bcb94"
 name = "math-geometry-2d"
 version = "0.1.0"
 dependencies = [
- "runtime-contracts",
  "serde",
  "serde_json",
  "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
 name = "math-linear"
 version = "0.1.0"
 dependencies = [
- "runtime-contracts",
  "serde_json",
  "tensor-data",
  "vector-analysis-core",
  "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1382,9 +1438,9 @@ name = "math-signal-core"
 version = "0.1.0"
 dependencies = [
  "numbers-core",
- "runtime-contracts",
  "serde_json",
  "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1461,6 +1517,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "50b7e5b27aa02a74bac8c3f23f448f8d87ff11f92d3aac1a6ed369ee08cc56c1"
 dependencies = [
  "libc",
+ "log",
  "wasi",
  "windows-sys 0.61.2",
 ]
@@ -1470,9 +1527,9 @@ name = "model-runtime"
 version = "0.1.0"
 dependencies = [
  "hf-hub",
- "runtime-contracts",
  "serde",
  "serde_json",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1521,6 +1578,33 @@ dependencies = [
  "portable-atomic",
  "portable-atomic-util",
  "rawpointer",
+]
+
+[[package]]
+name = "notify"
+version = "8.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4d3d07927151ff8575b7087f245456e549fea62edf0ec4e565a5ee50c8402bc3"
+dependencies = [
+ "bitflags",
+ "fsevent-sys",
+ "inotify",
+ "kqueue",
+ "libc",
+ "log",
+ "mio",
+ "notify-types",
+ "walkdir",
+ "windows-sys 0.60.2",
+]
+
+[[package]]
+name = "notify-types"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42b8cfee0e339a0337359f3c88165702ac6e600dc01c0cc9579a92d62b08477a"
+dependencies = [
+ "bitflags",
 ]
 
 [[package]]
@@ -1590,9 +1674,9 @@ dependencies = [
 name = "numbers-core"
 version = "0.1.0"
 dependencies = [
- "runtime-contracts",
  "serde_json",
  "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -2043,17 +2127,9 @@ dependencies = [
 name = "runtime-artifacts"
 version = "0.1.0"
 dependencies = [
- "runtime-contracts",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "runtime-contracts"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -2061,9 +2137,9 @@ name = "runtime-jobs"
 version = "0.1.0"
 dependencies = [
  "runtime-artifacts",
- "runtime-contracts",
  "serde",
  "serde_json",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -2395,10 +2471,10 @@ dependencies = [
 name = "tensor-data"
 version = "0.1.0"
 dependencies = [
- "runtime-contracts",
  "serde",
  "serde_json",
  "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -2409,13 +2485,13 @@ version = "0.1.0"
 name = "text-core"
 version = "0.1.0"
 dependencies = [
- "runtime-contracts",
  "runtime-jobs",
  "serde",
  "serde_json",
  "unicode-normalization",
  "unicode-segmentation",
  "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -2426,7 +2502,6 @@ dependencies = [
  "audio-analysis-io",
  "cmake",
  "hound",
- "runtime-contracts",
  "serde",
  "serde_json",
  "sha2",
@@ -2435,6 +2510,7 @@ dependencies = [
  "ureq 2.12.1",
  "video-analysis-core",
  "video-analysis-ingest",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -2484,16 +2560,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f60246a4944f24f6e018aa17cdeffb7818b76356965d03b07d6a9886e8962185"
 dependencies = [
  "cfg-if",
-]
-
-[[package]]
-name = "three-d-processing-core"
-version = "0.1.0"
-dependencies = [
- "runtime-contracts",
- "serde",
- "serde_json",
- "video-analysis-core",
 ]
 
 [[package]]
@@ -2902,9 +2968,9 @@ checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 name = "vector-analysis-core"
 version = "0.1.0"
 dependencies = [
- "runtime-contracts",
  "serde_json",
  "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -2915,22 +2981,22 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "video-analysis-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "num-rational",
  "num-traits",
- "runtime-contracts",
  "serde_json",
  "thiserror 2.0.18",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
 name = "video-analysis-detectors"
 version = "0.1.0"
 dependencies = [
- "runtime-contracts",
  "serde_json",
  "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -2938,11 +3004,11 @@ name = "video-analysis-ffmpeg"
 version = "0.1.0"
 dependencies = [
  "num-rational",
- "runtime-contracts",
  "serde_json",
  "thiserror 2.0.18",
  "video-analysis-core",
  "video-analysis-ingest",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -2950,45 +3016,26 @@ name = "video-analysis-ingest"
 version = "0.1.0"
 dependencies = [
  "num-rational",
- "runtime-contracts",
  "serde_json",
  "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]
-name = "video-analysis-models"
+name = "video-analysis-runtime-contracts"
 version = "0.1.0"
 dependencies = [
- "base64",
- "hf-hub",
- "model-runtime",
- "runtime-contracts",
  "serde",
  "serde_json",
- "three-d-processing-core",
- "video-analysis-core",
- "video-analysis-posture",
-]
-
-[[package]]
-name = "video-analysis-posture"
-version = "0.1.0"
-dependencies = [
- "math-geometry-2d",
- "runtime-contracts",
- "serde",
- "serde_json",
- "three-d-processing-core",
- "video-analysis-core",
 ]
 
 [[package]]
 name = "video-analysis-split"
 version = "0.1.0"
 dependencies = [
- "runtime-contracts",
  "serde_json",
  "video-analysis-core",
+ "video-analysis-runtime-contracts",
 ]
 
 [[package]]

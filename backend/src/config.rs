@@ -10,6 +10,10 @@ pub struct Settings {
     pub source_image_dir: PathBuf,
     pub qdrant_url: String,
     pub qdrant_collection: String,
+    pub qdrant_request_timeout_ms: u64,
+    pub qdrant_connect_timeout_ms: u64,
+    pub qdrant_retry_attempts: u32,
+    pub qdrant_retry_backoff_ms: u64,
     pub clip_model_name: String,
     pub visual_embedding_enabled: bool,
     pub visual_embedding_backend: String,
@@ -38,6 +42,8 @@ pub struct Settings {
     pub media_sources_file: PathBuf,
     pub media_sources_seed_file: Option<PathBuf>,
     pub image_sources: Vec<String>,
+    pub source_watching_enabled: bool,
+    pub source_watching_debounce_ms: u64,
     pub minio_endpoint: Option<String>,
     pub minio_access_key: Option<String>,
     pub minio_secret_key: Option<String>,
@@ -84,6 +90,10 @@ pub struct ServerSettings {
 pub struct StorageSettings {
     pub qdrant_url: String,
     pub qdrant_collection: String,
+    pub qdrant_request_timeout_ms: u64,
+    pub qdrant_connect_timeout_ms: u64,
+    pub qdrant_retry_attempts: u32,
+    pub qdrant_retry_backoff_ms: u64,
     pub thumbnail_dir: PathBuf,
     pub upload_dir: PathBuf,
 }
@@ -188,6 +198,10 @@ impl Settings {
         StorageSettings {
             qdrant_url: self.qdrant_url.clone(),
             qdrant_collection: self.qdrant_collection.clone(),
+            qdrant_request_timeout_ms: self.qdrant_request_timeout_ms,
+            qdrant_connect_timeout_ms: self.qdrant_connect_timeout_ms,
+            qdrant_retry_attempts: self.qdrant_retry_attempts,
+            qdrant_retry_backoff_ms: self.qdrant_retry_backoff_ms,
             thumbnail_dir: self.thumbnail_dir.clone(),
             upload_dir: self.upload_dir.clone(),
         }
@@ -296,6 +310,10 @@ impl Default for Settings {
             source_image_dir: PathBuf::from("/images"),
             qdrant_url: "http://qdrant:6333".to_string(),
             qdrant_collection: "image_similarity".to_string(),
+            qdrant_request_timeout_ms: 30_000,
+            qdrant_connect_timeout_ms: 2_000,
+            qdrant_retry_attempts: 2,
+            qdrant_retry_backoff_ms: 100,
             clip_model_name: "sentence-transformers/clip-ViT-B-32".to_string(),
             visual_embedding_enabled: true,
             visual_embedding_backend: "onnx".to_string(),
@@ -330,6 +348,8 @@ impl Default for Settings {
             media_sources_file: PathBuf::from("config/media-sources.txt"),
             media_sources_seed_file: None,
             image_sources: Vec::new(),
+            source_watching_enabled: true,
+            source_watching_debounce_ms: 1500,
             minio_endpoint: None,
             minio_access_key: None,
             minio_secret_key: None,
@@ -386,10 +406,42 @@ impl Settings {
                 media_sources_file_is_set,
             )?,
         };
+        let qdrant_request_timeout_ms = bounded_u64_var(
+            "QDRANT_REQUEST_TIMEOUT_MS",
+            defaults.qdrant_request_timeout_ms,
+            1_000,
+            600_000,
+        )?;
+        let qdrant_connect_timeout_ms = bounded_u64_var(
+            "QDRANT_CONNECT_TIMEOUT_MS",
+            defaults.qdrant_connect_timeout_ms,
+            100,
+            60_000,
+        )?;
+        if qdrant_connect_timeout_ms > qdrant_request_timeout_ms {
+            return Err(
+                "QDRANT_CONNECT_TIMEOUT_MS must be less than or equal to QDRANT_REQUEST_TIMEOUT_MS"
+                    .to_string(),
+            );
+        }
         Ok(Self {
             source_image_dir: path_var("SOURCE_IMAGE_DIR", defaults.source_image_dir),
             qdrant_url: string_var("QDRANT_URL", defaults.qdrant_url),
             qdrant_collection: string_var("QDRANT_COLLECTION", defaults.qdrant_collection),
+            qdrant_request_timeout_ms,
+            qdrant_connect_timeout_ms,
+            qdrant_retry_attempts: bounded_u32_var(
+                "QDRANT_RETRY_ATTEMPTS",
+                defaults.qdrant_retry_attempts,
+                0,
+                5,
+            )?,
+            qdrant_retry_backoff_ms: bounded_u64_var(
+                "QDRANT_RETRY_BACKOFF_MS",
+                defaults.qdrant_retry_backoff_ms,
+                10,
+                10_000,
+            )?,
             clip_model_name: string_var("CLIP_MODEL_NAME", defaults.clip_model_name),
             visual_embedding_enabled: bool_var(
                 "VISUAL_EMBEDDING_ENABLED",
@@ -472,6 +524,16 @@ impl Settings {
             media_sources_file,
             media_sources_seed_file,
             image_sources,
+            source_watching_enabled: bool_var(
+                "SOURCE_WATCHING_ENABLED",
+                defaults.source_watching_enabled,
+            ),
+            source_watching_debounce_ms: bounded_u64_var(
+                "SOURCE_WATCHING_DEBOUNCE_MS",
+                defaults.source_watching_debounce_ms,
+                100,
+                600_000,
+            )?,
             minio_endpoint: optional_string_var("MINIO_ENDPOINT"),
             minio_access_key: optional_string_var("MINIO_ACCESS_KEY"),
             minio_secret_key: optional_string_var("MINIO_SECRET_KEY"),
@@ -821,6 +883,22 @@ fn bounded_u32_var(name: &str, default: u32, min: u32, max: u32) -> Result<u32, 
     }
 }
 
+fn bounded_u64_var(name: &str, default: u64, min: u64, max: u64) -> Result<u64, String> {
+    match optional_string_var(name) {
+        Some(value) => {
+            let parsed = value
+                .parse::<u64>()
+                .map_err(|_| format!("{name} must be an integer"))?;
+            if parsed < min || parsed > max {
+                Err(format!("{name} must be between {min} and {max}"))
+            } else {
+                Ok(parsed)
+            }
+        }
+        None => Ok(default),
+    }
+}
+
 fn optional_bounded_u32_var(name: &str, min: u32, max: u32) -> Result<Option<u32>, String> {
     match optional_string_var(name) {
         Some(value) => {
@@ -953,6 +1031,75 @@ mod tests {
     #[test]
     fn default_pdf_extensions_include_pdf() {
         assert!(Settings::default().pdf_extensions.contains(".pdf"));
+    }
+
+    #[test]
+    fn default_qdrant_http_settings_are_bounded() {
+        let settings = Settings::default();
+
+        assert_eq!(settings.qdrant_request_timeout_ms, 30_000);
+        assert_eq!(settings.qdrant_connect_timeout_ms, 2_000);
+        assert_eq!(settings.qdrant_retry_attempts, 2);
+        assert_eq!(settings.qdrant_retry_backoff_ms, 100);
+    }
+
+    #[test]
+    fn qdrant_http_settings_are_loaded_from_env() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let _env = EnvGuard::set([
+            ("QDRANT_REQUEST_TIMEOUT_MS", Some("45000")),
+            ("QDRANT_CONNECT_TIMEOUT_MS", Some("3000")),
+            ("QDRANT_RETRY_ATTEMPTS", Some("4")),
+            ("QDRANT_RETRY_BACKOFF_MS", Some("250")),
+            ("IMAGE_SOURCES", Some("/images")),
+            ("MEDIA_SOURCES_FILE", None),
+            ("MEDIA_SOURCES_SEED_FILE", None),
+        ]);
+
+        let settings = Settings::from_env().unwrap();
+
+        assert_eq!(settings.qdrant_request_timeout_ms, 45_000);
+        assert_eq!(settings.qdrant_connect_timeout_ms, 3_000);
+        assert_eq!(settings.qdrant_retry_attempts, 4);
+        assert_eq!(settings.qdrant_retry_backoff_ms, 250);
+    }
+
+    #[test]
+    fn invalid_qdrant_http_settings_are_rejected() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let _env = EnvGuard::set([
+            ("QDRANT_REQUEST_TIMEOUT_MS", Some("999")),
+            ("QDRANT_CONNECT_TIMEOUT_MS", None),
+            ("QDRANT_RETRY_ATTEMPTS", None),
+            ("QDRANT_RETRY_BACKOFF_MS", None),
+            ("IMAGE_SOURCES", Some("/images")),
+            ("MEDIA_SOURCES_FILE", None),
+            ("MEDIA_SOURCES_SEED_FILE", None),
+        ]);
+
+        let error = Settings::from_env().unwrap_err();
+
+        assert!(error.contains("QDRANT_REQUEST_TIMEOUT_MS"));
+        assert!(error.contains("between 1000 and 600000"));
+    }
+
+    #[test]
+    fn qdrant_connect_timeout_must_not_exceed_request_timeout() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let _env = EnvGuard::set([
+            ("QDRANT_REQUEST_TIMEOUT_MS", Some("1000")),
+            ("QDRANT_CONNECT_TIMEOUT_MS", Some("2000")),
+            ("QDRANT_RETRY_ATTEMPTS", None),
+            ("QDRANT_RETRY_BACKOFF_MS", None),
+            ("IMAGE_SOURCES", Some("/images")),
+            ("MEDIA_SOURCES_FILE", None),
+            ("MEDIA_SOURCES_SEED_FILE", None),
+        ]);
+
+        let error = Settings::from_env().unwrap_err();
+
+        assert!(error.contains("QDRANT_CONNECT_TIMEOUT_MS"));
+        assert!(error.contains("QDRANT_REQUEST_TIMEOUT_MS"));
     }
 
     #[test]

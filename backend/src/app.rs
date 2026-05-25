@@ -17,6 +17,7 @@ use crate::api::{
     update_source_config, AppState,
 };
 use crate::config::Settings;
+use crate::workers::watcher::spawn_local_source_watcher;
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
@@ -36,6 +37,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         Ok(job) => tracing::info!(job_id = %job.spec.id, "queued startup indexing job"),
         Err(error) => tracing::warn!(%error, "could not queue startup indexing job"),
     }
+    let _source_watcher = spawn_local_source_watcher(app_state.clone());
     let app = Router::new()
         .route("/api/health", get(health))
         .route("/api/ready", get(ready))

@@ -229,6 +229,10 @@ Set these values in `.env`:
 | `S3_ALLOW_HTTP` | `false` | Allow HTTP custom S3 endpoints. |
 | `QDRANT_URL` | `http://qdrant:6333` | Qdrant URL from inside the app container. |
 | `QDRANT_COLLECTION` | `image_similarity` | Qdrant collection name. |
+| `QDRANT_REQUEST_TIMEOUT_MS` | `30000` | Total timeout for each Qdrant HTTP request. |
+| `QDRANT_CONNECT_TIMEOUT_MS` | `2000` | Timeout for establishing a Qdrant HTTP connection. |
+| `QDRANT_RETRY_ATTEMPTS` | `2` | Additional retry attempts for transient Qdrant HTTP failures. |
+| `QDRANT_RETRY_BACKOFF_MS` | `100` | Initial retry backoff for transient Qdrant HTTP failures. |
 | `VECTOR_SIZE` | `512` | Qdrant vector size for the Rust embedder. |
 | `CLIP_MODEL_NAME` | `sentence-transformers/clip-ViT-B-32` | Kept for configuration compatibility; native Rust inference is not CLIP-equivalent yet. |
 | `THUMBNAIL_DIR` | `/app/data/thumbnails` | Generated thumbnail storage. |

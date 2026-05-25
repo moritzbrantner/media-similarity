@@ -216,6 +216,13 @@ impl ImageSource {
         }
     }
 
+    pub fn local_root(&self) -> Option<&Path> {
+        match self {
+            Self::Local(source) => Some(source.root()),
+            Self::ObjectStore(_) | Self::Unavailable(_) => None,
+        }
+    }
+
     pub async fn iter_images(&self) -> Result<Vec<SourceImage>, SourceUnavailable> {
         match self {
             Self::Local(source) => source.iter_images(),
@@ -281,6 +288,10 @@ impl LocalFolderSource {
 
     pub fn uri(&self) -> String {
         self.root.to_string_lossy().to_string()
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
     }
 
     pub fn iter_images(&self) -> Result<Vec<SourceImage>, SourceUnavailable> {
@@ -663,7 +674,7 @@ impl EmptyStringDefault for String {
     }
 }
 
-fn video_extensions() -> BTreeSet<String> {
+pub fn video_extensions() -> BTreeSet<String> {
     [".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi"]
         .into_iter()
         .map(ToOwned::to_owned)
