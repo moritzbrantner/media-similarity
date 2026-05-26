@@ -11,7 +11,7 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-    command: "bunx vite --host 127.0.0.1 --port 5179 --strictPort",
+    command: "env -u FORCE_COLOR -u NO_COLOR bunx vite --host 127.0.0.1 --port 5179 --strictPort",
     reuseExistingServer: false,
     url: "http://127.0.0.1:5179",
   },

@@ -56,7 +56,9 @@ struct PointStruct {
 
 #[derive(Serialize)]
 struct NamedPointVectors {
+    #[serde(skip_serializing_if = "Option::is_none")]
     visual: Option<Vec<f32>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     face: Option<Vec<f32>>,
 }
 
