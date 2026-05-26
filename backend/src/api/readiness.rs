@@ -11,6 +11,7 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use super::{source_config_source, AppState};
+use crate::workers::media::models::{model_statuses, ModelRuntimeStatus};
 
 #[derive(Debug, Serialize)]
 pub struct ReadinessResponse {
@@ -59,6 +60,7 @@ pub async fn ready(State(state): State<Arc<AppState>>) -> Response {
     checks.push(writable_dir_check("thumbnail_dir", &settings.thumbnail_dir));
     checks.push(writable_dir_check("upload_dir", &settings.upload_dir));
     checks.push(media_sources_check(&state));
+    checks.extend(model_checks(&settings));
     checks.push(command_check("ffmpeg", "ffmpeg", &["-version"], false));
     checks.push(command_check("ffprobe", "ffprobe", &["-version"], false));
     checks.push(poppler_check());
@@ -143,6 +145,66 @@ fn media_sources_check(state: &AppState) -> ReadinessCheck {
     ReadinessCheck::error("media_sources", "no configured media source is ready")
 }
 
+fn model_checks(settings: &crate::config::Settings) -> Vec<ReadinessCheck> {
+    model_statuses(settings)
+        .into_iter()
+        .map(model_check)
+        .collect()
+}
+
+fn model_check(status: ModelRuntimeStatus) -> ReadinessCheck {
+    let name = format!("model.{}", status.role);
+
+    if status.active {
+        return ReadinessCheck::ok(
+            name,
+            status
+                .detail
+                .unwrap_or_else(|| format!("{} is active", status.label)),
+        );
+    }
+
+    if role_disabled(&status) {
+        return ReadinessCheck::ok(
+            name,
+            status
+                .detail
+                .unwrap_or_else(|| "Role is disabled by configuration".to_string()),
+        );
+    }
+
+    if status.role == "visual_embedding" {
+        return ReadinessCheck::error(name, missing_required_model_detail(&status));
+    }
+
+    ReadinessCheck::warn(name, missing_optional_model_detail(&status))
+}
+
+fn role_disabled(status: &ModelRuntimeStatus) -> bool {
+    status
+        .detail
+        .as_deref()
+        .map(|detail| detail == "Role is disabled by configuration")
+        .unwrap_or(false)
+}
+
+fn missing_required_model_detail(status: &ModelRuntimeStatus) -> String {
+    format!(
+        "{} model `{}` is enabled but not cached. Download the {} model from the Models panel or POST /api/models/{}/download.",
+        status.label, status.configured, status.role, status.role,
+    )
+}
+
+fn missing_optional_model_detail(status: &ModelRuntimeStatus) -> String {
+    let base = status.detail.clone().unwrap_or_else(|| {
+        format!(
+            "{} model `{}` is not cached",
+            status.label, status.configured
+        )
+    });
+    format!("{base}; related analysis will be skipped or unavailable until the model is downloaded")
+}
+
 fn command_check(name: &str, command: &str, args: &[&str], required: bool) -> ReadinessCheck {
     match Command::new(command).args(args).output() {
         Ok(output) if output.status.success() => {
@@ -204,8 +266,10 @@ fn readiness_response(checks: Vec<ReadinessCheck>) -> ReadinessResponse {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::path::PathBuf;
 
-    use super::{readiness_response, writable_dir_check, ReadinessCheck};
+    use super::{model_checks, readiness_response, writable_dir_check, ReadinessCheck};
+    use crate::config::Settings;
 
     #[test]
     fn readiness_status_is_not_ready_when_any_check_errors() {
@@ -229,6 +293,70 @@ mod tests {
     }
 
     #[test]
+    fn model_check_errors_when_enabled_visual_embedding_is_missing() {
+        let root = tempfile_dir();
+        let settings = Settings {
+            visual_embedding_enabled: true,
+            model_bundle_dir: root.join("missing-bundles"),
+            visual_embedding_model_path: root.join("missing-model.onnx"),
+            visual_embedding_preprocessor_path: root.join("missing-preprocessor.json"),
+            face_analysis_enabled: false,
+            audio_transcription_enabled: false,
+            ..Settings::default()
+        };
+
+        let checks = model_checks(&settings);
+        let visual = check_named(&checks, "model.visual_embedding");
+
+        assert_eq!(visual.status, "error");
+        let detail = visual.detail.as_deref().unwrap_or_default();
+        assert!(detail.contains("visual_embedding"));
+        assert!(detail.contains("/api/models/visual_embedding/download"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn model_check_ok_when_visual_embedding_is_disabled() {
+        let settings = Settings {
+            visual_embedding_enabled: false,
+            face_analysis_enabled: false,
+            audio_transcription_enabled: false,
+            ..Settings::default()
+        };
+
+        let checks = model_checks(&settings);
+        let visual = check_named(&checks, "model.visual_embedding");
+
+        assert_eq!(visual.status, "ok");
+        assert!(visual
+            .detail
+            .as_deref()
+            .unwrap_or_default()
+            .contains("disabled"));
+    }
+
+    #[test]
+    fn model_check_warns_when_enabled_face_models_are_missing() {
+        let root = tempfile_dir();
+        let settings = Settings {
+            visual_embedding_enabled: false,
+            face_analysis_enabled: true,
+            face_detection_model_path: root.join("missing-face-detector.onnx"),
+            face_embedding_model_path: root.join("missing-face-embedder.onnx"),
+            model_bundle_dir: root.join("missing-bundles"),
+            audio_transcription_enabled: false,
+            ..Settings::default()
+        };
+
+        let checks = model_checks(&settings);
+
+        assert_eq!(check_named(&checks, "model.face_detection").status, "warn");
+        assert_eq!(check_named(&checks, "model.face_embedding").status, "warn");
+        assert_eq!(readiness_response(checks).status, "ready");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn writable_dir_probe_creates_missing_directory_and_cleans_up() {
         let root = std::env::temp_dir().join(format!(
             "image-sim-readiness-test-{}-{}",
@@ -243,5 +371,22 @@ mod tests {
         assert!(dir.is_dir());
         assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
         let _ = fs::remove_dir_all(root);
+    }
+
+    fn check_named<'a>(checks: &'a [ReadinessCheck], name: &str) -> &'a ReadinessCheck {
+        checks
+            .iter()
+            .find(|check| check.name == name)
+            .unwrap_or_else(|| panic!("missing readiness check {name}"))
+    }
+
+    fn tempfile_dir() -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "image-sim-readiness-test-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&path).unwrap();
+        path
     }
 }

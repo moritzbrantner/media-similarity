@@ -707,6 +707,9 @@ async fn source_config_api_updates_runtime_indexing_configuration() {
 #[tokio::test]
 async fn readiness_reports_ready_when_required_dependencies_are_available() {
     let app = TestApp::new(|settings| {
+        settings.visual_embedding_enabled = false;
+        settings.face_analysis_enabled = false;
+        settings.audio_transcription_enabled = false;
         settings.ocr_enabled = false;
     })
     .await;
@@ -726,6 +729,9 @@ async fn readiness_reports_ready_when_required_dependencies_are_available() {
 #[tokio::test]
 async fn readiness_creates_qdrant_payload_indexes() {
     let app = TestApp::new(|settings| {
+        settings.visual_embedding_enabled = false;
+        settings.face_analysis_enabled = false;
+        settings.audio_transcription_enabled = false;
         settings.ocr_enabled = false;
     })
     .await;
@@ -764,6 +770,9 @@ async fn readiness_creates_qdrant_payload_indexes() {
 #[tokio::test]
 async fn readiness_succeeds_when_qdrant_payload_indexes_already_exist() {
     let app = TestApp::new(|settings| {
+        settings.visual_embedding_enabled = false;
+        settings.face_analysis_enabled = false;
+        settings.audio_transcription_enabled = false;
         settings.ocr_enabled = false;
     })
     .await;
@@ -773,6 +782,39 @@ async fn readiness_succeeds_when_qdrant_payload_indexes_already_exist() {
 
     assert_eq!(first.status(), reqwest::StatusCode::OK);
     assert_eq!(second.status(), reqwest::StatusCode::OK);
+}
+
+#[tokio::test]
+async fn readiness_reports_not_ready_when_required_visual_model_is_missing() {
+    let app = TestApp::new(|settings| {
+        let root = settings.source_image_dir.parent().unwrap().to_path_buf();
+        settings.visual_embedding_enabled = true;
+        settings.visual_embedding_backend = "onnx".to_string();
+        settings.visual_embedding_model_path = root.join("missing-model.onnx");
+        settings.visual_embedding_preprocessor_path = root.join("missing-preprocessor.json");
+        settings.model_bundle_dir = root.join("missing-bundles");
+        settings.face_analysis_enabled = false;
+        settings.audio_transcription_enabled = false;
+        settings.ocr_enabled = false;
+    })
+    .await;
+
+    let response = app.raw_get("/api/ready").await;
+
+    assert_eq!(response.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
+    let body: Value = response.json().await.unwrap();
+    assert_eq!(body["status"], "not_ready");
+    let visual = body["checks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|check| check["name"] == "model.visual_embedding")
+        .unwrap();
+    assert_eq!(visual["status"], "error");
+    assert!(visual["detail"]
+        .as_str()
+        .unwrap()
+        .contains("/api/models/visual_embedding/download"));
 }
 
 #[tokio::test]
@@ -829,6 +871,9 @@ async fn readiness_reports_not_ready_when_qdrant_is_unavailable() {
 #[tokio::test]
 async fn readiness_keeps_optional_tool_failures_as_warnings() {
     let app = TestApp::new(|settings| {
+        settings.visual_embedding_enabled = false;
+        settings.face_analysis_enabled = false;
+        settings.audio_transcription_enabled = false;
         settings.ocr_enabled = true;
         settings.ocr_command = "definitely-missing-image-sim-ocr".to_string();
     })
