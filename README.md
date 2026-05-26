@@ -338,6 +338,7 @@ bun run dev:containers
 | --- | --- |
 | `bun run test` | Fast meaningful test path: Rust test suite. |
 | `bun run test:e2e` | Playwright UI tests with mocked API responses. |
+| `bun run test:perf` | Unlighthouse performance audit against the built frontend bundle. |
 | `bun run lint` | TypeScript check, Rust format check, and Clippy with warnings denied. |
 | `bun run format:check` | Frontend formatting check. |
 | `bun run format:check:rust` | Rust formatting check. |
@@ -361,7 +362,7 @@ Run this before handing off larger changes:
 bun run verify
 ```
 
-The verification command runs the hygiene report, frontend format check, TypeScript/Rust static checks, Rust tests, Playwright tests, and the frontend build. It requires the sibling `../rust-packages` checkout and Playwright Chromium.
+The verification command runs the hygiene report, frontend format check, TypeScript/Rust static checks, Rust tests, Playwright tests, the frontend build, and the Unlighthouse performance audit. It requires the sibling `../rust-packages` checkout and Playwright Chromium.
 
 ### Release Notes
 

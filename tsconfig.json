@@ -17,5 +17,5 @@
     "types": ["vite/client"],
     "useDefineForClassFields": true
   },
-  "include": ["frontend", "vite.config.ts"]
+  "include": ["frontend", "unlighthouse.config.ts", "vite.config.ts"]
 }
