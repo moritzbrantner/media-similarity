@@ -57,7 +57,6 @@ dependencies = [
  "serde_json",
  "tensor-data",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -68,20 +67,6 @@ dependencies = [
  "rustfft",
  "serde_json",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
-]
-
-[[package]]
-name = "audio-analysis-io"
-version = "0.1.0"
-dependencies = [
- "audio-analysis-core",
- "hound",
- "serde_json",
- "video-analysis-core",
- "video-analysis-ffmpeg",
- "video-analysis-ingest",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -95,7 +80,6 @@ dependencies = [
  "serde_json",
  "text-transcripts",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -105,7 +89,6 @@ dependencies = [
  "audio-analysis-core",
  "serde_json",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -117,7 +100,6 @@ dependencies = [
  "serde",
  "serde_json",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -401,7 +383,6 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1040,7 +1021,6 @@ dependencies = [
  "serde",
  "serde_json",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1050,7 +1030,6 @@ dependencies = [
  "serde_json",
  "tensor-data",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1062,7 +1041,6 @@ dependencies = [
  "model-runtime",
  "serde_json",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1078,7 +1056,6 @@ dependencies = [
  "serde",
  "serde_json",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1089,7 +1066,6 @@ dependencies = [
  "image-analysis-core",
  "serde_json",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1100,7 +1076,6 @@ dependencies = [
  "model-runtime",
  "serde_json",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1116,7 +1091,6 @@ dependencies = [
  "ort",
  "serde_json",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1129,7 +1103,6 @@ dependencies = [
  "math-linear",
  "serde_json",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1140,7 +1113,6 @@ dependencies = [
  "model-runtime",
  "serde_json",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1151,7 +1123,6 @@ dependencies = [
  "image-analysis-core",
  "serde_json",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1283,7 +1254,8 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
- "video-analysis-runtime-contracts",
+ "sha2",
+ "video-analysis-core",
 ]
 
 [[package]]
@@ -1419,7 +1391,6 @@ dependencies = [
  "serde",
  "serde_json",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1430,7 +1401,6 @@ dependencies = [
  "tensor-data",
  "vector-analysis-core",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1440,7 +1410,6 @@ dependencies = [
  "numbers-core",
  "serde_json",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -1527,9 +1496,10 @@ name = "model-runtime"
 version = "0.1.0"
 dependencies = [
  "hf-hub",
+ "jobs-core",
  "serde",
  "serde_json",
- "video-analysis-runtime-contracts",
+ "video-analysis-core",
 ]
 
 [[package]]
@@ -1676,7 +1646,6 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -2124,25 +2093,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "runtime-artifacts"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "video-analysis-runtime-contracts",
-]
-
-[[package]]
-name = "runtime-jobs"
-version = "0.1.0"
-dependencies = [
- "runtime-artifacts",
- "serde",
- "serde_json",
- "video-analysis-runtime-contracts",
-]
-
-[[package]]
 name = "rustc-hash"
 version = "2.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2474,7 +2424,6 @@ dependencies = [
  "serde",
  "serde_json",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -2485,13 +2434,12 @@ version = "0.1.0"
 name = "text-core"
 version = "0.1.0"
 dependencies = [
- "runtime-jobs",
+ "jobs-core",
  "serde",
  "serde_json",
  "unicode-normalization",
  "unicode-segmentation",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -2499,7 +2447,6 @@ name = "text-transcripts"
 version = "0.1.0"
 dependencies = [
  "audio-analysis-core",
- "audio-analysis-io",
  "cmake",
  "hound",
  "serde",
@@ -2510,7 +2457,6 @@ dependencies = [
  "ureq 2.12.1",
  "video-analysis-core",
  "video-analysis-ingest",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -2970,7 +2916,6 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -2985,9 +2930,9 @@ version = "0.1.1"
 dependencies = [
  "num-rational",
  "num-traits",
+ "serde",
  "serde_json",
  "thiserror 2.0.18",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -2996,7 +2941,6 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -3008,7 +2952,6 @@ dependencies = [
  "thiserror 2.0.18",
  "video-analysis-core",
  "video-analysis-ingest",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]
@@ -3018,15 +2961,6 @@ dependencies = [
  "num-rational",
  "serde_json",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
-]
-
-[[package]]
-name = "video-analysis-runtime-contracts"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -3035,7 +2969,6 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "video-analysis-core",
- "video-analysis-runtime-contracts",
 ]
 
 [[package]]

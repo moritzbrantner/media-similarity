@@ -5,8 +5,10 @@ use std::sync::Arc;
 
 use axum::extract::{Multipart, Path as AxumPath, Query, State};
 use axum::Json;
+use chrono::{DateTime, Utc};
 use jobs_core::{
-    JobArtifact, JobContext, JobError, JobEvent, JobId, JobProgress, JobSnapshot, JobSpec,
+    JobArtifact, JobContext, JobError, JobEvent, JobEventKind, JobFailure, JobId, JobLogEntry,
+    JobLogLevel, JobProgress, JobSnapshot, JobSpec, JobStatus,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -79,6 +81,145 @@ pub struct SearchQuery {
     modified_to: Option<f64>,
     captured_from: Option<f64>,
     captured_to: Option<f64>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize)]
+pub enum ApiJobStatus {
+    Queued,
+    Running,
+    Cancelling,
+    Succeeded,
+    Failed,
+    Cancelled,
+}
+
+impl From<JobStatus> for ApiJobStatus {
+    fn from(status: JobStatus) -> Self {
+        match status {
+            JobStatus::Queued => Self::Queued,
+            JobStatus::Running => Self::Running,
+            JobStatus::Cancelling => Self::Cancelling,
+            JobStatus::Succeeded => Self::Succeeded,
+            JobStatus::Failed => Self::Failed,
+            JobStatus::Cancelled => Self::Cancelled,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Serialize)]
+pub enum ApiJobLogLevel {
+    Debug,
+    Info,
+    Warn,
+    Error,
+}
+
+impl From<JobLogLevel> for ApiJobLogLevel {
+    fn from(level: JobLogLevel) -> Self {
+        match level {
+            JobLogLevel::Debug => Self::Debug,
+            JobLogLevel::Info => Self::Info,
+            JobLogLevel::Warn => Self::Warn,
+            JobLogLevel::Error => Self::Error,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct ApiJobLogEntry {
+    timestamp: DateTime<Utc>,
+    level: ApiJobLogLevel,
+    message: String,
+}
+
+impl From<JobLogEntry> for ApiJobLogEntry {
+    fn from(log: JobLogEntry) -> Self {
+        Self {
+            timestamp: log.timestamp,
+            level: log.level.into(),
+            message: log.message,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct ApiJobSnapshot {
+    spec: JobSpec,
+    status: ApiJobStatus,
+    progress: Option<JobProgress>,
+    logs: Vec<ApiJobLogEntry>,
+    artifacts: Vec<JobArtifact>,
+    created_at: DateTime<Utc>,
+    started_at: Option<DateTime<Utc>>,
+    finished_at: Option<DateTime<Utc>>,
+    failure: Option<JobFailure>,
+    metadata: BTreeMap<String, String>,
+}
+
+impl From<JobSnapshot> for ApiJobSnapshot {
+    fn from(snapshot: JobSnapshot) -> Self {
+        Self {
+            spec: snapshot.spec,
+            status: snapshot.status.into(),
+            progress: snapshot.progress,
+            logs: snapshot.logs.into_iter().map(Into::into).collect(),
+            artifacts: snapshot.artifacts,
+            created_at: snapshot.created_at,
+            started_at: snapshot.started_at,
+            finished_at: snapshot.finished_at,
+            failure: snapshot.failure,
+            metadata: snapshot.metadata,
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub enum ApiJobEventKind {
+    StatusChanged {
+        status: ApiJobStatus,
+        message: Option<String>,
+    },
+    Progress(JobProgress),
+    Log(ApiJobLogEntry),
+    Artifact(JobArtifact),
+    Metadata {
+        key: String,
+        value: String,
+    },
+}
+
+impl From<JobEventKind> for ApiJobEventKind {
+    fn from(kind: JobEventKind) -> Self {
+        match kind {
+            JobEventKind::StatusChanged { status, message } => Self::StatusChanged {
+                status: status.into(),
+                message,
+            },
+            JobEventKind::Progress(progress) => Self::Progress(progress),
+            JobEventKind::Log(log) => Self::Log(log.into()),
+            JobEventKind::Artifact(artifact) => Self::Artifact(artifact),
+            JobEventKind::Metadata { key, value } => Self::Metadata { key, value },
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct ApiJobEvent {
+    job_id: JobId,
+    sequence: u64,
+    timestamp: DateTime<Utc>,
+    kind: ApiJobEventKind,
+}
+
+impl From<JobEvent> for ApiJobEvent {
+    fn from(event: JobEvent) -> Self {
+        Self {
+            job_id: event.job_id,
+            sequence: event.sequence,
+            timestamp: event.timestamp,
+            kind: event.kind.into(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -403,7 +544,7 @@ pub async fn index_images(State(state): State<Arc<AppState>>) -> Json<IndexRespo
 
 pub async fn spawn_index_job(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<JobSnapshot>, ApiError> {
+) -> Result<Json<ApiJobSnapshot>, ApiError> {
     let spec = JobSpec::new(
         format!("index.manual.{}", Uuid::new_v4()),
         "Index media sources",
@@ -419,6 +560,7 @@ pub async fn spawn_index_job(
     jobs.spawn(spec, move |context| {
         run_index_job(context, settings, store, embedder)
     })
+    .map(ApiJobSnapshot::from)
     .map(Json)
     .map_err(ApiError::from_job)
 }
@@ -1008,19 +1150,25 @@ fn video_source_extensions() -> Vec<String> {
 
 pub async fn list_jobs(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<JobSnapshot>>, ApiError> {
-    state.jobs.snapshots().map(Json).map_err(ApiError::from_job)
+) -> Result<Json<Vec<ApiJobSnapshot>>, ApiError> {
+    state
+        .jobs
+        .snapshots()
+        .map(|jobs| jobs.into_iter().map(ApiJobSnapshot::from).collect())
+        .map(Json)
+        .map_err(ApiError::from_job)
 }
 
 pub async fn get_job(
     State(state): State<Arc<AppState>>,
     AxumPath(job_id): AxumPath<String>,
-) -> Result<Json<JobSnapshot>, ApiError> {
+) -> Result<Json<ApiJobSnapshot>, ApiError> {
     let job_id = parse_job_id(job_id)?;
     state
         .jobs
         .snapshot(&job_id)
         .map_err(ApiError::from_job)?
+        .map(ApiJobSnapshot::from)
         .map(Json)
         .ok_or_else(|| ApiError::not_found(format!("Unknown job `{job_id}`")))
 }
@@ -1028,7 +1176,7 @@ pub async fn get_job(
 pub async fn get_job_events(
     State(state): State<Arc<AppState>>,
     AxumPath(job_id): AxumPath<String>,
-) -> Result<Json<Vec<JobEvent>>, ApiError> {
+) -> Result<Json<Vec<ApiJobEvent>>, ApiError> {
     let job_id = parse_job_id(job_id)?;
     if state
         .jobs
@@ -1041,6 +1189,7 @@ pub async fn get_job_events(
     state
         .jobs
         .events(&job_id)
+        .map(|events| events.into_iter().map(ApiJobEvent::from).collect())
         .map(Json)
         .map_err(ApiError::from_job)
 }
@@ -1048,7 +1197,7 @@ pub async fn get_job_events(
 pub async fn cancel_job(
     State(state): State<Arc<AppState>>,
     AxumPath(job_id): AxumPath<String>,
-) -> Result<Json<JobSnapshot>, ApiError> {
+) -> Result<Json<ApiJobSnapshot>, ApiError> {
     let job_id = parse_job_id(job_id)?;
     state
         .jobs
@@ -1058,6 +1207,7 @@ pub async fn cancel_job(
         .jobs
         .snapshot(&job_id)
         .map_err(ApiError::from_job)?
+        .map(ApiJobSnapshot::from)
         .map(Json)
         .ok_or_else(|| ApiError::not_found(format!("Unknown job `{job_id}`")))
 }
@@ -1220,7 +1370,7 @@ pub async fn download_model(
     State(state): State<Arc<AppState>>,
     AxumPath(role): AxumPath<String>,
     Json(request): Json<AudioTranscriptionModelJobRequest>,
-) -> Result<Json<JobSnapshot>, ApiError> {
+) -> Result<Json<ApiJobSnapshot>, ApiError> {
     let role = role.parse::<ModelRole>().map_err(ApiError::bad_request)?;
     if role == ModelRole::AudioTranscription {
         return spawn_audio_transcription_download(state, request.model).map(Json);
@@ -1269,6 +1419,7 @@ pub async fn download_model(
             )?;
             Ok(())
         })
+        .map(ApiJobSnapshot::from)
         .map(Json)
         .map_err(ApiError::from_job)
 }
@@ -1277,7 +1428,7 @@ pub async fn enable_model(
     State(state): State<Arc<AppState>>,
     AxumPath(role): AxumPath<String>,
     Json(request): Json<AudioTranscriptionModelJobRequest>,
-) -> Result<Json<JobSnapshot>, ApiError> {
+) -> Result<Json<ApiJobSnapshot>, ApiError> {
     let role = role.parse::<ModelRole>().map_err(ApiError::bad_request)?;
     if role == ModelRole::AudioTranscription {
         return spawn_audio_transcription_enable(state, request.model).map(Json);
@@ -1311,6 +1462,7 @@ pub async fn enable_model(
             )?;
             Ok(())
         })
+        .map(ApiJobSnapshot::from)
         .map(Json)
         .map_err(ApiError::from_job)
 }
@@ -1318,14 +1470,14 @@ pub async fn enable_model(
 pub async fn download_audio_transcription_model(
     State(state): State<Arc<AppState>>,
     Json(request): Json<AudioTranscriptionModelJobRequest>,
-) -> Result<Json<JobSnapshot>, ApiError> {
+) -> Result<Json<ApiJobSnapshot>, ApiError> {
     spawn_audio_transcription_download(state, request.model).map(Json)
 }
 
 fn spawn_audio_transcription_download(
     state: Arc<AppState>,
     requested: Option<String>,
-) -> Result<JobSnapshot, ApiError> {
+) -> Result<ApiJobSnapshot, ApiError> {
     let model = requested_audio_transcription_model(&state.settings, requested.as_deref())?;
     let store = audio_transcription_model_store(&state.settings);
     let spec = model_job_spec("model.download", "Download whisper.cpp model", model)?;
@@ -1335,20 +1487,21 @@ fn spawn_audio_transcription_download(
             download_whisper_cpp_model(context, store, model)?;
             Ok(())
         })
+        .map(ApiJobSnapshot::from)
         .map_err(ApiError::from_job)
 }
 
 pub async fn enable_audio_transcription_model(
     State(state): State<Arc<AppState>>,
     Json(request): Json<AudioTranscriptionModelJobRequest>,
-) -> Result<Json<JobSnapshot>, ApiError> {
+) -> Result<Json<ApiJobSnapshot>, ApiError> {
     spawn_audio_transcription_enable(state, request.model).map(Json)
 }
 
 fn spawn_audio_transcription_enable(
     state: Arc<AppState>,
     requested: Option<String>,
-) -> Result<JobSnapshot, ApiError> {
+) -> Result<ApiJobSnapshot, ApiError> {
     let model = requested_audio_transcription_model(&state.settings, requested.as_deref())?;
     let store = audio_transcription_model_store(&state.settings);
     let settings = state.settings.clone();
@@ -1359,6 +1512,7 @@ fn spawn_audio_transcription_enable(
             enable_whisper_cpp_model(context, &settings, &store, model)?;
             Ok(())
         })
+        .map(ApiJobSnapshot::from)
         .map_err(ApiError::from_job)
 }
 
