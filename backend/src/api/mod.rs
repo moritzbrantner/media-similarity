@@ -8,6 +8,7 @@ mod jobs;
 mod models;
 mod readiness;
 mod search;
+mod smart_albums;
 mod source_config;
 mod state;
 
@@ -27,6 +28,9 @@ pub use models::{
 };
 pub use readiness::ready;
 pub use search::search_upload;
+pub use smart_albums::{
+    album_results, create_album, delete_album, list_albums, preview_album, update_album,
+};
 pub(crate) use source_config::source_config_source;
 pub use source_config::{get_source_config, update_source_config, EditableIndexingConfig};
 pub use state::AppState;

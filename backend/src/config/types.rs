@@ -24,6 +24,7 @@ pub struct Settings {
     pub thumbnail_dir: PathBuf,
     pub upload_dir: PathBuf,
     pub voice_registry_path: PathBuf,
+    pub smart_albums_file: PathBuf,
     pub model_bundle_dir: PathBuf,
     pub model_hf_cache_dir: Option<PathBuf>,
     pub model_hf_token: Option<String>,

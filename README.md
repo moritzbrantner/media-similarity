@@ -14,6 +14,7 @@ The repository is organized as a Rust-only backend plus a conventional React/Vit
 - Qdrant REST integration for vector upsert and search.
 - Model status and download jobs for visual, face, and audio transcription model roles through the sibling Rust model crates.
 - Explicit index deletion APIs for removing indexed records and generated thumbnails/uploads without deleting original source files.
+- Persistent smart albums for browsing indexed media by saved metadata, OCR/transcript, identity, and corpus duplicate criteria without uploading a query file.
 - Native image loading for JPEG, PNG, GIF, WebP, BMP, and TIFF.
 - Uploaded video query support for MP4, MOV, M4V, WebM, MKV, and AVI when `ffmpeg`/`ffprobe` are available.
 - Local source video indexing: videos in configured local source folders are cut into scenes and indexed as individual searchable scene records.
@@ -200,6 +201,20 @@ Search accepts server-side metadata filters as query parameters:
 
 GIF vector search uses sampled frame content plus frame-to-frame motion deltas. `query_phash`, `hash_distance`, and `near_duplicate` remain based on the representative poster frame so the duplicate contract stays compatible with static images.
 
+### Smart Albums
+
+Smart albums are saved server-side album definitions stored in `SMART_ALBUMS_FILE`. They browse indexed media directly without an uploaded query.
+
+```bash
+curl http://localhost:8000/api/smart-albums
+curl -X POST http://localhost:8000/api/smart-albums \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"PDF invoices","description":null,"criteria":{"media_kind":"pdf_page","text_query":"invoice","duplicate_status":"all"},"sort":"modified_newest","limit":60}'
+curl 'http://localhost:8000/api/smart-albums/<album-id>/results?offset=0&limit=60'
+```
+
+Album `duplicate_status=only|exclude` uses corpus-wide pHash duplicate groups computed with `DUPLICATE_HASH_DISTANCE`. This is separate from `/api/search` `near_duplicate`, which is relative to the uploaded query media.
+
 ### Model Status
 
 ```bash
@@ -270,6 +285,7 @@ Set these values in `.env`:
 | `PDF_SUMMARY_PAGES` | `8` | Maximum rendered pages sampled into the document summary vector. |
 | `AUDIO_TRANSCRIPTION_ENABLED` | `false` | Compatibility switch for transcript analysis. The repository-local text compatibility layer does not bundle a native transcription backend. |
 | `VOICE_REGISTRY_PATH` | `/app/data/recognized-voices.json` | Persistent speaker registry used to recognize recurring voices across audio files. |
+| `SMART_ALBUMS_FILE` | `/app/data/smart-albums.json` | Persistent smart album definitions used by the Albums UI and `/api/smart-albums` endpoints. |
 | `MODEL_BUNDLE_DIR` | `/app/data/models/bundles` | Local model bundle directory used by rust-packages model stores. |
 | `MODEL_HF_CACHE_DIR` | `/app/data/models/hf-cache` | Optional Hugging Face cache directory for model downloads. |
 | `MODEL_HF_TOKEN` | empty | Optional Hugging Face token forwarded to model downloads. |

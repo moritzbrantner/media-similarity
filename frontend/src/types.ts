@@ -384,3 +384,70 @@ export type SearchResponse = {
   query_audio_analysis: AudioAnalysis | null;
   query_ocr_text: string;
 };
+
+export type AlbumSortMode =
+  | "captured_newest"
+  | "duplicate_group_size"
+  | "filename"
+  | "modified_newest"
+  | "size_largest";
+
+export type SmartAlbumCriteria = {
+  source_type: string | null;
+  media_kind: ImagePayload["media_kind"] | "all" | null;
+  name_query: string | null;
+  camera_query: string | null;
+  keyword_query: string | null;
+  text_query: string | null;
+  person_id: string | null;
+  speaker_id: string | null;
+  has_gps: boolean | null;
+  duplicate_status: "all" | "only" | "exclude";
+  orientation: "all" | "landscape" | "portrait" | "square" | null;
+  min_width: number | null;
+  max_width: number | null;
+  min_height: number | null;
+  max_height: number | null;
+  min_size_bytes: number | null;
+  max_size_bytes: number | null;
+  modified_from: number | null;
+  modified_to: number | null;
+  captured_from: number | null;
+  captured_to: number | null;
+};
+
+export type EditableSmartAlbum = {
+  name: string;
+  description: string | null;
+  criteria: SmartAlbumCriteria;
+  sort: AlbumSortMode;
+  limit: number;
+};
+
+export type SmartAlbum = EditableSmartAlbum & {
+  id: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SmartAlbumResult = {
+  image: ImagePayload;
+  duplicate_group_id: string | null;
+  duplicate_group_size: number;
+};
+
+export type SmartAlbumResultsResponse = {
+  album: SmartAlbum;
+  count: number;
+  total: number;
+  offset: number;
+  limit: number;
+  warnings: string[];
+  duplicate_groups: Array<{
+    id: string;
+    size: number;
+    representative_media_id: string;
+    media_ids: string[];
+  }>;
+  results: SmartAlbumResult[];
+};

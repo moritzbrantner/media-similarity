@@ -62,6 +62,13 @@ impl QdrantImageStore {
         self.scroll_points(Some("media")).await
     }
 
+    pub async fn scroll_media_points_filtered(
+        &self,
+        filter: Option<MediaSearchFilter>,
+    ) -> Result<Vec<StoredPoint>, String> {
+        self.scroll_points_with_filter(media_search_filter(filter)).await
+    }
+
     pub async fn scroll_face_points(&self) -> Result<Vec<StoredPoint>, String> {
         self.scroll_points(Some("face")).await
     }

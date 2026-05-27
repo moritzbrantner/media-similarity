@@ -51,11 +51,17 @@ import type {
   SearchVariables,
 } from "./search/types";
 import { SearchPage } from "./views/search-page";
-import type { IndexResponse, SearchResult } from "./types";
+import type { EditableSmartAlbum, IndexResponse, SearchResult } from "./types";
 
 const InverseIndexPage = lazy(() =>
   import("./components/inverse-index-page").then((module) => ({
     default: module.InverseIndexPage,
+  })),
+);
+
+const SmartAlbumsPage = lazy(() =>
+  import("./components/smart-albums-page").then((module) => ({
+    default: module.SmartAlbumsPage,
   })),
 );
 
@@ -82,6 +88,7 @@ export function App() {
   const [resultSortMode, setResultSortMode] = useState<ResultSortMode>(DEFAULT_RESULT_SORT);
   const [lastIndex, setLastIndex] = useState<IndexResponse | null>(null);
   const [activeSearchId, setActiveSearchId] = useState<string | null>(null);
+  const [albumDraft, setAlbumDraft] = useState<EditableSmartAlbum | null>(null);
   const [selectedQuerySceneIndex, setSelectedQuerySceneIndex] = useState<number | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [refreshedModelJobId, setRefreshedModelJobId] = useState<string | null>(null);
@@ -524,6 +531,19 @@ export function App() {
             onMetadataFiltersChange={handleMetadataFiltersChange}
             onOcrTextQueryChange={setOcrTextQuery}
             onResultSortModeChange={handleResultSortModeChange}
+            onSaveAsAlbum={() => {
+              import("./components/smart-albums-page").then((module) => {
+                setAlbumDraft(
+                  module.smartAlbumDraftFromSearch({
+                    filters: metadataFilters,
+                    limit,
+                    ocrTextQuery,
+                    sortMode: resultSortMode,
+                  }),
+                );
+                setActiveView("albums");
+              });
+            }}
             onSearchSubmit={handleSubmit}
             onSelectQueryScene={setSelectedQuerySceneIndex}
             onUpdateTags={(id, tags) => updateMediaTagsMutation.mutate({ id, tags })}
@@ -544,7 +564,12 @@ export function App() {
           />
         ) : (
           <Suspense fallback={<ViewLoadingState />}>
-            {activeView === "inverse-index" ? (
+            {activeView === "albums" ? (
+              <SmartAlbumsPage
+                initialDraft={albumDraft}
+                onDraftConsumed={() => setAlbumDraft(null)}
+              />
+            ) : activeView === "inverse-index" ? (
               <InverseIndexPage
                 data={inverseIndexQuery.data ?? null}
                 error={inverseIndexQuery.error}

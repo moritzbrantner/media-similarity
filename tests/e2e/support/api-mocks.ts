@@ -8,6 +8,8 @@ import {
   modelsResponse,
   pngPixel,
   searchResponse,
+  smartAlbum,
+  smartAlbumResults,
   sourceConfigResponse,
 } from "./media-fixtures";
 
@@ -19,6 +21,8 @@ export type ApiMockOptions = {
   jobEvents?: unknown[];
   searchResponse?: unknown;
   inverseIndex?: unknown;
+  smartAlbums?: unknown[];
+  smartAlbumResults?: unknown;
 };
 
 export type CapturedSearchRequest = {
@@ -43,6 +47,9 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
   const modelEnables: Array<{ model: string | null; role: string }> = [];
   const sourceConfigPuts: unknown[] = [];
   const indexingConfigPuts: unknown[] = [];
+  const smartAlbumCreates: unknown[] = [];
+  const smartAlbumUpdates: Array<{ id: string; request: unknown }> = [];
+  const smartAlbumDeletes: string[] = [];
   const identityRenames: Array<{ id: string; kind: "person" | "speaker"; label: string }> = [];
   const identityMerges: Array<{
     kind: "person" | "speaker";
@@ -50,6 +57,8 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
     targetId: string;
   }> = [];
   let currentInverseIndex = cloneJson(options.inverseIndex ?? inverseIndexResponse);
+  let currentSmartAlbums = cloneJson(options.smartAlbums ?? [smartAlbum]) as unknown[];
+  let currentSmartAlbumResults = cloneJson(options.smartAlbumResults ?? smartAlbumResults);
 
   await page.route("**/api/health", async (route) => {
     await route.fulfill({ json: options.health ?? healthResponse });
@@ -61,6 +70,75 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
 
   await page.route("**/api/inverse-index", async (route) => {
     await route.fulfill({ json: currentInverseIndex });
+  });
+
+  await page.route("**/api/smart-albums/preview?**", async (route) => {
+    await route.fulfill({
+      json: {
+        ...(currentSmartAlbumResults as Record<string, unknown>),
+        album: {
+          ...(route.request().postDataJSON() as Record<string, unknown>),
+          created_at: "2026-05-22T10:00:00Z",
+          id: "preview",
+          updated_at: "2026-05-22T10:00:00Z",
+        },
+      },
+    });
+  });
+
+  await page.route("**/api/smart-albums/*/results?**", async (route) => {
+    const id = smartAlbumIdFromUrl(route.request().url());
+    await route.fulfill({
+      json: {
+        ...(currentSmartAlbumResults as Record<string, unknown>),
+        album:
+          currentSmartAlbums.find((album) => isAlbum(album) && album.id === id) ??
+          (currentSmartAlbumResults as { album?: unknown }).album,
+      },
+    });
+  });
+
+  await page.route("**/api/smart-albums/*", async (route) => {
+    const id = smartAlbumIdFromUrl(route.request().url());
+    if (route.request().method() === "PUT") {
+      const request = route.request().postDataJSON();
+      smartAlbumUpdates.push({ id, request });
+      const updated = {
+        ...(request as Record<string, unknown>),
+        created_at: "2026-05-22T10:00:00Z",
+        id,
+        updated_at: "2026-05-22T10:01:00Z",
+      };
+      currentSmartAlbums = currentSmartAlbums.map((album) =>
+        isAlbum(album) && album.id === id ? updated : album,
+      );
+      await route.fulfill({ json: updated });
+      return;
+    }
+    if (route.request().method() === "DELETE") {
+      smartAlbumDeletes.push(id);
+      currentSmartAlbums = currentSmartAlbums.filter((album) => !isAlbum(album) || album.id !== id);
+      await route.fulfill({ json: { deleted: true } });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.route("**/api/smart-albums", async (route) => {
+    if (route.request().method() === "POST") {
+      const request = route.request().postDataJSON();
+      smartAlbumCreates.push(request);
+      const created = {
+        ...(request as Record<string, unknown>),
+        created_at: "2026-05-22T10:00:00Z",
+        id: `album-${currentSmartAlbums.length + 1}`,
+        updated_at: "2026-05-22T10:00:00Z",
+      };
+      currentSmartAlbums = [created, ...currentSmartAlbums];
+      await route.fulfill({ json: created });
+      return;
+    }
+    await route.fulfill({ json: { albums: currentSmartAlbums } });
   });
 
   await page.route("**/api/identities/people/*/merge", async (route) => {
@@ -219,6 +297,9 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
     modelDownloads,
     modelEnables,
     sourceConfigPuts,
+    smartAlbumCreates,
+    smartAlbumDeletes,
+    smartAlbumUpdates,
   };
 
   async function handleIdentityRename(route: Route, kind: "person" | "speaker") {
@@ -431,6 +512,17 @@ function identityMutationResponse(
 
 function roundMillis(value: number) {
   return Math.round(value * 1000) / 1000;
+}
+
+function smartAlbumIdFromUrl(url: string) {
+  const match = url.match(/\/api\/smart-albums\/([^/?]+)/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+function isAlbum(value: unknown): value is { id: string } {
+  return Boolean(
+    value && typeof value === "object" && "id" in value && typeof value.id === "string",
+  );
 }
 
 type MockIdentityEntry = {

@@ -29,6 +29,7 @@ type SearchPageProps = {
   onMetadataFiltersChange: (filters: MetadataFilters) => void;
   onOcrTextQueryChange: (value: string) => void;
   onResultSortModeChange: (mode: ResultSortMode) => void;
+  onSaveAsAlbum: () => void;
   onSearchSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onSelectQueryScene: (sceneIndex: number | null) => void;
   onUpdateTags: (id: string, tags: string[]) => void;
@@ -66,6 +67,7 @@ export function SearchPage({
   onMetadataFiltersChange,
   onOcrTextQueryChange,
   onResultSortModeChange,
+  onSaveAsAlbum,
   onSearchSubmit,
   onSelectQueryScene,
   onUpdateTags,
@@ -111,6 +113,8 @@ export function SearchPage({
         <MetadataFiltersPanel
           filters={metadataFilters}
           onChange={onMetadataFiltersChange}
+          onSaveAsAlbum={onSaveAsAlbum}
+          ocrTextQuery={ocrTextQuery}
           sourceTypeOptions={sourceTypeOptions}
         />
       ) : null}

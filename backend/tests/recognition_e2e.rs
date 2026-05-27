@@ -21,11 +21,12 @@ use tokio::net::TcpListener;
 use uuid::Uuid;
 
 use image_similarity_service::api::{
-    audio_transcription_models, cancel_job, delete_indexed_media_route,
-    delete_indexed_sources_route, download_audio_transcription_model, download_model,
-    enable_audio_transcription_model, enable_model, get_job, get_job_events, get_models,
-    get_source_config, health, index_images, list_jobs, merge_people, merge_speakers, ready,
-    rename_person, rename_speaker, search_upload, spawn_index_job, update_source_config, AppState,
+    album_results, audio_transcription_models, cancel_job, create_album, delete_album,
+    delete_indexed_media_route, delete_indexed_sources_route, download_audio_transcription_model,
+    download_model, enable_audio_transcription_model, enable_model, get_job, get_job_events,
+    get_models, get_source_config, health, index_images, list_albums, list_jobs, merge_people,
+    merge_speakers, preview_album, ready, rename_person, rename_speaker, search_upload,
+    spawn_index_job, update_album, update_source_config, AppState,
 };
 use image_similarity_service::app::upload_body_limit_bytes;
 use image_similarity_service::config::{parse_extensions, Settings};
@@ -348,6 +349,104 @@ async fn identity_speaker_rename_updates_inverse_index_and_registry() {
         registry.label("voice-0001").unwrap().as_deref(),
         Some("Alice")
     );
+}
+
+#[tokio::test]
+async fn smart_album_crud_filters_text_and_duplicate_groups() {
+    let app = TestApp::new(|settings| {
+        settings.duplicate_hash_distance = 1;
+    })
+    .await;
+    app.state.store.ensure_collection().await.unwrap();
+
+    let mut invoice = test_media_payload("invoice-page", "invoice.pdf page 001");
+    invoice.media_kind = "pdf_page".to_string();
+    invoice.ocr_text = "Invoice total due".to_string();
+    invoice.phash = "0000000000000000".to_string();
+    app.state
+        .store
+        .upsert_media(&invoice, vec![0.1; 32])
+        .await
+        .unwrap();
+
+    let mut duplicate = test_media_payload("invoice-copy", "invoice-copy.jpg");
+    duplicate.ocr_text = "Invoice copy".to_string();
+    duplicate.phash = "0000000000000001".to_string();
+    app.state
+        .store
+        .upsert_media(&duplicate, vec![0.1; 32])
+        .await
+        .unwrap();
+
+    let mut other = test_media_payload("receipt-page", "receipt.pdf page 001");
+    other.media_kind = "pdf_page".to_string();
+    other.ocr_text = "Receipt archive".to_string();
+    other.phash = "ffffffffffffffff".to_string();
+    app.state
+        .store
+        .upsert_media(&other, vec![0.1; 32])
+        .await
+        .unwrap();
+
+    let created = app
+        .post_json(
+            "/api/smart-albums",
+            json!({
+                "name": "Invoices",
+                "description": null,
+                "criteria": {
+                    "text_query": "invoice",
+                    "duplicate_status": "only"
+                },
+                "sort": "duplicate_group_size",
+                "limit": 20
+            }),
+        )
+        .await;
+    let album_id = created["id"].as_str().unwrap();
+
+    let results = app
+        .get_json(&format!("/api/smart-albums/{album_id}/results"))
+        .await;
+    assert_eq!(results["total"], 2);
+    assert_eq!(results["duplicate_groups"].as_array().unwrap().len(), 1);
+    assert!(results["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|result| result["duplicate_group_size"] == 2));
+
+    let updated = app
+        .put_json(
+            &format!("/api/smart-albums/{album_id}"),
+            json!({
+                "name": "PDF invoices",
+                "description": null,
+                "criteria": {
+                    "media_kind": "pdf_page",
+                    "text_query": "invoice",
+                    "duplicate_status": "all"
+                },
+                "sort": "modified_newest",
+                "limit": 20
+            }),
+        )
+        .await;
+    assert_eq!(updated["name"], "PDF invoices");
+    let filtered = app
+        .get_json(&format!("/api/smart-albums/{album_id}/results"))
+        .await;
+    assert_eq!(filtered["total"], 1);
+    assert_eq!(filtered["results"][0]["image"]["id"], "invoice-page");
+
+    let deleted = app
+        .delete_json(&format!("/api/smart-albums/{album_id}"))
+        .await;
+    assert_eq!(deleted["deleted"], true);
+    assert!(app.get_json("/api/smart-albums").await["albums"]
+        .as_array()
+        .unwrap()
+        .is_empty());
 }
 
 #[tokio::test]
@@ -1379,6 +1478,7 @@ impl TestApp {
             thumbnail_dir,
             upload_dir: upload_dir.clone(),
             voice_registry_path: root.path().join("recognized-voices.json"),
+            smart_albums_file: root.path().join("smart-albums.json"),
             media_sources_file: root.path().join("config/media-sources.txt"),
             vector_size: 32,
             visual_embedding_backend: "legacy".to_string(),
@@ -1400,6 +1500,13 @@ impl TestApp {
             .route("/api/health", get(health))
             .route("/api/ready", get(ready))
             .route("/api/index", post(index_images))
+            .route("/api/smart-albums", get(list_albums).post(create_album))
+            .route("/api/smart-albums/preview", post(preview_album))
+            .route(
+                "/api/smart-albums/:album_id",
+                put(update_album).delete(delete_album),
+            )
+            .route("/api/smart-albums/:album_id/results", get(album_results))
             .route(
                 "/api/inverse-index",
                 get(image_similarity_service::api::inverse_index),
@@ -1657,6 +1764,17 @@ impl TestApp {
             .send()
             .await
             .unwrap()
+    }
+
+    async fn delete_json(&self, path: &str) -> Value {
+        let response = self
+            .client
+            .delete(format!("{}{}", self.base_url, path))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        response.json().await.unwrap()
     }
 
     async fn wait_for_job_status(&self, job_id: &str, statuses: &[&str]) -> Value {

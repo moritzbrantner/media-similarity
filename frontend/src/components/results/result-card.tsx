@@ -15,6 +15,17 @@ import {
 } from "./result-formatting";
 import { ResultTags } from "./result-tags";
 
+type ResultCardData = Omit<
+  SearchResult,
+  "hash_distance" | "near_duplicate" | "ocr_score" | "vector_score"
+> & {
+  duplicate_group_size?: number;
+  hash_distance?: number | null;
+  near_duplicate?: boolean;
+  ocr_score?: number | null;
+  vector_score?: number | null;
+};
+
 export function ResultCard({
   deleting = false,
   onDelete,
@@ -25,7 +36,7 @@ export function ResultCard({
   deleting?: boolean;
   onDelete?: (id: string) => void;
   onUpdateTags?: (id: string, tags: string[]) => void;
-  result: SearchResult;
+  result: ResultCardData;
   tagSaving?: boolean;
 }) {
   const image = result.image;
@@ -78,8 +89,15 @@ export function ResultCard({
         </div>
 
         <dl className="grid gap-2 text-sm">
-          <Metric label="Visual score" value={result.vector_score.toFixed(4)} />
-          <Metric label="pHash distance" value={result.hash_distance ?? "n/a"} />
+          {typeof result.vector_score === "number" && Number.isFinite(result.vector_score) ? (
+            <Metric label="Visual score" value={result.vector_score.toFixed(4)} />
+          ) : null}
+          {result.hash_distance !== null && result.hash_distance !== undefined ? (
+            <Metric label="pHash distance" value={result.hash_distance} />
+          ) : null}
+          {result.duplicate_group_size && result.duplicate_group_size > 1 ? (
+            <Metric label="Duplicate group" value={`${result.duplicate_group_size} media`} />
+          ) : null}
           {result.ocr_score !== null && result.ocr_score !== undefined ? (
             <Metric label="OCR score" value={result.ocr_score.toFixed(2)} />
           ) : null}
@@ -168,7 +186,18 @@ export function ResultCard({
         <AudioLinks image={image} />
         <PdfLinks image={image} />
 
-        <ResultTags faces={faces} people={people} result={result} />
+        <ResultTags
+          faces={faces}
+          people={people}
+          result={{
+            image: result.image,
+            hash_distance: result.hash_distance ?? null,
+            near_duplicate: result.near_duplicate ?? false,
+            ocr_score: result.ocr_score ?? null,
+            query_scene_index: result.query_scene_index,
+            vector_score: result.vector_score ?? 0,
+          }}
+        />
       </div>
     </article>
   );

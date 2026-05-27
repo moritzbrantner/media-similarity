@@ -83,6 +83,7 @@ impl Settings {
             thumbnail_dir: path_var("THUMBNAIL_DIR", defaults.thumbnail_dir),
             upload_dir: path_var("UPLOAD_DIR", defaults.upload_dir),
             voice_registry_path: path_var("VOICE_REGISTRY_PATH", defaults.voice_registry_path),
+            smart_albums_file: path_var("SMART_ALBUMS_FILE", defaults.smart_albums_file),
             model_bundle_dir: path_var("MODEL_BUNDLE_DIR", defaults.model_bundle_dir),
             model_hf_cache_dir: optional_string_var("MODEL_HF_CACHE_DIR")
                 .map(PathBuf::from)

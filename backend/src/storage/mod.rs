@@ -88,6 +88,14 @@ pub trait MediaVectorStore: Send + Sync {
 
     async fn scroll_media_points(&self) -> Result<Vec<StoredPoint>, String>;
 
+    async fn scroll_media_points_filtered(
+        &self,
+        filter: Option<MediaSearchFilter>,
+    ) -> Result<Vec<StoredPoint>, String> {
+        let _ = filter;
+        self.scroll_media_points().await
+    }
+
     async fn scroll_face_points(&self) -> Result<Vec<StoredPoint>, String>;
 
     async fn scroll_media_points_by_filter(

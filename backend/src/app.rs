@@ -10,12 +10,13 @@ use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
 use crate::api::{
-    audio_transcription_models, cancel_job, delete_indexed_media_route,
-    delete_indexed_sources_route, download_audio_transcription_model, download_model,
-    enable_audio_transcription_model, enable_model, get_job, get_job_events, get_models,
-    get_source_config, health, index_images, inverse_index, list_jobs, merge_people,
-    merge_speakers, ready, rename_person, rename_speaker, search_upload, spawn_index_job,
-    spawn_startup_index_job, update_indexed_media_tags_route, update_source_config, AppState,
+    album_results, audio_transcription_models, cancel_job, create_album, delete_album,
+    delete_indexed_media_route, delete_indexed_sources_route, download_audio_transcription_model,
+    download_model, enable_audio_transcription_model, enable_model, get_job, get_job_events,
+    get_models, get_source_config, health, index_images, inverse_index, list_albums, list_jobs,
+    merge_people, merge_speakers, preview_album, ready, rename_person, rename_speaker,
+    search_upload, spawn_index_job, spawn_startup_index_job, update_album,
+    update_indexed_media_tags_route, update_source_config, AppState,
 };
 use crate::config::Settings;
 use crate::workers::watcher::spawn_local_source_watcher;
@@ -43,6 +44,13 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/health", get(health))
         .route("/api/ready", get(ready))
         .route("/api/index", post(index_images))
+        .route("/api/smart-albums", get(list_albums).post(create_album))
+        .route("/api/smart-albums/preview", post(preview_album))
+        .route(
+            "/api/smart-albums/:album_id",
+            put(update_album).delete(delete_album),
+        )
+        .route("/api/smart-albums/:album_id/results", get(album_results))
         .route("/api/inverse-index", get(inverse_index))
         .route("/api/identities/people/:person_id", put(rename_person))
         .route(

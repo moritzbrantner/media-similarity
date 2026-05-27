@@ -1,9 +1,12 @@
+pub mod albums;
 pub mod deletion;
+pub mod duplicates;
 pub mod identities;
 pub mod indexer;
 pub mod indexing;
 pub mod jobs;
 pub mod media;
 pub mod search;
+pub mod smart_albums;
 pub mod sources;
 pub mod watcher;

@@ -3,6 +3,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Database,
+  FolderSearch,
   Loader2,
   Search,
   Settings,
@@ -32,6 +33,7 @@ const navItems: Array<{
   view: AppView;
 }> = [
   { icon: Search, label: "Search", pressedLabel: "Open query page", view: "search" },
+  { icon: FolderSearch, label: "Albums", pressedLabel: "Open smart albums", view: "albums" },
   { icon: Users, label: "Registry", pressedLabel: "Open inverse index", view: "inverse-index" },
   { icon: Settings, label: "Sources", pressedLabel: "Open media configuration", view: "configure" },
   {

@@ -5,6 +5,8 @@ import type {
   JobSnapshot,
   ModelsResponse,
   SearchResponse,
+  SmartAlbum,
+  SmartAlbumResultsResponse,
   SourceConfigResponse,
 } from "../../../frontend/src/types";
 
@@ -418,6 +420,63 @@ export const completedIndexJob: JobSnapshot = makeJob();
 export const completedIndexEvents = makeJobEvents(completedIndexJob);
 export const sourceConfigResponse: SourceConfigResponse = makeSourceConfigResponse();
 export const searchResponse: SearchResponse = makeSearchResponse();
+
+export const smartAlbum: SmartAlbum = {
+  created_at: "2026-05-22T10:00:00Z",
+  criteria: {
+    camera_query: null,
+    captured_from: null,
+    captured_to: null,
+    duplicate_status: "only",
+    has_gps: null,
+    keyword_query: null,
+    max_height: null,
+    max_size_bytes: null,
+    max_width: null,
+    media_kind: "static_image",
+    min_height: null,
+    min_size_bytes: null,
+    min_width: null,
+    modified_from: null,
+    modified_to: null,
+    name_query: "sunrise",
+    orientation: null,
+    person_id: null,
+    source_type: null,
+    speaker_id: null,
+    text_query: null,
+  },
+  description: "Duplicate sunrise images",
+  id: "album-sunrise",
+  limit: 12,
+  name: "Duplicate Sunrises",
+  sort: "duplicate_group_size",
+  updated_at: "2026-05-22T10:00:00Z",
+};
+
+export const smartAlbumResults: SmartAlbumResultsResponse = {
+  album: smartAlbum,
+  count: 1,
+  duplicate_groups: [
+    {
+      id: "duplicate-sunrise",
+      media_ids: ["local-sunrise", "local-sunrise-copy"],
+      representative_media_id: "local-sunrise",
+      size: 2,
+    },
+  ],
+  limit: 12,
+  offset: 0,
+  results: [
+    {
+      duplicate_group_id: "duplicate-sunrise",
+      duplicate_group_size: 2,
+      image: searchResponse.results[1].image,
+    },
+  ],
+  total: 1,
+  warnings: [],
+};
 
 export const modelsResponse: ModelsResponse = {
   models: [

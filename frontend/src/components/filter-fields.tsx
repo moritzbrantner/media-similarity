@@ -47,10 +47,14 @@ function FieldSelect({ children, className = "", id, label, ...props }: FieldSel
 export function MetadataFiltersPanel({
   filters,
   onChange,
+  onSaveAsAlbum,
+  ocrTextQuery = "",
   sourceTypeOptions,
 }: {
   filters: MetadataFilters;
   onChange: (filters: MetadataFilters) => void;
+  onSaveAsAlbum?: () => void;
+  ocrTextQuery?: string;
   sourceTypeOptions: string[];
 }) {
   function updateFilter<Key extends keyof MetadataFilters>(key: Key, value: MetadataFilters[Key]) {
@@ -58,6 +62,7 @@ export function MetadataFiltersPanel({
   }
 
   const activeFilterCount = countActiveFilters(filters);
+  const canSaveAsAlbum = activeFilterCount > 0 || ocrTextQuery.trim().length > 0;
 
   return (
     <fieldset className="rounded-md border border-neutral-200 bg-neutral-50 p-3">
@@ -66,16 +71,29 @@ export function MetadataFiltersPanel({
           <SlidersHorizontal className="size-4 text-neutral-600" aria-hidden="true" />
           <span>Metadata filters</span>
         </span>
-        {activeFilterCount > 0 ? (
-          <Button
-            variant="ghost"
-            className="text-xs font-semibold text-emerald-800 transition hover:text-emerald-950"
-            onClick={() => onChange(DEFAULT_METADATA_FILTERS)}
-            type="button"
-          >
-            Clear {activeFilterCount}
-          </Button>
-        ) : null}
+        <span className="flex items-center gap-2">
+          {onSaveAsAlbum ? (
+            <Button
+              variant="ghost"
+              className="text-xs font-semibold text-emerald-800 transition hover:text-emerald-950 disabled:text-neutral-400"
+              disabled={!canSaveAsAlbum}
+              onClick={onSaveAsAlbum}
+              type="button"
+            >
+              Save as album
+            </Button>
+          ) : null}
+          {activeFilterCount > 0 ? (
+            <Button
+              variant="ghost"
+              className="text-xs font-semibold text-emerald-800 transition hover:text-emerald-950"
+              onClick={() => onChange(DEFAULT_METADATA_FILTERS)}
+              type="button"
+            >
+              Clear {activeFilterCount}
+            </Button>
+          ) : null}
+        </span>
       </legend>
 
       <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">

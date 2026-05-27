@@ -139,6 +139,7 @@ impl Default for Settings {
             thumbnail_dir: PathBuf::from("data/thumbnails"),
             upload_dir: PathBuf::from("data/uploads"),
             voice_registry_path: PathBuf::from("data/recognized-voices.json"),
+            smart_albums_file: PathBuf::from("data/smart-albums.json"),
             model_bundle_dir: PathBuf::from("data/models/bundles"),
             model_hf_cache_dir: None,
             model_hf_token: None,
