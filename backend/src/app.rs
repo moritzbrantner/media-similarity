@@ -13,9 +13,9 @@ use crate::api::{
     audio_transcription_models, cancel_job, delete_indexed_media_route,
     delete_indexed_sources_route, download_audio_transcription_model, download_model,
     enable_audio_transcription_model, enable_model, get_job, get_job_events, get_models,
-    get_source_config, health, index_images, inverse_index, list_jobs, ready, search_upload,
-    spawn_index_job, spawn_startup_index_job, update_indexed_media_tags_route,
-    update_source_config, AppState,
+    get_source_config, health, index_images, inverse_index, list_jobs, merge_people,
+    merge_speakers, ready, rename_person, rename_speaker, search_upload, spawn_index_job,
+    spawn_startup_index_job, update_indexed_media_tags_route, update_source_config, AppState,
 };
 use crate::config::Settings;
 use crate::workers::watcher::spawn_local_source_watcher;
@@ -44,6 +44,16 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/ready", get(ready))
         .route("/api/index", post(index_images))
         .route("/api/inverse-index", get(inverse_index))
+        .route("/api/identities/people/:person_id", put(rename_person))
+        .route(
+            "/api/identities/people/:target_person_id/merge",
+            post(merge_people),
+        )
+        .route("/api/identities/speakers/:speaker_id", put(rename_speaker))
+        .route(
+            "/api/identities/speakers/:target_speaker_id/merge",
+            post(merge_speakers),
+        )
         .route(
             "/api/source-config",
             get(get_source_config).put(update_source_config),

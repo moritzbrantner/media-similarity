@@ -20,6 +20,10 @@ impl MediaVectorStore for QdrantImageStore {
         QdrantImageStore::set_media_payload(self, payload).await
     }
 
+    async fn set_face_payload(&self, payload: &FacePointPayload) -> Result<(), String> {
+        QdrantImageStore::set_face_payload(self, payload).await
+    }
+
     async fn delete_points(&self, ids: &[String]) -> Result<(), String> {
         QdrantImageStore::delete_points(self, ids).await
     }

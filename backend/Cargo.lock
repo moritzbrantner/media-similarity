@@ -381,6 +381,7 @@ dependencies = [
 name = "data-inversion-core"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "serde_json",
  "video-analysis-core",
 ]
@@ -1066,6 +1067,7 @@ version = "0.1.0"
 dependencies = [
  "image",
  "image-analysis-core",
+ "serde",
  "serde_json",
  "video-analysis-core",
 ]
@@ -1076,6 +1078,7 @@ version = "0.1.0"
 dependencies = [
  "image-analysis-core",
  "model-runtime",
+ "serde",
  "serde_json",
  "video-analysis-core",
 ]
@@ -1115,6 +1118,7 @@ version = "0.1.0"
 dependencies = [
  "image-analysis-core",
  "model-runtime",
+ "serde",
  "serde_json",
  "video-analysis-core",
 ]
@@ -1125,6 +1129,7 @@ version = "0.1.0"
 dependencies = [
  "data-inversion-core",
  "image-analysis-core",
+ "serde",
  "serde_json",
  "video-analysis-core",
 ]

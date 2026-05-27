@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Page, Route } from "@playwright/test";
 import {
   completedIndexEvents,
   completedIndexJob,
@@ -43,6 +43,13 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
   const modelEnables: Array<{ model: string | null; role: string }> = [];
   const sourceConfigPuts: unknown[] = [];
   const indexingConfigPuts: unknown[] = [];
+  const identityRenames: Array<{ id: string; kind: "person" | "speaker"; label: string }> = [];
+  const identityMerges: Array<{
+    kind: "person" | "speaker";
+    sourceIds: string[];
+    targetId: string;
+  }> = [];
+  let currentInverseIndex = cloneJson(options.inverseIndex ?? inverseIndexResponse);
 
   await page.route("**/api/health", async (route) => {
     await route.fulfill({ json: options.health ?? healthResponse });
@@ -53,7 +60,23 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
   });
 
   await page.route("**/api/inverse-index", async (route) => {
-    await route.fulfill({ json: options.inverseIndex ?? inverseIndexResponse });
+    await route.fulfill({ json: currentInverseIndex });
+  });
+
+  await page.route("**/api/identities/people/*/merge", async (route) => {
+    await handleIdentityMerge(route, "person");
+  });
+
+  await page.route("**/api/identities/speakers/*/merge", async (route) => {
+    await handleIdentityMerge(route, "speaker");
+  });
+
+  await page.route("**/api/identities/people/*", async (route) => {
+    await handleIdentityRename(route, "person");
+  });
+
+  await page.route("**/api/identities/speakers/*", async (route) => {
+    await handleIdentityRename(route, "speaker");
   });
 
   await page.route("**/api/jobs/index", async (route) => {
@@ -190,11 +213,57 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
     cancelledJobIds,
     deletedMediaIds,
     indexingConfigPuts,
+    identityMerges,
+    identityRenames,
     mediaTagUpdates,
     modelDownloads,
     modelEnables,
     sourceConfigPuts,
   };
+
+  async function handleIdentityRename(route: Route, kind: "person" | "speaker") {
+    if (route.request().method() !== "PUT") {
+      await route.fallback();
+      return;
+    }
+    const id = identityIdFromUrl(route.request().url(), kind, false);
+    const request = route.request().postDataJSON() as { label?: string };
+    const label = request.label ?? "";
+    identityRenames.push({ id, kind, label });
+    const entries = identityEntries(currentInverseIndex, kind);
+    const target = entries.find((entry) => entry.id === id);
+    if (target) {
+      target.label = label;
+    }
+    await route.fulfill({
+      json: identityMutationResponse(kind, id, label, [], 1, kind === "person" ? 1 : 0),
+    });
+  }
+
+  async function handleIdentityMerge(route: Route, kind: "person" | "speaker") {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    const targetId = identityIdFromUrl(route.request().url(), kind, true);
+    const request = route.request().postDataJSON() as { source_ids?: string[] };
+    const sourceIds = request.source_ids ?? [];
+    identityMerges.push({ kind, sourceIds, targetId });
+    mergeMockIdentity(currentInverseIndex, kind, targetId, sourceIds);
+    const target = identityEntries(currentInverseIndex, kind).find(
+      (entry) => entry.id === targetId,
+    );
+    await route.fulfill({
+      json: identityMutationResponse(
+        kind,
+        targetId,
+        target?.label ?? targetId,
+        sourceIds,
+        1,
+        kind === "person" ? sourceIds.length : 0,
+      ),
+    });
+  }
 }
 
 export async function mockSearchResponse(page: Page, response: unknown) {
@@ -279,3 +348,98 @@ function findMockImage(id: string, response: unknown) {
 
   return {};
 }
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function identityIdFromUrl(url: string, kind: "person" | "speaker", merge: boolean) {
+  const segment = kind === "person" ? "people" : "speakers";
+  const pattern = merge
+    ? new RegExp(`/api/identities/${segment}/([^/]+)/merge`)
+    : new RegExp(`/api/identities/${segment}/([^/?]+)`);
+  const match = url.match(pattern);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+function identityEntries(index: unknown, kind: "person" | "speaker"): MockIdentityEntry[] {
+  if (!index || typeof index !== "object") {
+    return [];
+  }
+  const key = kind === "person" ? "people" : "speakers";
+  const entries = (index as Record<string, unknown>)[key];
+  return Array.isArray(entries) ? (entries as MockIdentityEntry[]) : [];
+}
+
+function mergeMockIdentity(
+  index: unknown,
+  kind: "person" | "speaker",
+  targetId: string,
+  sourceIds: string[],
+) {
+  const entries = identityEntries(index, kind);
+  const target = entries.find((entry) => entry.id === targetId);
+  if (!target) {
+    return;
+  }
+
+  const sourceSet = new Set(sourceIds);
+  const sources = entries.filter((entry) => sourceSet.has(entry.id));
+  for (const source of sources) {
+    target.media_count = uniqueLocations([...target.locations, ...source.locations]).length;
+    target.locations = uniqueLocations([...target.locations, ...source.locations]);
+    if (kind === "person") {
+      target.face_count = (target.face_count ?? 0) + (source.face_count ?? 0);
+    } else {
+      target.segment_count = (target.segment_count ?? 0) + (source.segment_count ?? 0);
+      target.total_seconds = roundMillis((target.total_seconds ?? 0) + (source.total_seconds ?? 0));
+    }
+    target.confidence = Math.max(target.confidence, source.confidence);
+  }
+
+  const key = kind === "person" ? "people" : "speakers";
+  (index as Record<string, unknown>)[key] = entries.filter((entry) => !sourceSet.has(entry.id));
+}
+
+function uniqueLocations(locations: MockIdentityEntry["locations"]) {
+  const byMedia = new Map<string, MockIdentityEntry["locations"][number]>();
+  for (const location of locations) {
+    byMedia.set(location.media_id, location);
+  }
+  return [...byMedia.values()];
+}
+
+function identityMutationResponse(
+  kind: "person" | "speaker",
+  targetId: string,
+  targetLabel: string | null,
+  sourceIds: string[],
+  updatedMedia: number,
+  updatedFaces: number,
+) {
+  return {
+    kind,
+    registry_updated: kind === "speaker",
+    source_ids: sourceIds,
+    target_id: targetId,
+    target_label: targetLabel,
+    updated_faces: updatedFaces,
+    updated_media: updatedMedia,
+    warnings: [],
+  };
+}
+
+function roundMillis(value: number) {
+  return Math.round(value * 1000) / 1000;
+}
+
+type MockIdentityEntry = {
+  confidence: number;
+  face_count?: number;
+  id: string;
+  label: string | null;
+  locations: Array<{ media_id: string }>;
+  media_count: number;
+  segment_count?: number;
+  total_seconds?: number;
+};

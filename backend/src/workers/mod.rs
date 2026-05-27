@@ -1,4 +1,5 @@
 pub mod deletion;
+pub mod identities;
 pub mod indexer;
 pub mod indexing;
 pub mod jobs;

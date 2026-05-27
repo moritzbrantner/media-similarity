@@ -63,6 +63,8 @@ pub trait MediaVectorStore: Send + Sync {
 
     async fn set_media_payload(&self, payload: &ImagePayload) -> Result<(), String>;
 
+    async fn set_face_payload(&self, payload: &FacePointPayload) -> Result<(), String>;
+
     async fn delete_points(&self, ids: &[String]) -> Result<(), String>;
 
     async fn delete_points_by_ids(&self, ids: &[String]) -> Result<(), String> {

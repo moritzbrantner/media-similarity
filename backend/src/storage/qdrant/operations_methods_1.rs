@@ -206,6 +206,22 @@ impl QdrantImageStore {
         Ok(())
     }
 
+    pub async fn set_face_payload(&self, payload: &FacePointPayload) -> Result<(), String> {
+        let mut payload_value = serde_json::to_value(payload).map_err(|error| error.to_string())?;
+        set_payload_kind(&mut payload_value, "face");
+        let request = SetPayloadRequest {
+            payload: payload_value,
+            points: vec![payload.face_id.clone()],
+        };
+        let path = format!("/collections/{}/points/payload?wait=true", self.collection);
+        self.send_qdrant("set_face_payload", &path, |base_url| {
+            self.client.post(format!("{base_url}{path}")).json(&request)
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
     pub async fn delete_points(&self, ids: &[String]) -> Result<(), String> {
         if ids.is_empty() {
             return Ok(());

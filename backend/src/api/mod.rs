@@ -1,5 +1,6 @@
 mod error;
 mod health;
+mod identities;
 mod indexed_media;
 mod indexing;
 mod inverse_index;
@@ -12,6 +13,7 @@ mod state;
 
 pub use error::ApiError;
 pub use health::health;
+pub use identities::{merge_people, merge_speakers, rename_person, rename_speaker};
 pub use indexed_media::{
     delete_indexed_media_route, delete_indexed_sources_route, update_indexed_media_tags_route,
 };

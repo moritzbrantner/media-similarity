@@ -24,12 +24,16 @@ use image_similarity_service::api::{
     audio_transcription_models, cancel_job, delete_indexed_media_route,
     delete_indexed_sources_route, download_audio_transcription_model, download_model,
     enable_audio_transcription_model, enable_model, get_job, get_job_events, get_models,
-    get_source_config, health, index_images, list_jobs, ready, search_upload, spawn_index_job,
-    update_source_config, AppState,
+    get_source_config, health, index_images, list_jobs, merge_people, merge_speakers, ready,
+    rename_person, rename_speaker, search_upload, spawn_index_job, update_source_config, AppState,
 };
 use image_similarity_service::app::upload_body_limit_bytes;
 use image_similarity_service::config::{parse_extensions, Settings};
-use image_similarity_service::domain::models::{IndexResponse, SearchResponse};
+use image_similarity_service::domain::models::{
+    AudioAnalysis, AudioRecognizedVoice, AudioSegmentGuess, FaceBoxPayload, FaceDetectionPayload,
+    FacePointPayload, ImagePayload, IndexResponse, PersonSummary, SearchResponse,
+};
+use image_similarity_service::workers::media::voice::VoiceRegistry;
 
 #[tokio::test]
 async fn static_image_recognition_covers_content_type_extension_limits_and_duplicates() {
@@ -224,6 +228,126 @@ async fn index_prunes_records_for_removed_source_files() {
         .await;
     assert_eq!(response.count, 1);
     assert_eq!(response.results[0].image.filename, "keep.png");
+}
+
+#[tokio::test]
+async fn identity_person_merge_updates_inverse_index() {
+    let app = TestApp::new(|settings| {
+        settings.face_analysis_enabled = true;
+    })
+    .await;
+    app.state.store.ensure_collection().await.unwrap();
+
+    let mut payload = test_media_payload("media-people", "group.jpg");
+    payload.faces = vec![
+        test_face_detection("face-a", "media-people", "person-a", Some("Ada"), 0.9),
+        test_face_detection("face-b", "media-people", "person-b", Some("Grace"), 0.8),
+    ];
+    payload.people = vec![
+        test_person_summary("person-a", Some("Ada"), 1, 0.9),
+        test_person_summary("person-b", Some("Grace"), 1, 0.8),
+    ];
+    app.state
+        .store
+        .upsert_media(&payload, vec![0.1; 32])
+        .await
+        .unwrap();
+    app.state
+        .store
+        .upsert_face(
+            &test_face_point("face-a", "media-people", "person-a", Some("Ada"), 0.9),
+            vec![0.2; 32],
+        )
+        .await
+        .unwrap();
+    app.state
+        .store
+        .upsert_face(
+            &test_face_point("face-b", "media-people", "person-b", Some("Grace"), 0.8),
+            vec![0.3; 32],
+        )
+        .await
+        .unwrap();
+
+    let response = app
+        .post_json(
+            "/api/identities/people/person-a/merge",
+            json!({ "source_ids": ["person-b"] }),
+        )
+        .await;
+    assert_eq!(response["target_id"], "person-a");
+    assert_eq!(response["updated_media"], 1);
+    assert_eq!(response["updated_faces"], 1);
+
+    let inverse = app.get_json("/api/inverse-index").await;
+    let people = inverse["people"].as_array().unwrap();
+    assert_eq!(people.len(), 1, "{people:?}");
+    assert_eq!(people[0]["id"], "person-a");
+    assert_eq!(people[0]["label"], "Ada");
+    assert_eq!(people[0]["face_count"], 2);
+    assert_eq!(people[0]["media_count"], 1);
+}
+
+#[tokio::test]
+async fn identity_speaker_rename_updates_inverse_index_and_registry() {
+    let app = TestApp::new(|_| {}).await;
+    app.state.store.ensure_collection().await.unwrap();
+    seed_voice_registry(&app);
+
+    let mut payload = test_media_payload("media-audio", "interview.mp3");
+    payload.media_kind = "audio".to_string();
+    payload.full_audio_url = Some("/uploads/interview.mp3".to_string());
+    payload.audio_analysis = Some(AudioAnalysis {
+        speech_detected: true,
+        speech_ratio: 1.0,
+        speech_segments: Vec::new(),
+        audio_segments: vec![AudioSegmentGuess {
+            segment_index: 0,
+            kind: "speech".to_string(),
+            start_seconds: 1.0,
+            end_seconds: 3.0,
+            confidence: 0.75,
+            speaker_id: Some("voice-0001".to_string()),
+            speaker_label: Some("Voice 1".to_string()),
+        }],
+        recognized_voices: vec![AudioRecognizedVoice {
+            id: "voice-0001".to_string(),
+            label: "Voice 1".to_string(),
+            segment_count: 1,
+            total_seconds: 2.0,
+            confidence: 0.75,
+        }],
+        transcript_text: String::new(),
+        transcript_language: None,
+        transcript_segments: Vec::new(),
+        tempo_bpm: None,
+        tempo_confidence: 0.0,
+        tempo_onset_count: 0,
+    });
+    app.state
+        .store
+        .upsert_media(&payload, vec![0.1; 32])
+        .await
+        .unwrap();
+
+    let response = app
+        .put_json(
+            "/api/identities/speakers/voice-0001",
+            json!({ "label": "Alice" }),
+        )
+        .await;
+    assert_eq!(response["target_label"], "Alice");
+    assert_eq!(response["registry_updated"], true);
+
+    let inverse = app.get_json("/api/inverse-index").await;
+    assert_eq!(inverse["speakers"][0]["id"], "voice-0001");
+    assert_eq!(inverse["speakers"][0]["label"], "Alice");
+
+    let registry = VoiceRegistry::load(&app.state.settings).unwrap();
+    assert_eq!(
+        registry.label("voice-0001").unwrap().as_deref(),
+        Some("Alice")
+    );
 }
 
 #[tokio::test]
@@ -1277,6 +1401,20 @@ impl TestApp {
             .route("/api/ready", get(ready))
             .route("/api/index", post(index_images))
             .route(
+                "/api/inverse-index",
+                get(image_similarity_service::api::inverse_index),
+            )
+            .route("/api/identities/people/:person_id", put(rename_person))
+            .route(
+                "/api/identities/people/:target_person_id/merge",
+                post(merge_people),
+            )
+            .route("/api/identities/speakers/:speaker_id", put(rename_speaker))
+            .route(
+                "/api/identities/speakers/:target_speaker_id/merge",
+                post(merge_speakers),
+            )
+            .route(
                 "/api/source-config",
                 get(get_source_config).put(update_source_config),
             )
@@ -1622,6 +1760,12 @@ struct FakeDeleteRequest {
     points: Vec<String>,
 }
 
+#[derive(Deserialize)]
+struct FakeSetPayloadRequest {
+    payload: Value,
+    points: Vec<String>,
+}
+
 impl FakeQdrant {
     async fn spawn() -> Self {
         let state = Arc::new(Mutex::new(FakeQdrantState::default()));
@@ -1636,6 +1780,10 @@ impl FakeQdrant {
                 put(fake_create_payload_index),
             )
             .route("/collections/:collection/points", put(fake_upsert_points))
+            .route(
+                "/collections/:collection/points/payload",
+                post(fake_set_payload),
+            )
             .route(
                 "/collections/:collection/points/delete",
                 post(fake_delete_points),
@@ -1764,6 +1912,24 @@ async fn fake_upsert_points(
                 payload: point.payload,
             },
         );
+    }
+    Ok(Json(json!({ "result": { "status": "completed" } })))
+}
+
+async fn fake_set_payload(
+    AxumPath(collection): AxumPath<String>,
+    State(state): State<Arc<Mutex<FakeQdrantState>>>,
+    Json(request): Json<FakeSetPayloadRequest>,
+) -> Result<Json<Value>, AxumStatusCode> {
+    let mut state = state.lock().unwrap();
+    if !state.collections.contains_key(&collection) {
+        return Err(AxumStatusCode::NOT_FOUND);
+    }
+    for id in request.points {
+        let Some(point) = state.points.get_mut(&(collection.clone(), id)) else {
+            continue;
+        };
+        point.payload = request.payload.clone();
     }
     Ok(Json(json!({ "result": { "status": "completed" } })))
 }
@@ -1934,6 +2100,131 @@ fn payload_value<'a>(payload: &'a Value, key: &str) -> Option<&'a Value> {
         value = value.get(part)?;
     }
     Some(value)
+}
+
+fn test_media_payload(id: &str, filename: &str) -> ImagePayload {
+    ImagePayload {
+        id: id.to_string(),
+        path: format!("/images/{filename}"),
+        relative_path: filename.to_string(),
+        filename: filename.to_string(),
+        width: 100,
+        height: 100,
+        size_bytes: 1000,
+        modified_at: 1.0,
+        phash: "0000000000000000".to_string(),
+        thumbnail_url: Some(format!("/thumbnails/{id}.jpg")),
+        animated_thumbnail_url: None,
+        media_kind: "static_image".to_string(),
+        frame_count: None,
+        duration_ms: None,
+        full_video_url: None,
+        full_audio_url: None,
+        full_pdf_url: None,
+        pdf_page_url: None,
+        pdf_document_id: None,
+        pdf_page_index: None,
+        pdf_page_number: None,
+        pdf_page_count: None,
+        audio_analysis: None,
+        ocr_text: String::new(),
+        ocr_frames: Vec::new(),
+        visual_embedding_model: Some("test".to_string()),
+        faces: Vec::new(),
+        people: Vec::new(),
+        artifacts: Vec::new(),
+        tags: Vec::new(),
+        photo_metadata: None,
+        scene_clip_url: None,
+        scene_index: None,
+        scene_start_frame: None,
+        scene_end_frame: None,
+        scene_start_seconds: None,
+        scene_end_seconds: None,
+        source_type: "local".to_string(),
+        source_item_uri: Some(format!("local:///images/{filename}")),
+        indexing_profile: Some("test".to_string()),
+        source_uri: Some("local:///images".to_string()),
+    }
+}
+
+fn test_face_detection(
+    face_id: &str,
+    media_id: &str,
+    person_id: &str,
+    label: Option<&str>,
+    confidence: f32,
+) -> FaceDetectionPayload {
+    FaceDetectionPayload {
+        face_id: face_id.to_string(),
+        media_id: media_id.to_string(),
+        frame_index: 0,
+        bbox: FaceBoxPayload {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+        },
+        confidence,
+        person_id: Some(person_id.to_string()),
+        person_label: label.map(ToOwned::to_owned),
+    }
+}
+
+fn test_face_point(
+    face_id: &str,
+    media_id: &str,
+    person_id: &str,
+    label: Option<&str>,
+    confidence: f32,
+) -> FacePointPayload {
+    FacePointPayload {
+        face_id: face_id.to_string(),
+        media_id: media_id.to_string(),
+        frame_index: 0,
+        bbox: FaceBoxPayload {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+        },
+        confidence,
+        person_id: person_id.to_string(),
+        person_label: label.map(ToOwned::to_owned),
+        source_uri: Some("local:///images".to_string()),
+        source_item_uri: Some(format!("local:///images/{media_id}.jpg")),
+    }
+}
+
+fn test_person_summary(
+    person_id: &str,
+    label: Option<&str>,
+    face_count: u32,
+    confidence: f32,
+) -> PersonSummary {
+    PersonSummary {
+        person_id: person_id.to_string(),
+        label: label.map(ToOwned::to_owned),
+        face_count,
+        media_count: 1,
+        confidence,
+    }
+}
+
+fn seed_voice_registry(app: &TestApp) {
+    let sample_rate = 8_000;
+    let samples = (0..sample_rate)
+        .map(|index| {
+            let phase = index as f32 * 2.0 * std::f32::consts::PI * 180.0 / sample_rate as f32;
+            phase.sin() * 0.2
+        })
+        .collect::<Vec<_>>();
+    let mut registry = VoiceRegistry::load(&app.state.settings).unwrap();
+    let enrolled = registry
+        .recognize_or_enroll(&samples, sample_rate)
+        .expect("voice should enroll");
+    assert_eq!(enrolled.id, "voice-0001");
+    registry.save_if_changed().unwrap();
 }
 
 fn multipart_body(filename: &str, content_type: &str, bytes: Vec<u8>) -> (String, Vec<u8>) {
