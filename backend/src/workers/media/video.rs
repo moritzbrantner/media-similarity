@@ -64,20 +64,16 @@ pub fn decode_video_scenes(
         detection.scenes
     };
 
-    let clip_urls = split_scenes(path, &scenes, settings)?;
     let scene_media = sample_scene_media(path, &scenes, settings)?;
     Ok(scene_media
         .into_iter()
-        .zip(clip_urls)
-        .map(
-            |((scene_index, scene, media), clip_url)| DecodedVideoScene {
-                scene_index,
-                start: scene.start,
-                end: scene.end,
-                clip_url,
-                media,
-            },
-        )
+        .map(|(scene_index, scene, media)| DecodedVideoScene {
+            scene_index,
+            start: scene.start,
+            end: scene.end,
+            clip_url: None,
+            media,
+        })
         .collect())
 }
 
@@ -136,35 +132,6 @@ fn whole_video_scene(path: &Path) -> Result<Vec<Scene>, String> {
         .map(|position| FramePosition::from_frame_index(position.frame_index + 1, fps))
         .unwrap_or_else(|| FramePosition::from_frame_index(1, fps));
     Ok(vec![Scene { start, end }])
-}
-
-fn split_scenes(
-    path: &Path,
-    scenes: &[Scene],
-    settings: &Settings,
-) -> Result<Vec<Option<String>>, String> {
-    let scene_dir_name = path
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .unwrap_or("query-video")
-        .to_string();
-    let output_dir = settings.upload_dir.join(&scene_dir_name);
-    let options = SplitOptions {
-        output_dir: output_dir.clone(),
-        template: "scene-$SCENE_NUMBER.mp4".to_string(),
-        video_name: Some(scene_dir_name.clone()),
-        ..SplitOptions::default()
-    };
-    let outputs = split_video_ffmpeg(path, scenes, &options).map_err(video_error)?;
-    Ok(outputs
-        .into_iter()
-        .map(|output| {
-            output
-                .file_name()
-                .and_then(|name| name.to_str())
-                .map(|name| format!("/uploads/{scene_dir_name}/{name}"))
-        })
-        .collect())
 }
 
 fn split_source_scenes(

@@ -39,6 +39,18 @@ impl JobManager {
         self.runner.tracker().events(id)
     }
 
+    pub fn has_active_kind_prefix(&self, prefix: &str) -> jobs_core::Result<bool> {
+        Ok(self.snapshots()?.iter().any(|snapshot| {
+            snapshot
+                .spec
+                .kind
+                .as_deref()
+                .map(|kind| kind.starts_with(prefix))
+                .unwrap_or(false)
+                && !snapshot.status.is_terminal()
+        }))
+    }
+
     pub fn request_cancel(&self, id: &JobId) -> jobs_core::Result<()> {
         let active = self.active_jobs()?;
         let handle = active

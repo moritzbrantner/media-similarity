@@ -42,14 +42,14 @@ x-app-environment: &app-environment
   OCR_COMMAND: ${OCR_COMMAND:-tesseract}
   OCR_LANGUAGE: ${OCR_LANGUAGE:-eng}
   OCR_MAX_FRAMES: ${OCR_MAX_FRAMES:-4}
-  BIND_ADDR: ${BIND_ADDR:-0.0.0.0:8000}
+  BIND_ADDR: ${CONTAINER_BIND_ADDR:-0.0.0.0:8000}
 
 services:
   app:
     build: *app-build
     environment: *app-environment
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./config:/app/config:ro
       - ${HOST_PICTURES_DIR:-${HOME}/Pictures}:/media/pictures:ro
@@ -87,7 +87,7 @@ services:
   qdrant:
     image: qdrant/qdrant:v1.12.5
     ports:
-      - "6333:6333"
+      - "127.0.0.1:6333:6333"
     volumes:
       - qdrant-data:/qdrant/storage
 

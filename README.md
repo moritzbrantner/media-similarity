@@ -65,7 +65,7 @@ MinIO/S3 object-store sources are supported through `minio://bucket/prefix` and 
    http://localhost:5173
    ```
 
-   `bun dev` starts the Docker Compose app stack in the background, then starts the Vite dev server. The backend container remains available at `http://localhost:8000`.
+   `bun dev` starts the Docker Compose app stack in the background, then starts the Vite dev server. The UI, backend, and Qdrant ports are published on localhost only by default. The backend container remains available at `http://localhost:8000`.
 
 6. Click **Index configured sources**, then upload a query image, video, audio file, or PDF and search.
 
@@ -233,6 +233,8 @@ Set these values in `.env`:
 | `QDRANT_CONNECT_TIMEOUT_MS` | `2000` | Timeout for establishing a Qdrant HTTP connection. |
 | `QDRANT_RETRY_ATTEMPTS` | `2` | Additional retry attempts for transient Qdrant HTTP failures. |
 | `QDRANT_RETRY_BACKOFF_MS` | `100` | Initial retry backoff for transient Qdrant HTTP failures. |
+| `BIND_ADDR` | `127.0.0.1:8000` | Bind address for direct non-Docker backend runs. Keep the default for local-only use. |
+| `CONTAINER_BIND_ADDR` | `0.0.0.0:8000` | Bind address used inside Docker Compose so the localhost-only host port mapping can reach the app container. |
 | `VECTOR_SIZE` | `512` | Qdrant vector size for the Rust embedder. |
 | `CLIP_MODEL_NAME` | `sentence-transformers/clip-ViT-B-32` | Kept for configuration compatibility; native Rust inference is not CLIP-equivalent yet. |
 | `THUMBNAIL_DIR` | `/app/data/thumbnails` | Generated thumbnail storage. |
@@ -439,7 +441,9 @@ Run the React dev server:
 bun run dev
 ```
 
-The dev script starts the Docker Compose app stack first, then starts Vite. The Vite dev server proxies `/api` and `/thumbnails` to `http://127.0.0.1:8000`.
+The dev script starts the Docker Compose app stack first, then starts Vite on `127.0.0.1`. The Vite dev server proxies `/api` and `/thumbnails` to `http://127.0.0.1:8000`.
+
+The default Docker Compose port mappings bind the Rust app and Qdrant to `127.0.0.1` on the host. To expose them to other machines, opt in deliberately by changing the `ports` mappings or using an override compose file; this service does not include user authentication.
 
 Start or refresh only the Docker containers used by the dev server:
 

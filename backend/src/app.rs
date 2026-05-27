@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{delete, get, post, put};
 use axum::Router;
 use tower_http::services::{ServeDir, ServeFile};
@@ -73,7 +74,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
             put(update_indexed_media_tags_route),
         )
         .route("/api/indexed-sources", delete(delete_indexed_sources_route))
-        .route("/api/search", post(search_upload))
+        .route(
+            "/api/search",
+            post(search_upload).layer(DefaultBodyLimit::max(upload_body_limit_bytes(&settings))),
+        )
         .nest_service("/static", ServeDir::new(static_dir.clone()))
         .nest_service("/thumbnails", ServeDir::new(settings.thumbnail_dir.clone()))
         .nest_service("/uploads", ServeDir::new(settings.upload_dir.clone()))
@@ -93,4 +97,8 @@ fn static_dir() -> PathBuf {
         .or_else(|_| std::env::var("STATIC_DIR"))
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("frontend/dist"))
+}
+
+pub fn upload_body_limit_bytes(settings: &Settings) -> usize {
+    settings.max_upload_mb as usize * 1024 * 1024 + 64 * 1024
 }

@@ -69,6 +69,11 @@ mod tests {
     }
 
     #[test]
+    fn default_bind_addr_is_localhost() {
+        assert_eq!(Settings::default().bind_addr, "127.0.0.1:8000");
+    }
+
+    #[test]
     fn default_qdrant_http_settings_are_bounded() {
         let settings = Settings::default();
 

@@ -1027,6 +1027,7 @@ dependencies = [
 name = "image-analysis-core"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "serde_json",
  "tensor-data",
  "video-analysis-core",
@@ -1039,6 +1040,7 @@ dependencies = [
  "image-analysis-core",
  "image-analysis-segmentation",
  "model-runtime",
+ "serde",
  "serde_json",
  "video-analysis-core",
 ]
@@ -1089,6 +1091,7 @@ dependencies = [
  "image-analysis-processing",
  "model-runtime",
  "ort",
+ "serde",
  "serde_json",
  "video-analysis-core",
 ]
@@ -1101,6 +1104,7 @@ dependencies = [
  "image-analysis-core",
  "math-geometry-2d",
  "math-linear",
+ "serde",
  "serde_json",
  "video-analysis-core",
 ]
@@ -1397,6 +1401,7 @@ dependencies = [
 name = "math-linear"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "serde_json",
  "tensor-data",
  "vector-analysis-core",
@@ -1408,6 +1413,7 @@ name = "math-signal-core"
 version = "0.1.0"
 dependencies = [
  "numbers-core",
+ "serde",
  "serde_json",
  "video-analysis-core",
 ]
@@ -2915,6 +2921,7 @@ checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 name = "vector-analysis-core"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "serde_json",
  "video-analysis-core",
 ]

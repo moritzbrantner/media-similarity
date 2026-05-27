@@ -13,18 +13,22 @@ use crate::storage::MediaVectorStore;
 use crate::workers::indexer::ImageIndexer;
 use crate::workers::media::visual_embedding::VisualEmbeddingBackend;
 
-pub async fn index_images(State(state): State<Arc<AppState>>) -> Json<IndexResponse> {
+pub async fn index_images(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<IndexResponse>, ApiError> {
+    reject_if_index_job_active(&state)?;
     let indexer = ImageIndexer::new(
         state.indexing_settings(),
         state.store.clone(),
         state.embedder.clone(),
     );
-    Json(indexer.index_sources().await)
+    Ok(Json(indexer.index_sources().await))
 }
 
 pub async fn spawn_index_job(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ApiJobSnapshot>, ApiError> {
+    reject_if_index_job_active(&state)?;
     let spec = JobSpec::new(
         format!("index.manual.{}", Uuid::new_v4()),
         "Index media sources",
@@ -93,4 +97,16 @@ pub(crate) fn run_index_job(
 
 fn job_failed(error: impl std::fmt::Display) -> JobError {
     JobError::Failed(error.to_string())
+}
+
+fn reject_if_index_job_active(state: &AppState) -> Result<(), ApiError> {
+    if state
+        .jobs
+        .has_active_kind_prefix("index.")
+        .map_err(ApiError::from_job)?
+    {
+        Err(ApiError::conflict("An indexing job is already running"))
+    } else {
+        Ok(())
+    }
 }

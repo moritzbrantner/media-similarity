@@ -57,11 +57,7 @@ pub async fn search_upload(
     let filters = query.search_filters()?;
     let mut uploaded = None;
     let mut upload_kind = None;
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|error| ApiError::bad_request(error.to_string()))?
-    {
+    while let Some(field) = multipart.next_field().await.map_err(multipart_error)? {
         if field.name() != Some("file") {
             continue;
         }
@@ -97,10 +93,7 @@ pub async fn search_upload(
                 "Upload must be an image, video, audio, or PDF file",
             ));
         }
-        let raw = field
-            .bytes()
-            .await
-            .map_err(|error| ApiError::bad_request(error.to_string()))?;
+        let raw = field.bytes().await.map_err(multipart_error)?;
         uploaded = Some(raw);
         upload_kind = Some(UploadedFileKind {
             is_video,
@@ -510,5 +503,12 @@ fn search_error(error: String) -> ApiError {
         ApiError::service_unavailable(error)
     } else {
         ApiError::internal(error)
+    }
+}
+
+fn multipart_error(error: axum::extract::multipart::MultipartError) -> ApiError {
+    match error.status() {
+        axum::http::StatusCode::PAYLOAD_TOO_LARGE => ApiError::payload_too_large(error.body_text()),
+        _ => ApiError::bad_request(error.body_text()),
     }
 }

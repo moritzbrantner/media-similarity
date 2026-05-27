@@ -195,7 +195,7 @@ impl Default for Settings {
             ocr_command: "tesseract".to_string(),
             ocr_language: Some("eng".to_string()),
             ocr_max_frames: 4,
-            bind_addr: "0.0.0.0:8000".to_string(),
+            bind_addr: "127.0.0.1:8000".to_string(),
         }
     }
 }

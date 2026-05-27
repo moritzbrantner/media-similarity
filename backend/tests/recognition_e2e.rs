@@ -6,7 +6,7 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use axum::extract::{Path as AxumPath, State};
+use axum::extract::{DefaultBodyLimit, Path as AxumPath, State};
 use axum::http::StatusCode as AxumStatusCode;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
@@ -27,6 +27,7 @@ use image_similarity_service::api::{
     get_source_config, health, index_images, list_jobs, ready, search_upload, spawn_index_job,
     update_source_config, AppState,
 };
+use image_similarity_service::app::upload_body_limit_bytes;
 use image_similarity_service::config::{parse_extensions, Settings};
 use image_similarity_service::domain::models::{IndexResponse, SearchResponse};
 
@@ -378,11 +379,22 @@ async fn video_recognition_indexes_source_scenes_and_searches_uploaded_scenes() 
 
     let scene = &response.scenes[0];
     assert_eq!(scene.scene_kind, "scene");
+    assert_eq!(scene.clip_url.as_deref(), None);
     assert!(scene.end_seconds > scene.start_seconds);
     assert!(scene.count <= 3);
     assert!(scene.results.iter().all(|result| {
         result.image.full_video_url.is_some() && result.image.scene_clip_url.is_some()
     }));
+    let top_level_upload_entries = fs::read_dir(&app.state.settings.upload_dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+    assert!(
+        top_level_upload_entries
+            .iter()
+            .all(|name| !name.starts_with("query-")),
+        "{top_level_upload_entries:?}"
+    );
 }
 
 #[tokio::test]
@@ -504,6 +516,22 @@ async fn upload_validation_covers_invalid_media_and_size_configuration() {
         .raw_search_upload("large.png", "image/png", vec![0_u8; 1024 * 1024 + 1], None)
         .await;
     assert_eq!(oversized.status(), reqwest::StatusCode::PAYLOAD_TOO_LARGE);
+
+    let body_limit_exceeded = app
+        .raw_search_upload(
+            "huge.png",
+            "image/png",
+            vec![0_u8; 1024 * 1024 + 70 * 1024],
+            None,
+        )
+        .await;
+    let body_limit_status = body_limit_exceeded.status();
+    let body_limit_body = body_limit_exceeded.text().await.unwrap();
+    assert_eq!(
+        body_limit_status,
+        reqwest::StatusCode::PAYLOAD_TOO_LARGE,
+        "{body_limit_body}"
+    );
 }
 
 #[tokio::test]
@@ -974,6 +1002,24 @@ async fn cancel_job_api_requests_cancellation_for_active_jobs() {
 }
 
 #[tokio::test]
+async fn indexing_endpoints_reject_overlapping_index_jobs() {
+    let app = TestApp::new(|_| {}).await;
+    let job_id = app.spawn_cancellable_index_job();
+
+    let async_index = app.raw_post_json("/api/jobs/index", json!({})).await;
+    assert_eq!(async_index.status(), reqwest::StatusCode::CONFLICT);
+
+    let sync_index = app.raw_post_json("/api/index", json!({})).await;
+    assert_eq!(sync_index.status(), reqwest::StatusCode::CONFLICT);
+
+    let _ = app
+        .post_json(&format!("/api/jobs/{job_id}/cancel"), json!({}))
+        .await;
+    let finished = app.wait_for_job_status(&job_id, &["Cancelled"]).await;
+    assert_eq!(finished["status"], "Cancelled");
+}
+
+#[tokio::test]
 async fn audio_transcription_model_endpoints_report_cache_and_spawn_cached_jobs() {
     let app = TestApp::new(|settings| {
         settings.audio_transcription_enabled = true;
@@ -1224,6 +1270,7 @@ impl TestApp {
         fs::create_dir_all(&settings.thumbnail_dir).unwrap();
         fs::create_dir_all(&settings.upload_dir).unwrap();
 
+        let search_body_limit = upload_body_limit_bytes(&settings);
         let state = Arc::new(AppState::new(settings));
         let app = Router::new()
             .route("/api/health", get(health))
@@ -1261,7 +1308,10 @@ impl TestApp {
                 "/api/indexed-sources",
                 axum::routing::delete(delete_indexed_sources_route),
             )
-            .route("/api/search", post(search_upload))
+            .route(
+                "/api/search",
+                post(search_upload).layer(DefaultBodyLimit::max(search_body_limit)),
+            )
             .with_state(state.clone());
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -1292,12 +1342,17 @@ impl TestApp {
     }
 
     fn spawn_cancellable_job(&self) -> String {
-        let spec = JobSpec::new(
-            format!("test.cancel.{}", Uuid::new_v4()),
-            "Cancellable test job",
-        )
-        .and_then(|spec| spec.with_kind("test.cancel"))
-        .unwrap();
+        self.spawn_cancellable_job_with_kind("test.cancel")
+    }
+
+    fn spawn_cancellable_index_job(&self) -> String {
+        self.spawn_cancellable_job_with_kind("index.manual")
+    }
+
+    fn spawn_cancellable_job_with_kind(&self, kind: &str) -> String {
+        let spec = JobSpec::new(format!("{kind}.{}", Uuid::new_v4()), "Cancellable test job")
+            .and_then(|spec| spec.with_kind(kind))
+            .unwrap();
         let snapshot = self
             .state
             .jobs

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "check:hygiene": "bash scripts/check_repo_hygiene.sh",
-    "dev": "bun run dev:containers && vite --host 0.0.0.0",
+    "dev": "bun run dev:containers && vite --host 127.0.0.1",
     "dev:containers": "docker compose up --build -d",
     "build": "tsc --noEmit && vite build",
     "build:rust": "cargo build --manifest-path backend/Cargo.toml --bins",
