@@ -129,6 +129,8 @@ export type ModelRuntimeStatus = {
   configured: string;
   cached: boolean;
   active: boolean;
+  blocking: boolean;
+  required_action: "download" | "enable" | null;
   bundle_path: string | null;
   detail: string | null;
   options: ModelOption[];

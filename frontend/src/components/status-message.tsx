@@ -1,4 +1,4 @@
-import { Alert, AlertDescription } from "@moritzbrantner/ui";
+import { Alert, AlertDescription } from "@moritzbrantner/ui/components/alert";
 import { AlertCircle, CheckCircle2, Loader2, RotateCw } from "lucide-react";
 import type { ReactNode } from "react";
 import type { IndexResponse } from "../types";

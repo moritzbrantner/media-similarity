@@ -1,5 +1,5 @@
-import { Button } from "@moritzbrantner/ui";
-import { AlertCircle, CheckCircle2, Cloud, Loader2 } from "lucide-react";
+import { Button } from "@moritzbrantner/ui/components/button";
+import { AlertCircle, AlertTriangle, CheckCircle2, Cloud, Loader2 } from "lucide-react";
 import type { ModelRuntimeStatus } from "../../types";
 import { Message } from "../status-message";
 
@@ -71,14 +71,33 @@ function ModelStatusCard({
           className={`shrink-0 rounded-md border px-2 py-1 text-xs font-semibold ${
             model.active
               ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-              : model.cached
-                ? "border-sky-200 bg-sky-50 text-sky-800"
-                : "border-amber-200 bg-amber-50 text-amber-800"
+              : model.blocking
+                ? "border-red-200 bg-red-50 text-red-800"
+                : model.cached
+                  ? "border-sky-200 bg-sky-50 text-sky-800"
+                  : "border-amber-200 bg-amber-50 text-amber-800"
           }`}
         >
-          {model.active ? "active" : model.cached ? "cached" : "missing"}
+          {model.active
+            ? "active"
+            : model.blocking
+              ? "blocking"
+              : model.cached
+                ? "cached"
+                : "missing"}
         </span>
       </div>
+      {model.blocking ? (
+        <div className="mt-2 flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-2 py-2 text-xs text-red-800">
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          <span>This required model blocks indexing and search until it is downloaded.</span>
+        </div>
+      ) : model.required_action ? (
+        <div className="mt-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-2 text-xs text-amber-800">
+          <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          <span>This model is enabled but needs {model.required_action} before analysis runs.</span>
+        </div>
+      ) : null}
       {model.detail ? <p className="mt-2 text-xs text-neutral-600">{model.detail}</p> : null}
       <div className="mt-3 flex flex-wrap gap-2">
         <Button

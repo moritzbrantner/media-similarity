@@ -1,4 +1,4 @@
-import { Button } from "@moritzbrantner/ui";
+import { Button } from "@moritzbrantner/ui/components/button";
 import { AlertCircle, FileText, ImageIcon, Loader2, Mic2, RotateCw, Users } from "lucide-react";
 import type { ReactNode } from "react";
 import { mediaKindLabel } from "../lib/format";

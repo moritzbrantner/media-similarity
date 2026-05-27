@@ -127,6 +127,29 @@ HOST_AUDIO_DIR=./sample-images/showcase/sources
 For Docker Compose, use absolute host paths in `.env` if relative paths do not
 mount as expected.
 
+For a guided local demo check, run:
+
+```bash
+bun run showcase:check
+```
+
+The command validates local prerequisites, checks the sample-corpus manifest,
+prints the absolute `.env` values for the showcase source directory, and points
+you at the generated query files. It does not edit `.env`.
+
+Download the showcase media with:
+
+```bash
+bun run showcase:download
+```
+
+After applying the printed `.env` values, start the regular development stack
+with:
+
+```bash
+bun run showcase:dev
+```
+
 ## API
 
 ### Health

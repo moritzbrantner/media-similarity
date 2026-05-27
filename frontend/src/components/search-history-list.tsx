@@ -1,4 +1,4 @@
-import { Button } from "@moritzbrantner/ui";
+import { Button } from "@moritzbrantner/ui/components/button";
 import { History } from "lucide-react";
 
 import { formatHistoryTime } from "../jobs/job-utils";

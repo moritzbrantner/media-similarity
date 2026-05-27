@@ -5,6 +5,7 @@ import {
   healthResponse,
   indexResponse,
   inverseIndexResponse,
+  modelsResponse,
   pngPixel,
   searchResponse,
   sourceConfigResponse,
@@ -38,6 +39,8 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
   const cancelledJobIds: string[] = [];
   const deletedMediaIds: string[] = [];
   const mediaTagUpdates: Array<{ id: string; tags: string[] }> = [];
+  const modelDownloads: Array<{ model: string | null; role: string }> = [];
+  const modelEnables: Array<{ model: string | null; role: string }> = [];
   const sourceConfigPuts: unknown[] = [];
   const indexingConfigPuts: unknown[] = [];
 
@@ -87,39 +90,22 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
 
   await page.route("**/api/models", async (route) => {
     await route.fulfill({
-      json: options.models ?? {
-        models: [
-          {
-            active: true,
-            bundle_path: "/models/visual",
-            cached: true,
-            configured: "xenova-clip-vit-base-patch32-onnx",
-            detail: "Using model bundle `xenova-clip-vit-base-patch32-onnx`",
-            label: "Visual embedding",
-            options: [],
-            role: "visual_embedding",
-          },
-          {
-            active: false,
-            bundle_path: null,
-            cached: false,
-            configured: "base.en",
-            detail: "Role is disabled by configuration",
-            label: "Audio transcription",
-            options: [],
-            role: "audio_transcription",
-          },
-        ],
-      },
+      json: options.models ?? modelsResponse,
     });
   });
 
   await page.route("**/api/models/*/download", async (route) => {
+    const role = modelRoleFromUrl(route.request().url(), "download");
+    const request = route.request().postDataJSON() as { model?: string | null };
+    modelDownloads.push({ model: request.model ?? null, role });
     jobs = [completedIndexJob];
     await route.fulfill({ json: completedIndexJob });
   });
 
   await page.route("**/api/models/*/enable", async (route) => {
+    const role = modelRoleFromUrl(route.request().url(), "enable");
+    const request = route.request().postDataJSON() as { model?: string | null };
+    modelEnables.push({ model: request.model ?? null, role });
     jobs = [completedIndexJob];
     await route.fulfill({ json: completedIndexJob });
   });
@@ -205,6 +191,8 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
     deletedMediaIds,
     indexingConfigPuts,
     mediaTagUpdates,
+    modelDownloads,
+    modelEnables,
     sourceConfigPuts,
   };
 }
@@ -268,6 +256,11 @@ function isJobWithSpec(value: unknown): value is { spec: { id: string } } {
     "id" in value.spec &&
     typeof value.spec.id === "string",
   );
+}
+
+function modelRoleFromUrl(url: string, action: "download" | "enable") {
+  const match = url.match(new RegExp(`/api/models/([^/]+)/${action}`));
+  return match ? decodeURIComponent(match[1]) : "";
 }
 
 function findMockImage(id: string, response: unknown) {

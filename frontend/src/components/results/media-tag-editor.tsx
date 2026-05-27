@@ -1,4 +1,7 @@
-import { Badge, Button, Input, Label } from "@moritzbrantner/ui";
+import { Badge } from "@moritzbrantner/ui/components/badge";
+import { Button } from "@moritzbrantner/ui/components/button";
+import { Input } from "@moritzbrantner/ui/components/input";
+import { Label } from "@moritzbrantner/ui/components/label";
 import { Loader2, Save, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { SearchResult } from "../../types";

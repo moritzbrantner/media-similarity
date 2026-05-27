@@ -80,6 +80,8 @@ export function App() {
   const [activeSearchId, setActiveSearchId] = useState<string | null>(null);
   const [selectedQuerySceneIndex, setSelectedQuerySceneIndex] = useState<number | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [refreshedModelJobId, setRefreshedModelJobId] = useState<string | null>(null);
+  const sourceConfigViewActive = activeView === "configure" || activeView === "indexing";
 
   const searchHistoryQuery = useQuery({
     queryKey: SEARCH_HISTORY_QUERY_KEY,
@@ -98,6 +100,7 @@ export function App() {
   const sourceConfigQuery = useQuery({
     queryKey: ["source-config"],
     queryFn: fetchSourceConfig,
+    enabled: sourceConfigViewActive,
   });
 
   const inverseIndexQuery = useQuery({
@@ -109,6 +112,7 @@ export function App() {
   const modelsQuery = useQuery({
     queryKey: ["models"],
     queryFn: fetchModels,
+    enabled: activeView === "configure",
   });
 
   const jobsQuery = useQuery({
@@ -120,6 +124,7 @@ export function App() {
   const jobs = useMemo(() => sortJobs(jobsQuery.data ?? []), [jobsQuery.data]);
   const selectedJob = jobs.find((job) => job.spec.id === selectedJobId) ?? jobs[0] ?? null;
   const latestIndexJob = jobs.find((job) => job.spec.kind?.startsWith("index."));
+  const latestModelJob = jobs.find((job) => job.spec.kind?.startsWith("model."));
 
   const jobEventsQuery = useQuery({
     queryKey: ["job-events", selectedJob?.spec.id],
@@ -152,6 +157,8 @@ export function App() {
       setSelectedJobId(job.spec.id);
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["models"] });
+      queryClient.invalidateQueries({ queryKey: ["health"] });
+      queryClient.invalidateQueries({ queryKey: ["source-config"] });
     },
   });
 
@@ -162,6 +169,8 @@ export function App() {
       setSelectedJobId(job.spec.id);
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["models"] });
+      queryClient.invalidateQueries({ queryKey: ["health"] });
+      queryClient.invalidateQueries({ queryKey: ["source-config"] });
     },
   });
 
@@ -272,6 +281,21 @@ export function App() {
       queryClient.invalidateQueries({ queryKey: ["inverse-index"] });
     }
   }, [healthQuery.data, latestIndexJob, queryClient]);
+
+  useEffect(() => {
+    if (
+      !latestModelJob ||
+      !jobIsTerminal(latestModelJob.status) ||
+      latestModelJob.spec.id === refreshedModelJobId
+    ) {
+      return;
+    }
+
+    setRefreshedModelJobId(latestModelJob.spec.id);
+    queryClient.invalidateQueries({ queryKey: ["models"] });
+    queryClient.invalidateQueries({ queryKey: ["health"] });
+    queryClient.invalidateQueries({ queryKey: ["source-config"] });
+  }, [latestModelJob, queryClient, refreshedModelJobId]);
 
   function updateSearchHistory(updater: (history: SearchHistoryItem[]) => SearchHistoryItem[]) {
     queryClient.setQueryData<SearchHistoryItem[]>(SEARCH_HISTORY_QUERY_KEY, (history = []) =>

@@ -16,6 +16,7 @@ import {
   makeScene,
   makeSearchResponse,
   makeSourceConfigResponse,
+  modelsResponse,
   pngPixel,
   pdfSearchResponse,
   pdfUpload,
@@ -75,6 +76,42 @@ test("renders model status from the source configuration panel", async ({ page }
   await expect(page.getByRole("heading", { name: "Visual embedding" })).toBeVisible();
   await expect(page.getByTitle("xenova-clip-vit-base-patch32-onnx")).toBeVisible();
   await expect(page.getByText("Audio transcription")).toBeVisible();
+});
+
+test("calls out blocking first-run models and downloads them from the panel", async ({ page }) => {
+  const mocks = await resetApiMocks(page, {
+    models: {
+      models: [
+        {
+          ...modelsResponse.models[0],
+          active: false,
+          blocking: true,
+          bundle_path: null,
+          cached: false,
+          detail: "Model bundle is not cached in /app/data/models/bundles",
+          required_action: "download",
+        },
+        modelsResponse.models[1],
+      ],
+    },
+  });
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Open media configuration" }).click();
+
+  await expect(page.getByText("blocking")).toBeVisible();
+  await expect(page.getByText("blocks indexing and search")).toBeVisible();
+
+  await page.getByRole("button", { name: "Download" }).first().click();
+
+  await expect
+    .poll(() => mocks.modelDownloads)
+    .toEqual([
+      {
+        model: "xenova-clip-vit-base-patch32-onnx",
+        role: "visual_embedding",
+      },
+    ]);
 });
 
 test("configures indexing behavior from the UI", async ({ page }) => {

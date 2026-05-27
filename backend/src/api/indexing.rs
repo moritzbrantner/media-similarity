@@ -11,6 +11,7 @@ use crate::config::Settings;
 use crate::domain::models::IndexResponse;
 use crate::storage::MediaVectorStore;
 use crate::workers::indexer::ImageIndexer;
+use crate::workers::media::models::model_statuses;
 use crate::workers::media::visual_embedding::VisualEmbeddingBackend;
 
 pub async fn index_images(
@@ -73,6 +74,15 @@ pub(crate) fn run_index_job(
     embedder: Arc<dyn VisualEmbeddingBackend>,
 ) -> jobs_core::Result<()> {
     context.info("checking indexed media sources")?;
+    for status in model_statuses(&settings)
+        .into_iter()
+        .filter(|status| status.blocking)
+    {
+        context.warn(format!(
+            "{} model `{}` blocks indexing until it is downloaded; use the Models panel or POST /api/models/{}/download",
+            status.label, status.configured, status.role
+        ))?;
+    }
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()

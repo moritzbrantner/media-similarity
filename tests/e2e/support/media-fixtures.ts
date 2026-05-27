@@ -1,3 +1,13 @@
+import type {
+  HealthResponse,
+  IndexResponse,
+  InverseIndexResponse,
+  JobSnapshot,
+  ModelsResponse,
+  SearchResponse,
+  SourceConfigResponse,
+} from "../../../frontend/src/types";
+
 export const pngPixel = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
   "base64",
@@ -402,14 +412,43 @@ const defaultSearchResponse = {
   scenes: [] as Array<ReturnType<typeof makeScene>>,
 };
 
-export const healthResponse = makeHealthResponse();
-export const indexResponse = makeIndexResponse();
-export const completedIndexJob = makeJob();
+export const healthResponse: HealthResponse = makeHealthResponse();
+export const indexResponse: IndexResponse = makeIndexResponse();
+export const completedIndexJob: JobSnapshot = makeJob();
 export const completedIndexEvents = makeJobEvents(completedIndexJob);
-export const sourceConfigResponse = makeSourceConfigResponse();
-export const searchResponse = makeSearchResponse();
+export const sourceConfigResponse: SourceConfigResponse = makeSourceConfigResponse();
+export const searchResponse: SearchResponse = makeSearchResponse();
 
-export const inverseIndexResponse = {
+export const modelsResponse: ModelsResponse = {
+  models: [
+    {
+      active: true,
+      blocking: false,
+      bundle_path: "/models/visual",
+      cached: true,
+      configured: "xenova-clip-vit-base-patch32-onnx",
+      detail: "Using model bundle `xenova-clip-vit-base-patch32-onnx`",
+      label: "Visual embedding",
+      options: [],
+      required_action: null,
+      role: "visual_embedding",
+    },
+    {
+      active: false,
+      blocking: false,
+      bundle_path: null,
+      cached: false,
+      configured: "base.en",
+      detail: "Role is disabled by configuration",
+      label: "Audio transcription",
+      options: [],
+      required_action: null,
+      role: "audio_transcription",
+    },
+  ],
+};
+
+export const inverseIndexResponse: InverseIndexResponse = {
   errors: [],
   indexed_media: 3,
   people: [

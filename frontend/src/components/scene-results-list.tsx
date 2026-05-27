@@ -1,4 +1,4 @@
-import { Button } from "@moritzbrantner/ui";
+import { Button } from "@moritzbrantner/ui/components/button";
 import { FileAudio, FileText, FileVideo } from "lucide-react";
 import { filterResults } from "../search/filtering";
 import { sortResults } from "../search/sorting";

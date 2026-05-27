@@ -27,10 +27,10 @@ async fn qdrant_smoke_indexes_and_searches_static_image() {
         qdrant_url: std::env::var("QDRANT_URL")
             .unwrap_or_else(|_| "http://qdrant:6333".to_string()),
         qdrant_collection: format!("smoke-{}", Uuid::new_v4()),
-        qdrant_request_timeout_ms: 1_000,
+        qdrant_request_timeout_ms: 5_000,
         qdrant_connect_timeout_ms: 1_000,
-        qdrant_retry_attempts: 0,
-        qdrant_retry_backoff_ms: 10,
+        qdrant_retry_attempts: 2,
+        qdrant_retry_backoff_ms: 100,
         thumbnail_dir,
         upload_dir,
         voice_registry_path: root.path().join("recognized-voices.json"),

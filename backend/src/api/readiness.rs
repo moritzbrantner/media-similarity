@@ -173,7 +173,7 @@ fn model_check(status: ModelRuntimeStatus) -> ReadinessCheck {
         );
     }
 
-    if status.role == "visual_embedding" {
+    if status.blocking {
         return ReadinessCheck::error(name, missing_required_model_detail(&status));
     }
 

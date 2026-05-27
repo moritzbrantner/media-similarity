@@ -67,6 +67,8 @@ pub struct ModelRuntimeStatus {
     pub configured: String,
     pub cached: bool,
     pub active: bool,
+    pub blocking: bool,
+    pub required_action: Option<&'static str>,
     pub bundle_path: Option<String>,
     pub detail: Option<String>,
     pub options: Vec<ModelOption>,
@@ -215,6 +217,7 @@ fn bundle_model_status(
     } else {
         Some("Role is disabled by configuration".to_string())
     };
+    let missing_enabled_model = enabled && !cached;
 
     ModelRuntimeStatus {
         role: role.as_str().to_string(),
@@ -222,6 +225,8 @@ fn bundle_model_status(
         configured: spec.name.clone(),
         cached,
         active: enabled && cached,
+        blocking: role == ModelRole::VisualEmbedding && missing_enabled_model,
+        required_action: missing_enabled_model.then_some("download"),
         bundle_path,
         detail,
         options: vec![ModelOption {
@@ -251,12 +256,15 @@ fn audio_model_status(settings: &Settings) -> ModelRuntimeStatus {
         })
         .collect::<Vec<_>>();
     let cached = models.iter().any(|model| model.configured && model.cached);
+    let missing_enabled_model = settings.audio_transcription_enabled && !cached;
     ModelRuntimeStatus {
         role: ModelRole::AudioTranscription.as_str().to_string(),
         label: ModelRole::AudioTranscription.label().to_string(),
         configured,
         cached,
         active: settings.audio_transcription_enabled && cached,
+        blocking: false,
+        required_action: missing_enabled_model.then_some("download"),
         bundle_path: settings
             .audio_transcription_cache_dir
             .as_ref()
@@ -274,4 +282,53 @@ fn audio_model_status(settings: &Settings) -> ModelRuntimeStatus {
 
 fn fallback_path(path: &std::path::Path) -> Option<PathBuf> {
     path.is_file().then(|| path.to_path_buf())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{model_status, ModelRole};
+    use crate::config::Settings;
+
+    #[test]
+    fn missing_enabled_visual_model_is_blocking_and_downloadable() {
+        let root =
+            std::env::temp_dir().join(format!("image-sim-model-status-{}", std::process::id()));
+        let settings = Settings {
+            model_bundle_dir: root.join("bundles"),
+            visual_embedding_enabled: true,
+            visual_embedding_model_path: root.join("missing-model.onnx"),
+            visual_embedding_preprocessor_path: root.join("missing-preprocessor.json"),
+            ..Settings::default()
+        };
+
+        let status = model_status(ModelRole::VisualEmbedding, &settings);
+
+        assert_eq!(status.role, "visual_embedding");
+        assert!(!status.cached);
+        assert!(!status.active);
+        assert!(status.blocking);
+        assert_eq!(status.required_action, Some("download"));
+    }
+
+    #[test]
+    fn disabled_missing_visual_model_is_not_blocking() {
+        let root = std::env::temp_dir().join(format!(
+            "image-sim-model-status-disabled-{}",
+            std::process::id()
+        ));
+        let settings = Settings {
+            model_bundle_dir: root.join("bundles"),
+            visual_embedding_enabled: false,
+            visual_embedding_model_path: root.join("missing-model.onnx"),
+            visual_embedding_preprocessor_path: root.join("missing-preprocessor.json"),
+            ..Settings::default()
+        };
+
+        let status = model_status(ModelRole::VisualEmbedding, &settings);
+
+        assert!(!status.cached);
+        assert!(!status.active);
+        assert!(!status.blocking);
+        assert_eq!(status.required_action, None);
+    }
 }

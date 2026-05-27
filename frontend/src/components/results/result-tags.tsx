@@ -1,4 +1,4 @@
-import { Badge } from "@moritzbrantner/ui";
+import { Badge } from "@moritzbrantner/ui/components/badge";
 import type { ReactNode } from "react";
 import type { SearchResult } from "../../types";
 import { personDisplayName } from "./result-formatting";
