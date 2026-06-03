@@ -58,12 +58,16 @@ impl ImageIndexer {
                         frames: page_ocr.frames,
                     }),
             )?;
-            let vector = self
-                .embedder
-                .embed_media(&page.media.sampled_frames, settings.gif_motion_weight)?;
+            let vector = embed_media_with_cancel(
+                self.embedder.clone(),
+                page.media.sampled_frames.clone(),
+                settings.gif_motion_weight,
+                recorder,
+            )
+            .await?;
             recorder.check_cancelled()?;
             let point_id = payload.id.clone();
-            self.store.upsert_media(&payload, vector).await?;
+            await_with_cancel(self.store.upsert_media(&payload, vector), recorder).await??;
             recorder.committed_point(&point_id);
             outcome.insert(point_id);
         }
@@ -99,13 +103,16 @@ impl ImageIndexer {
                     frames: Vec::new(),
                 }),
         )?;
-        let vector = self.embedder.embed_media(
-            &pdf.document_media.sampled_frames,
+        let vector = embed_media_with_cancel(
+            self.embedder.clone(),
+            pdf.document_media.sampled_frames.clone(),
             settings.gif_motion_weight,
-        )?;
+            recorder,
+        )
+        .await?;
         recorder.check_cancelled()?;
         let point_id = payload.id.clone();
-        self.store.upsert_media(&payload, vector).await?;
+        await_with_cancel(self.store.upsert_media(&payload, vector), recorder).await??;
         recorder.committed_point(&point_id);
         outcome.insert(point_id);
 

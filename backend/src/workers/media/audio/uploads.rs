@@ -67,10 +67,19 @@ fn transcription_wav_path(settings: &Settings) -> PathBuf {
 }
 
 fn transcode_for_transcription(input_path: &Path, output_path: &Path) -> Result<(), String> {
+    transcode_for_transcription_cancellable(input_path, output_path, &mut || false)
+}
+
+fn transcode_for_transcription_cancellable(
+    input_path: &Path,
+    output_path: &Path,
+    is_cancelled: &mut impl FnMut() -> bool,
+) -> Result<(), String> {
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
-    let output = Command::new("ffmpeg")
+    let mut command = Command::new("ffmpeg");
+    command
         .arg("-y")
         .arg("-nostdin")
         .arg("-v")
@@ -88,9 +97,8 @@ fn transcode_for_transcription(input_path: &Path, output_path: &Path) -> Result<
         .arg(TRANSCRIPTION_SAMPLE_RATE.to_string())
         .arg("-f")
         .arg("wav")
-        .arg(output_path)
-        .output()
-        .map_err(audio_tool_error)?;
+        .arg(output_path);
+    let output = run_command_output_cancellable(&mut command, is_cancelled)?;
     if output.status.success() {
         return Ok(());
     }

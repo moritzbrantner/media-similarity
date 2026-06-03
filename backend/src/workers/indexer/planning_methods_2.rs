@@ -159,15 +159,18 @@ impl ImageIndexer {
         let media = source_image.load_media(&settings).await?;
         recorder.check_cancelled()?;
         let media_id = image_id_for_uri(&source_image.id_base);
-        let face_analysis = analyze_faces_for_media(
-            &settings,
-            self.store.as_ref(),
-            &media,
-            &media_id,
-            Some(source_image.source_uri.clone()),
-            Some(source_image.item_uri.clone()),
+        let face_analysis = await_with_cancel(
+            analyze_faces_for_media(
+                &settings,
+                self.store.as_ref(),
+                &media,
+                &media_id,
+                Some(source_image.source_uri.clone()),
+                Some(source_image.item_uri.clone()),
+            ),
+            recorder,
         )
-        .await;
+        .await?;
         recorder.check_cancelled()?;
         let payload = self.build_payload(
             source_image,
@@ -177,11 +180,15 @@ impl ImageIndexer {
                 .with_photo_metadata(photo_metadata)
                 .with_animated_thumbnail(workflow.processor_enabled("thumbnail.ensure_animated")),
         )?;
-        let vector = self
-            .embedder
-            .embed_media(&media.sampled_frames, settings.gif_motion_weight)?;
+        let vector = embed_media_with_cancel(
+            self.embedder.clone(),
+            media.sampled_frames.clone(),
+            settings.gif_motion_weight,
+            recorder,
+        )
+        .await?;
         recorder.check_cancelled()?;
-        self.store.upsert_media(&payload, vector).await?;
+        await_with_cancel(self.store.upsert_media(&payload, vector), recorder).await??;
         recorder.committed_point(&payload.id);
         Ok(IndexOneOutcome::single(payload.id))
     }
@@ -211,7 +218,12 @@ impl ImageIndexer {
         recorder.check_cancelled()?;
         let scenes = source_image
             .with_local_media_path(&settings, |path| {
-                decode_source_video_scenes(path, &source_image.id_base, &settings)
+                decode_source_video_scenes_cancellable(
+                    path,
+                    &source_image.id_base,
+                    &settings,
+                    || recorder.is_cancelled(),
+                )
             })
             .await?;
         let mut outcome = IndexOneOutcome::default();
@@ -221,15 +233,18 @@ impl ImageIndexer {
             recorder.check_cancelled()?;
             let id_base = format!("{}#scene={}", source_image.id_base, scene.scene_index + 1);
             let media_id = image_id_for_uri(&id_base);
-            let face_analysis = analyze_faces_for_media(
-                &settings,
-                self.store.as_ref(),
-                &scene.media,
-                &media_id,
-                Some(source_image.source_uri.clone()),
-                Some(source_image.item_uri.clone()),
+            let face_analysis = await_with_cancel(
+                analyze_faces_for_media(
+                    &settings,
+                    self.store.as_ref(),
+                    &scene.media,
+                    &media_id,
+                    Some(source_image.source_uri.clone()),
+                    Some(source_image.item_uri.clone()),
+                ),
+                recorder,
             )
-            .await;
+            .await?;
             recorder.check_cancelled()?;
             let payload = self.build_payload(
                 source_image,
@@ -237,12 +252,16 @@ impl ImageIndexer {
                 &settings,
                 PayloadBuildOptions::new(&face_analysis).with_video_scene(scene),
             )?;
-            let vector = self
-                .embedder
-                .embed_media(&scene.media.sampled_frames, settings.gif_motion_weight)?;
+            let vector = embed_media_with_cancel(
+                self.embedder.clone(),
+                scene.media.sampled_frames.clone(),
+                settings.gif_motion_weight,
+                recorder,
+            )
+            .await?;
             recorder.check_cancelled()?;
             let point_id = payload.id.clone();
-            self.store.upsert_media(&payload, vector).await?;
+            await_with_cancel(self.store.upsert_media(&payload, vector), recorder).await??;
             recorder.committed_point(&point_id);
             outcome.insert(point_id);
         }
@@ -258,7 +277,12 @@ impl ImageIndexer {
         recorder.check_cancelled()?;
         let segments = source_image
             .with_local_media_path(&settings, |path| {
-                decode_source_audio_segments(path, &source_image.id_base, &settings)
+                decode_source_audio_segments_cancellable(
+                    path,
+                    &source_image.id_base,
+                    &settings,
+                    || recorder.is_cancelled(),
+                )
             })
             .await?;
         let mut outcome = IndexOneOutcome::default();
@@ -273,12 +297,16 @@ impl ImageIndexer {
                 &settings,
                 PayloadBuildOptions::new(&face_analysis).with_audio_segment(segment),
             )?;
-            let vector = self
-                .embedder
-                .embed_media(&segment.media.sampled_frames, settings.gif_motion_weight)?;
+            let vector = embed_media_with_cancel(
+                self.embedder.clone(),
+                segment.media.sampled_frames.clone(),
+                settings.gif_motion_weight,
+                recorder,
+            )
+            .await?;
             recorder.check_cancelled()?;
             let point_id = payload.id.clone();
-            self.store.upsert_media(&payload, vector).await?;
+            await_with_cancel(self.store.upsert_media(&payload, vector), recorder).await??;
             recorder.committed_point(&point_id);
             outcome.insert(point_id);
         }

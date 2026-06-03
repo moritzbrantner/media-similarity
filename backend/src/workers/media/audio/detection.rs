@@ -1,7 +1,8 @@
-fn render_spectrogram(
+fn render_spectrogram_cancellable(
     input_path: &Path,
     output_path: &Path,
     window: Option<(f64, f64)>,
+    is_cancelled: &mut impl FnMut() -> bool,
 ) -> Result<(), String> {
     if let Some(parent) = output_path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
@@ -22,16 +23,15 @@ fn render_spectrogram(
                 (end_seconds - start_seconds).max(AUDIO_SEGMENT_MIN_SECONDS)
             ));
     }
-    let output = command
+    command
         .arg("-i")
         .arg(input_path)
         .arg("-lavfi")
         .arg(filter)
         .arg("-frames:v")
         .arg("1")
-        .arg(output_path)
-        .output()
-        .map_err(audio_tool_error)?;
+        .arg(output_path);
+    let output = run_command_output_cancellable(&mut command, is_cancelled)?;
     if output.status.success() {
         return Ok(());
     }
@@ -40,16 +40,23 @@ fn render_spectrogram(
 }
 
 fn audio_duration_ms(path: &Path) -> Result<u32, String> {
-    let output = Command::new("ffprobe")
+    audio_duration_ms_cancellable(path, &mut || false)
+}
+
+fn audio_duration_ms_cancellable(
+    path: &Path,
+    is_cancelled: &mut impl FnMut() -> bool,
+) -> Result<u32, String> {
+    let mut command = Command::new("ffprobe");
+    command
         .arg("-v")
         .arg("error")
         .arg("-show_entries")
         .arg("format=duration")
         .arg("-of")
         .arg("default=noprint_wrappers=1:nokey=1")
-        .arg(path)
-        .output()
-        .map_err(audio_tool_error)?;
+        .arg(path);
+    let output = run_command_output_cancellable(&mut command, is_cancelled)?;
     if !output.status.success() {
         return Err(command_error("ffprobe", &output.stderr));
     }
@@ -62,21 +69,42 @@ fn audio_duration_ms(path: &Path) -> Result<u32, String> {
 }
 
 fn analyze_audio(path: &Path, settings: &Settings) -> Result<AudioAnalysis, String> {
-    let samples = extract_mono_f32_samples(path, AUDIO_ANALYSIS_SAMPLE_RATE)?;
+    analyze_audio_cancellable(path, settings, &mut || false)
+}
+
+fn analyze_audio_cancellable(
+    path: &Path,
+    settings: &Settings,
+    is_cancelled: &mut impl FnMut() -> bool,
+) -> Result<AudioAnalysis, String> {
+    check_cancelled(is_cancelled)?;
+    let samples = extract_mono_f32_samples_cancellable(
+        path,
+        AUDIO_ANALYSIS_SAMPLE_RATE,
+        is_cancelled,
+    )?;
+    check_cancelled(is_cancelled)?;
     let mut analysis = analyze_audio_samples(&samples, AUDIO_ANALYSIS_SAMPLE_RATE)
         .map_err(|error| error.to_string())?;
+    check_cancelled(is_cancelled)?;
     attach_voice_registry(
         &mut analysis,
         &samples,
         AUDIO_ANALYSIS_SAMPLE_RATE,
         settings,
     )?;
+    check_cancelled(is_cancelled)?;
     attach_audio_transcription(&mut analysis, path, settings);
     Ok(analysis)
 }
 
-fn extract_mono_f32_samples(path: &Path, sample_rate: u32) -> Result<Vec<f32>, String> {
-    let output = Command::new("ffmpeg")
+fn extract_mono_f32_samples_cancellable(
+    path: &Path,
+    sample_rate: u32,
+    is_cancelled: &mut impl FnMut() -> bool,
+) -> Result<Vec<f32>, String> {
+    let mut command = Command::new("ffmpeg");
+    command
         .arg("-nostdin")
         .arg("-v")
         .arg("error")
@@ -93,9 +121,8 @@ fn extract_mono_f32_samples(path: &Path, sample_rate: u32) -> Result<Vec<f32>, S
         .arg(sample_rate.to_string())
         .arg("-f")
         .arg("f32le")
-        .arg("pipe:1")
-        .output()
-        .map_err(audio_tool_error)?;
+        .arg("pipe:1");
+    let output = run_command_output_cancellable(&mut command, is_cancelled)?;
     if !output.status.success() {
         return Err(command_error("ffmpeg", &output.stderr));
     }

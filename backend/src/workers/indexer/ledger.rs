@@ -356,6 +356,13 @@ impl IndexRunRecorder {
         Ok(())
     }
 
+    pub(crate) fn is_cancelled(&self) -> bool {
+        self.context
+            .as_ref()
+            .map(|context| context.is_cancelled())
+            .unwrap_or(false)
+    }
+
     fn mark_source(&mut self, status: IndexLedgerSourceStatus, error: Option<String>) {
         self.with_current_source(|source| {
             source.status = status;

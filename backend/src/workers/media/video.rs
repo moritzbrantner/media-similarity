@@ -1,12 +1,15 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::thread;
+use std::time::Duration;
 
 use image::RgbImage;
 use uuid::Uuid;
 use video_analysis_core::{DetectionResult, FramePosition, Scene, ScenePipeline, VideoSource};
 use video_analysis_detectors::ContentDetector;
 use video_analysis_ffmpeg::FfmpegVideoSource;
-use video_analysis_split::{split_video_ffmpeg, SplitOptions};
+use video_analysis_split::{build_split_plan, SplitOptions};
 
 use crate::config::Settings;
 use crate::workers::media::image_io::image_id_for_uri;
@@ -82,17 +85,32 @@ pub fn decode_source_video_scenes(
     id_base: &str,
     settings: &Settings,
 ) -> Result<Vec<SourceVideoScene>, String> {
+    decode_source_video_scenes_cancellable(path, id_base, settings, || false)
+}
+
+pub fn decode_source_video_scenes_cancellable(
+    path: &Path,
+    id_base: &str,
+    settings: &Settings,
+    mut is_cancelled: impl FnMut() -> bool,
+) -> Result<Vec<SourceVideoScene>, String> {
+    check_cancelled(&mut is_cancelled)?;
     let detection = detect_scenes(path)?;
+    check_cancelled(&mut is_cancelled)?;
     let scenes = if detection.scenes.is_empty() {
-        whole_video_scene(path)?
+        whole_video_scene_cancellable(path, &mut is_cancelled)?
     } else {
         detection.scenes
     };
 
     let video_id = image_id_for_uri(id_base);
+    check_cancelled(&mut is_cancelled)?;
     let full_video_url = expose_source_video(path, &video_id, settings)?;
-    let clip_urls = split_source_scenes(path, &scenes, &video_id, settings)?;
-    let scene_media = sample_scene_media(path, &scenes, settings)?;
+    check_cancelled(&mut is_cancelled)?;
+    let clip_urls =
+        split_source_scenes_cancellable(path, &scenes, &video_id, settings, &mut is_cancelled)?;
+    check_cancelled(&mut is_cancelled)?;
+    let scene_media = sample_scene_media_cancellable(path, &scenes, settings, &mut is_cancelled)?;
     Ok(scene_media
         .into_iter()
         .zip(clip_urls)
@@ -119,11 +137,19 @@ fn detect_scenes(path: &Path) -> Result<DetectionResult, String> {
 }
 
 fn whole_video_scene(path: &Path) -> Result<Vec<Scene>, String> {
+    whole_video_scene_cancellable(path, &mut || false)
+}
+
+fn whole_video_scene_cancellable(
+    path: &Path,
+    is_cancelled: &mut impl FnMut() -> bool,
+) -> Result<Vec<Scene>, String> {
     let mut source = FfmpegVideoSource::open(path).map_err(video_error)?;
     let fps = source.frame_rate();
     let mut first = None;
     let mut last = None;
     while let Some(frame) = source.next_frame().map_err(video_error)? {
+        check_cancelled(is_cancelled)?;
         first.get_or_insert(frame.position);
         last = Some(frame.position);
     }
@@ -134,11 +160,12 @@ fn whole_video_scene(path: &Path) -> Result<Vec<Scene>, String> {
     Ok(vec![Scene { start, end }])
 }
 
-fn split_source_scenes(
+fn split_source_scenes_cancellable(
     path: &Path,
     scenes: &[Scene],
     video_id: &str,
     settings: &Settings,
+    is_cancelled: &mut impl FnMut() -> bool,
 ) -> Result<Vec<Option<String>>, String> {
     let output_dir = settings.upload_dir.join("source-scenes").join(video_id);
     let options = SplitOptions {
@@ -147,7 +174,26 @@ fn split_source_scenes(
         video_name: Some(video_id.to_string()),
         ..SplitOptions::default()
     };
-    let outputs = split_video_ffmpeg(path, scenes, &options).map_err(video_error)?;
+    let plan = build_split_plan(path, scenes, &options).map_err(video_error)?;
+    std::fs::create_dir_all(&options.output_dir).map_err(|error| error.to_string())?;
+    let mut outputs = Vec::new();
+    for job in &plan.jobs {
+        check_cancelled(is_cancelled)?;
+        let mut command = Command::new("ffmpeg");
+        command
+            .args(job.command_args(&plan.input_video_path))
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped());
+        let status = wait_for_command(&mut command, is_cancelled)?;
+        if !status.success() {
+            return Err(format!(
+                "ffmpeg failed while writing `{}`",
+                job.output_path.display()
+            ));
+        }
+        outputs.push(job.output_path.clone());
+    }
     Ok(outputs
         .into_iter()
         .map(|output| {
@@ -191,6 +237,15 @@ fn sample_scene_media(
     scenes: &[Scene],
     settings: &Settings,
 ) -> Result<Vec<(usize, Scene, DecodedMedia)>, String> {
+    sample_scene_media_cancellable(path, scenes, settings, &mut || false)
+}
+
+fn sample_scene_media_cancellable(
+    path: &Path,
+    scenes: &[Scene],
+    settings: &Settings,
+    is_cancelled: &mut impl FnMut() -> bool,
+) -> Result<Vec<(usize, Scene, DecodedMedia)>, String> {
     let mut source = FfmpegVideoSource::open(path).map_err(video_error)?;
     let frame_delay_ms = frame_delay_ms(source.frame_rate());
     let stride = settings.video_frame_stride.max(1) as u64;
@@ -203,6 +258,7 @@ fn sample_scene_media(
     let mut scene_index = 0_usize;
 
     while let Some(frame) = source.next_frame().map_err(video_error)? {
+        check_cancelled(is_cancelled)?;
         while scene_index < scenes.len()
             && frame.position.frame_index >= scenes[scene_index].end.frame_index
         {
@@ -269,6 +325,31 @@ fn sample_scene_media(
         .collect()
 }
 
+fn wait_for_command(
+    command: &mut Command,
+    is_cancelled: &mut impl FnMut() -> bool,
+) -> Result<std::process::ExitStatus, String> {
+    let mut child = command.spawn().map_err(video_error)?;
+    loop {
+        check_cancelled(is_cancelled).inspect_err(|_| {
+            let _ = child.kill();
+            let _ = child.wait();
+        })?;
+        match child.try_wait().map_err(video_error)? {
+            Some(status) => return Ok(status),
+            None => thread::sleep(Duration::from_millis(50)),
+        }
+    }
+}
+
+fn check_cancelled(is_cancelled: &mut impl FnMut() -> bool) -> Result<(), String> {
+    if is_cancelled() {
+        Err("job cancelled".to_string())
+    } else {
+        Ok(())
+    }
+}
+
 fn rgb_image_from_frame(frame: &video_analysis_core::OwnedVideoFrame) -> Result<RgbImage, String> {
     if frame.pixel_format != video_analysis_core::PixelFormat::Rgb24 {
         return Err("Only RGB24 video frames are supported".to_string());
@@ -303,4 +384,24 @@ pub fn write_video_upload(path: &Path, raw: &[u8]) -> Result<(), String> {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
     fs::write(path, raw).map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::decode_source_video_scenes_cancellable;
+    use crate::config::Settings;
+
+    #[test]
+    fn source_video_decode_stops_before_opening_cancelled_work() {
+        let settings = Settings::default();
+        let error = decode_source_video_scenes_cancellable(
+            std::path::Path::new("/does/not/exist.mp4"),
+            "cancelled-video",
+            &settings,
+            || true,
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "job cancelled");
+    }
 }

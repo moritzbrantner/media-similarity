@@ -112,6 +112,35 @@ fn segment_duration_ms(segment: &AudioSegmentGuess) -> u32 {
     ((segment.end_seconds - segment.start_seconds).max(0.001) * 1000.0).round() as u32
 }
 
+fn run_command_output_cancellable(
+    command: &mut Command,
+    is_cancelled: &mut impl FnMut() -> bool,
+) -> Result<Output, String> {
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command.spawn().map_err(audio_tool_error)?;
+    loop {
+        check_cancelled(is_cancelled).inspect_err(|_| {
+            let _ = child.kill();
+            let _ = child.wait();
+        })?;
+        match child.try_wait().map_err(audio_tool_error)? {
+            Some(_) => return child.wait_with_output().map_err(audio_tool_error),
+            None => thread::sleep(Duration::from_millis(50)),
+        }
+    }
+}
+
+fn check_cancelled(is_cancelled: &mut impl FnMut() -> bool) -> Result<(), String> {
+    if is_cancelled() {
+        Err("job cancelled".to_string())
+    } else {
+        Ok(())
+    }
+}
+
 fn command_error(program: &str, stderr: &[u8]) -> String {
     let message = String::from_utf8_lossy(stderr).trim().to_string();
     if message.is_empty() {
@@ -133,8 +162,10 @@ fn audio_tool_error(error: impl std::fmt::Display) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        analyze_audio_samples, audio_upload_path, is_audio_content_type, is_audio_extension,
+        analyze_audio_samples, audio_upload_path, decode_source_audio_segments_cancellable,
+        is_audio_content_type, is_audio_extension,
     };
+    use crate::config::Settings;
 
     #[test]
     fn audio_detection_accepts_common_types_and_extensions() {
@@ -142,6 +173,20 @@ mod tests {
         assert!(is_audio_extension(".MP3"));
         assert!(is_audio_extension(".opus"));
         assert!(!is_audio_extension(".mp4"));
+    }
+
+    #[test]
+    fn source_audio_decode_stops_before_opening_cancelled_work() {
+        let settings = Settings::default();
+        let error = decode_source_audio_segments_cancellable(
+            std::path::Path::new("/does/not/exist.mp3"),
+            "cancelled-audio",
+            &settings,
+            || true,
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "job cancelled");
     }
 
     #[test]

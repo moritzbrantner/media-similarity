@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output, Stdio};
+use std::thread;
+use std::time::Duration;
 
 use audio_analysis_core::FrameSpec;
 use audio_analysis_rhythm::{
@@ -91,19 +93,31 @@ pub fn decode_audio_segments(
     path: &Path,
     settings: &Settings,
 ) -> Result<Vec<DecodedAudioSegment>, String> {
-    let duration_ms = audio_duration_ms(path).ok();
-    let audio_analysis = analyze_audio(path, settings)?;
+    decode_audio_segments_cancellable(path, settings, || false)
+}
+
+pub fn decode_audio_segments_cancellable(
+    path: &Path,
+    settings: &Settings,
+    mut is_cancelled: impl FnMut() -> bool,
+) -> Result<Vec<DecodedAudioSegment>, String> {
+    check_cancelled(&mut is_cancelled)?;
+    let duration_ms = audio_duration_ms_cancellable(path, &mut is_cancelled).ok();
+    check_cancelled(&mut is_cancelled)?;
+    let audio_analysis = analyze_audio_cancellable(path, settings, &mut is_cancelled)?;
     let windows = analysis_segment_windows(&audio_analysis, duration_ms);
     windows
         .into_iter()
         .enumerate()
         .map(|(scene_index, segment)| {
-            let media = decode_audio_window(
+            check_cancelled(&mut is_cancelled)?;
+            let media = decode_audio_window_cancellable(
                 path,
                 settings,
                 Some((segment.start_seconds, segment.end_seconds)),
                 Some(segment_duration_ms(&segment)),
                 audio_analysis.clone(),
+                &mut is_cancelled,
             )?;
             Ok(DecodedAudioSegment {
                 scene_index,
@@ -122,9 +136,20 @@ pub fn decode_source_audio_segments(
     id_base: &str,
     settings: &Settings,
 ) -> Result<Vec<SourceAudioSegment>, String> {
+    decode_source_audio_segments_cancellable(path, id_base, settings, || false)
+}
+
+pub fn decode_source_audio_segments_cancellable(
+    path: &Path,
+    id_base: &str,
+    settings: &Settings,
+    mut is_cancelled: impl FnMut() -> bool,
+) -> Result<Vec<SourceAudioSegment>, String> {
+    check_cancelled(&mut is_cancelled)?;
     let audio_id = crate::workers::media::image_io::image_id_for_uri(id_base);
     let full_audio_url = expose_source_audio(path, &audio_id, settings)?;
-    let segments = decode_audio_segments(path, settings)?;
+    check_cancelled(&mut is_cancelled)?;
+    let segments = decode_audio_segments_cancellable(path, settings, &mut is_cancelled)?;
     Ok(segments
         .into_iter()
         .map(|segment| SourceAudioSegment {
@@ -144,11 +169,30 @@ fn decode_audio_window(
     duration_ms: Option<u32>,
     audio_analysis: AudioAnalysis,
 ) -> Result<DecodedMedia, String> {
+    decode_audio_window_cancellable(
+        path,
+        settings,
+        window,
+        duration_ms,
+        audio_analysis,
+        &mut || false,
+    )
+}
+
+fn decode_audio_window_cancellable(
+    path: &Path,
+    settings: &Settings,
+    window: Option<(f64, f64)>,
+    duration_ms: Option<u32>,
+    audio_analysis: AudioAnalysis,
+    is_cancelled: &mut impl FnMut() -> bool,
+) -> Result<DecodedMedia, String> {
     let spectrogram_path = settings
         .upload_dir
         .join("audio-spectrograms")
         .join(format!("{}.png", Uuid::new_v4()));
-    render_spectrogram(path, &spectrogram_path, window)?;
+    render_spectrogram_cancellable(path, &spectrogram_path, window, is_cancelled)?;
+    check_cancelled(is_cancelled)?;
     let image = match load_image(&spectrogram_path) {
         Ok(image) => image,
         Err(error) => {

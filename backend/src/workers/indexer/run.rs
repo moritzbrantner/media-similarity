@@ -1,5 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::future::Future;
+use std::sync::mpsc;
 use std::sync::Arc;
+use std::time::Duration;
 
 use jobs_core::{JobContext, JobProgress};
 use serde::Serialize;
@@ -16,17 +19,17 @@ use crate::workers::indexing::planner::{
     record_is_current, source_is_current, IndexedSourceRecord, PendingSource, SourceIndexPlan,
 };
 use crate::workers::media::audio::{
-    decode_source_audio_segments, expose_source_audio, SourceAudioSegment,
+    decode_source_audio_segments_cancellable, expose_source_audio, SourceAudioSegment,
 };
 use crate::workers::media::faces::{analyze_faces_for_media, FaceAnalysis};
 use crate::workers::media::hashing::phash_image;
 use crate::workers::media::image_io::{dimensions, image_id_for_uri};
-use crate::workers::media::media::{DecodedMedia, MediaKind};
+use crate::workers::media::media::{DecodedMedia, MediaFrame, MediaKind};
 use crate::workers::media::ocr::extract_media_ocr;
 use crate::workers::media::pdf::{decode_pdf, expose_source_pdf, merge_pdf_text};
 use crate::workers::media::photo_metadata::extract_photo_metadata;
 use crate::workers::media::thumbnails::{ensure_animated_thumbnail, ensure_thumbnail};
-use crate::workers::media::video::{decode_source_video_scenes, SourceVideoScene};
+use crate::workers::media::video::{decode_source_video_scenes_cancellable, SourceVideoScene};
 use crate::workers::media::visual_embedding::VisualEmbeddingBackend;
 use crate::workers::sources::{build_image_sources, SourceImage, SourceUnavailable};
 use crate::workers::workflows::{
@@ -55,6 +58,62 @@ impl ImageIndexer {
         workflow.apply_to_settings(&mut settings);
         Ok((settings, workflow))
     }
+}
+
+async fn await_with_cancel<T>(
+    future: impl Future<Output = T>,
+    recorder: &IndexRunRecorder,
+) -> Result<T, String> {
+    tokio::pin!(future);
+    loop {
+        tokio::select! {
+            output = &mut future => return Ok(output),
+            _ = tokio::time::sleep(Duration::from_millis(50)) => {
+                if recorder.is_cancelled() {
+                    return Err("job cancelled".to_string());
+                }
+            }
+        }
+    }
+}
+
+async fn await_blocking_with_cancel<T>(
+    run: impl FnOnce() -> T + Send + 'static,
+    recorder: &IndexRunRecorder,
+) -> Result<T, String>
+where
+    T: Send + 'static,
+{
+    let (sender, receiver) = mpsc::sync_channel(1);
+    std::thread::spawn(move || {
+        let _ = sender.send(run());
+    });
+    loop {
+        match receiver.try_recv() {
+            Ok(output) => return Ok(output),
+            Err(mpsc::TryRecvError::Disconnected) => {
+                return Err("blocking index task ended without a result".to_string());
+            }
+            Err(mpsc::TryRecvError::Empty) => {}
+        }
+        if recorder.is_cancelled() {
+            return Err("job cancelled".to_string());
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+async fn embed_media_with_cancel(
+    embedder: Arc<dyn VisualEmbeddingBackend>,
+    frames: Vec<MediaFrame>,
+    motion_weight: f32,
+    recorder: &IndexRunRecorder,
+) -> Result<Vec<f32>, String> {
+    await_blocking_with_cancel(
+        move || embedder.embed_media(&frames, motion_weight),
+        recorder,
+    )
+    .await?
 }
 
 fn source_file_kind(source_image: &SourceImage) -> MediaFileKind {
