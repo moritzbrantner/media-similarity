@@ -163,6 +163,7 @@ impl Default for Settings {
             media_sources_file: PathBuf::from("config/media-sources.txt"),
             media_sources_seed_file: None,
             image_sources: Vec::new(),
+            startup_indexing_enabled: false,
             source_watching_enabled: true,
             source_watching_debounce_ms: 1500,
             minio_endpoint: None,

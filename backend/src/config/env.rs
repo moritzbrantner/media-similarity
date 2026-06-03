@@ -140,6 +140,10 @@ impl Settings {
             media_sources_file,
             media_sources_seed_file,
             image_sources,
+            startup_indexing_enabled: bool_var(
+                "STARTUP_INDEXING_ENABLED",
+                defaults.startup_indexing_enabled,
+            ),
             source_watching_enabled: bool_var(
                 "SOURCE_WATCHING_ENABLED",
                 defaults.source_watching_enabled,

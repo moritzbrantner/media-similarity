@@ -74,6 +74,26 @@ mod tests {
     }
 
     #[test]
+    fn startup_indexing_is_disabled_by_default() {
+        assert!(!Settings::default().startup_indexing_enabled);
+    }
+
+    #[test]
+    fn startup_indexing_can_be_enabled_from_env() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let _env = EnvGuard::set([
+            ("STARTUP_INDEXING_ENABLED", Some("true")),
+            ("IMAGE_SOURCES", Some("/images")),
+            ("MEDIA_SOURCES_FILE", None),
+            ("MEDIA_SOURCES_SEED_FILE", None),
+        ]);
+
+        let settings = Settings::from_env().unwrap();
+
+        assert!(settings.startup_indexing_enabled);
+    }
+
+    #[test]
     fn default_qdrant_http_settings_are_bounded() {
         let settings = Settings::default();
 

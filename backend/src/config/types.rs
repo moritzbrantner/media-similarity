@@ -47,6 +47,7 @@ pub struct Settings {
     pub media_sources_file: PathBuf,
     pub media_sources_seed_file: Option<PathBuf>,
     pub image_sources: Vec<String>,
+    pub startup_indexing_enabled: bool,
     pub source_watching_enabled: bool,
     pub source_watching_debounce_ms: u64,
     pub minio_endpoint: Option<String>,

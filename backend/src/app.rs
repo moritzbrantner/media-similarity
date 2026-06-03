@@ -37,9 +37,13 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     let static_dir = static_dir();
     let app_state = Arc::new(AppState::new(settings.clone()));
-    match spawn_startup_index_job(app_state.clone()) {
-        Ok(job) => tracing::info!(job_id = %job.spec.id, "queued startup indexing job"),
-        Err(error) => tracing::warn!(%error, "could not queue startup indexing job"),
+    if settings.startup_indexing_enabled {
+        match spawn_startup_index_job(app_state.clone()) {
+            Ok(job) => tracing::info!(job_id = %job.spec.id, "queued startup indexing job"),
+            Err(error) => tracing::warn!(%error, "could not queue startup indexing job"),
+        }
+    } else {
+        tracing::info!("startup indexing is disabled");
     }
     let _source_watcher = spawn_local_source_watcher(app_state.clone());
     let app = Router::new()

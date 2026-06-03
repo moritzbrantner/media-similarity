@@ -30,6 +30,9 @@ export function JobsPanel({
   selectedJobId: string | null;
 }) {
   const selectedJob = jobs.find((job) => job.spec.id === selectedJobId) ?? jobs[0] ?? null;
+  const selectedJobIsCancelling = selectedJob?.status === "Cancelling";
+  const selectedJobCancelPending =
+    selectedJob !== null && (cancelPendingJobId === selectedJob.spec.id || selectedJobIsCancelling);
   const recentEvents = events.slice(-5).reverse();
 
   if (error) {
@@ -60,16 +63,16 @@ export function JobsPanel({
           <Button
             variant="outline"
             className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border border-red-200 bg-white px-3 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
-            disabled={cancelPendingJobId === selectedJob.spec.id}
+            disabled={selectedJobCancelPending}
             onClick={() => onCancel(selectedJob.spec.id)}
             type="button"
           >
-            {cancelPendingJobId === selectedJob.spec.id ? (
+            {selectedJobCancelPending ? (
               <Loader2 className="size-4 animate-spin" aria-hidden="true" />
             ) : (
               <X className="size-4" aria-hidden="true" />
             )}
-            <span>Cancel</span>
+            <span>{selectedJobIsCancelling ? "Cancelling" : "Cancel"}</span>
           </Button>
         ) : null}
       </CardHeader>

@@ -256,6 +256,7 @@ Set these values in `.env`:
 | `MEDIA_SOURCES_SEED_FILE` | `/app/config/media-sources.txt` | Optional read-only seed source list used when `MEDIA_SOURCES_FILE` does not exist. |
 | `SOURCE_IMAGE_DIR` | `/images` | Legacy fallback path scanned only when `IMAGE_SOURCES` is empty and no media sources file is available. |
 | `IMAGE_SOURCES` | empty | Optional source list override. When set, this takes precedence over `MEDIA_SOURCES_FILE`. Use a JSON array, comma-separated list, semicolon-separated list, or newline-separated list. |
+| `STARTUP_INDEXING_ENABLED` | `false` | Queue an indexing job at service startup. Keep disabled unless required models are already cached. |
 | `MINIO_ENDPOINT` | empty | MinIO/S3-compatible endpoint for `minio://` sources. Include a scheme or pair with `MINIO_SECURE`. |
 | `MINIO_ACCESS_KEY` | empty | Access key for `minio://` sources. |
 | `MINIO_SECRET_KEY` | empty | Secret key for `minio://` sources. |
