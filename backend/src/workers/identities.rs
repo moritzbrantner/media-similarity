@@ -160,6 +160,7 @@ pub async fn merge_person_identities(
     let source_set = source_ids.iter().cloned().collect::<BTreeSet<_>>();
     let mut target_found = false;
     let target_label = resolve_person_target_label(target_id, &media_points, &face_points);
+    let mut found_source_ids = BTreeSet::new();
     let mut updated_media = 0;
     let mut updated_faces = 0;
 
@@ -183,12 +184,20 @@ pub async fn merge_person_identities(
     for payload in &mut media_points {
         let original_people = payload.people.clone();
         let mut changed = false;
+        for person in &original_people {
+            if source_set.contains(&person.person_id) {
+                found_source_ids.insert(person.person_id.clone());
+            }
+        }
         for face in &mut payload.faces {
             if face
                 .person_id
                 .as_ref()
                 .is_some_and(|person_id| source_set.contains(person_id))
             {
+                if let Some(person_id) = &face.person_id {
+                    found_source_ids.insert(person_id.clone());
+                }
                 face.person_id = Some(target_id.to_string());
                 face.person_label = target_label.clone();
                 changed = true;
@@ -215,12 +224,18 @@ pub async fn merge_person_identities(
 
     for payload in &mut face_points {
         if source_set.contains(&payload.person_id) {
+            found_source_ids.insert(payload.person_id.clone());
             payload.person_id = target_id.to_string();
             payload.person_label = target_label.clone();
             store.set_face_payload(payload).await?;
             updated_faces += 1;
         }
     }
+    let warnings = source_ids
+        .iter()
+        .filter(|source_id| !found_source_ids.contains(*source_id))
+        .map(|source_id| format!("person source identity `{source_id}` was not found"))
+        .collect();
 
     Ok(IdentityMutationResponse {
         kind: IdentityKind::Person,
@@ -230,7 +245,7 @@ pub async fn merge_person_identities(
         updated_media,
         updated_faces,
         registry_updated: false,
-        warnings: Vec::new(),
+        warnings,
     })
 }
 

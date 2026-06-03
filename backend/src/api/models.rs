@@ -141,6 +141,81 @@ pub async fn download_model(
         .map_err(ApiError::from_job)
 }
 
+pub async fn download_all_models(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ApiJobSnapshot>, ApiError> {
+    let indexing_settings = state.indexing_settings();
+    let app_settings = state.settings.clone();
+    let audio_model = requested_audio_transcription_model(&app_settings, None)?;
+    let audio_store = audio_transcription_model_store(&app_settings);
+    let bundle_roles = [
+        ModelRole::VisualEmbedding,
+        ModelRole::FaceDetection,
+        ModelRole::FaceEmbedding,
+    ];
+    let total = bundle_roles.len() as u64 + 1;
+    let spec = JobSpec::new(
+        format!("model.download.all.{}", Uuid::new_v4()),
+        "Download every model",
+    )
+    .and_then(|job_spec| job_spec.with_kind("model.download_all"))
+    .and_then(|job_spec| job_spec.with_metadata("scope", "all"))
+    .and_then(|job_spec| job_spec.with_metadata("audio_model", audio_model.id()))
+    .map_err(ApiError::from_job)?;
+
+    state
+        .jobs
+        .spawn(spec, move |context| {
+            let mut completed = 0_u64;
+            for role in bundle_roles {
+                context.check_cancelled()?;
+                context.info(format!("downloading {} model", role.label()))?;
+                context.progress(
+                    JobProgress::new(completed, Some(total))?
+                        .unit("models")?
+                        .message(format!("downloading {}", role.label())),
+                )?;
+                let bundle = download_role_bundle(role, &indexing_settings).map_err(job_failed)?;
+                context.artifact(
+                    JobArtifact::new(
+                        format!("manifest-{}", role.as_str()),
+                        format!("model bundle {}", bundle.manifest.name),
+                    )
+                    .kind("model-bundle")
+                    .path(bundle.manifest_path()),
+                )?;
+                completed += 1;
+                context.progress(
+                    JobProgress::new(completed, Some(total))?
+                        .unit("models")?
+                        .message(format!("{} ready", role.label())),
+                )?;
+            }
+
+            context.check_cancelled()?;
+            context.info(format!(
+                "downloading audio transcription model `{}`",
+                audio_model.id()
+            ))?;
+            context.progress(
+                JobProgress::new(completed, Some(total))?
+                    .unit("models")?
+                    .message("downloading Audio transcription"),
+            )?;
+            download_whisper_cpp_model(&context, audio_store, audio_model)?;
+            completed += 1;
+            context.progress(
+                JobProgress::new(completed, Some(total))?
+                    .unit("models")?
+                    .message("every model ready"),
+            )?;
+            Ok(())
+        })
+        .map(ApiJobSnapshot::from)
+        .map(Json)
+        .map_err(ApiError::from_job)
+}
+
 pub async fn enable_model(
     State(state): State<Arc<AppState>>,
     AxumPath(role): AxumPath<String>,
@@ -208,7 +283,7 @@ fn spawn_audio_transcription_download(
     state
         .jobs
         .spawn(spec, move |context| {
-            download_whisper_cpp_model(context, store, model)?;
+            download_whisper_cpp_model(&context, store, model)?;
             Ok(())
         })
         .map(ApiJobSnapshot::from)
@@ -226,7 +301,7 @@ fn spawn_audio_transcription_enable(
     state
         .jobs
         .spawn(spec, move |context| {
-            enable_whisper_cpp_model(context, &settings, &store, model)?;
+            enable_whisper_cpp_model(&context, &settings, &store, model)?;
             Ok(())
         })
         .map(ApiJobSnapshot::from)
@@ -253,7 +328,7 @@ fn model_job_spec(kind: &str, name: &str, model: WhisperCppModel) -> Result<JobS
 }
 
 fn download_whisper_cpp_model(
-    context: JobContext,
+    context: &JobContext,
     store: WhisperCppModelStore,
     model: WhisperCppModel,
 ) -> jobs_core::Result<()> {
@@ -337,7 +412,7 @@ fn download_whisper_cpp_model(
 }
 
 fn enable_whisper_cpp_model(
-    context: JobContext,
+    context: &JobContext,
     settings: &Settings,
     store: &WhisperCppModelStore,
     model: WhisperCppModel,

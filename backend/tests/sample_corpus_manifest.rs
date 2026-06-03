@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Deserialize;
 
@@ -44,12 +44,14 @@ fn sample_corpus_manifest_defines_supported_media_showcases() {
     assert!(!manifest.searches.is_empty());
 
     let mut ids = BTreeSet::new();
+    let mut assets_by_id = BTreeMap::new();
     for asset in &manifest.assets {
         assert!(
             ids.insert(asset.id.as_str()),
             "duplicate asset id {}",
             asset.id
         );
+        assets_by_id.insert(asset.id.as_str(), asset);
         assert!(
             !asset.filename.starts_with('/'),
             "{} must be relative",
@@ -93,6 +95,13 @@ fn sample_corpus_manifest_defines_supported_media_showcases() {
             }
             other => panic!("unsupported asset role {other}"),
         }
+        assert!(
+            filename_matches_kind(&asset.filename, &asset.kind),
+            "{} filename `{}` does not match kind `{}`",
+            asset.id,
+            asset.filename,
+            asset.kind
+        );
     }
 
     for asset in &manifest.assets {
@@ -112,6 +121,7 @@ fn sample_corpus_manifest_defines_supported_media_showcases() {
         );
     }
 
+    let mut capabilities = BTreeSet::new();
     for search in &manifest.searches {
         assert!(
             ids.contains(search.query_asset.as_str()),
@@ -128,5 +138,54 @@ fn sample_corpus_manifest_defines_supported_media_showcases() {
             "{} missing capability label",
             search.id
         );
+        assert!(
+            capabilities.insert(search.capability.as_str()),
+            "duplicate search capability `{}`",
+            search.capability
+        );
+        let query = assets_by_id
+            .get(search.query_asset.as_str())
+            .expect("query asset exists");
+        assert_eq!(
+            query.role, "query",
+            "{} query asset must have query role",
+            search.id
+        );
+        assert_eq!(
+            query.copy_of.as_deref(),
+            Some(search.expected_top_match.as_str()),
+            "{} query copy_of must point at expected_top_match",
+            search.id
+        );
+    }
+    assert_eq!(
+        capabilities,
+        [
+            "PDF page and document search",
+            "animated GIF frame and motion search",
+            "audio spectrogram similarity search",
+            "static image duplicate search",
+            "video scene similarity search",
+        ]
+        .into_iter()
+        .collect::<BTreeSet<_>>()
+    );
+}
+
+fn filename_matches_kind(filename: &str, kind: &str) -> bool {
+    let filename = filename.to_ascii_lowercase();
+    match kind {
+        "static_image" => [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff"]
+            .iter()
+            .any(|extension| filename.ends_with(extension)),
+        "animated_gif" => filename.ends_with(".gif"),
+        "audio" => [".ogg", ".mp3", ".wav", ".flac", ".m4a", ".aac", ".opus"]
+            .iter()
+            .any(|extension| filename.ends_with(extension)),
+        "video" => [".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi"]
+            .iter()
+            .any(|extension| filename.ends_with(extension)),
+        "pdf" => filename.ends_with(".pdf"),
+        _ => false,
     }
 }

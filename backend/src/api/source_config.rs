@@ -574,3 +574,41 @@ fn video_source_extensions() -> Vec<String> {
         .map(ToOwned::to_owned)
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{normalize_source_specs, source_config_source, EditableIndexingConfig};
+    use crate::config::Settings;
+
+    #[test]
+    fn editable_indexing_config_normalizes_extensions_and_rejects_empty_lists() {
+        let mut config = EditableIndexingConfig::from_settings(&Settings::default());
+        config.image_extensions = vec!["png".to_string(), ".JPG".to_string()];
+        config.audio_extensions = vec!["mp3".to_string()];
+        config.pdf_extensions = vec!["pdf".to_string()];
+
+        let validated = config.clone().validated().unwrap();
+
+        assert_eq!(validated.image_extensions, vec![".jpg", ".png"]);
+        assert_eq!(validated.audio_extensions, vec![".mp3"]);
+        assert_eq!(validated.pdf_extensions, vec![".pdf"]);
+
+        config.image_extensions.clear();
+        let error = config.validated().unwrap_err();
+        assert!(error.detail.contains("image_extensions"));
+    }
+
+    #[test]
+    fn source_specs_reject_empty_input_and_report_unsupported_kinds() {
+        let error = normalize_source_specs(&["  ".to_string()]).unwrap_err();
+        assert!(error.detail.contains("At least one media source"));
+
+        let source = source_config_source(
+            "ftp://example.test/archive".to_string(),
+            &Settings::default(),
+        );
+        assert_eq!(source.kind, "ftp");
+        assert_eq!(source.status, "unsupported");
+        assert!(source.detail.unwrap().contains("Unsupported media source"));
+    }
+}

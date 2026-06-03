@@ -114,28 +114,26 @@ test("calls out blocking first-run models and downloads them from the panel", as
     ]);
 });
 
-test("configures indexing behavior from the UI", async ({ page }) => {
+test("configures processing workflows from the UI", async ({ page }) => {
+  const mocks = await resetApiMocks(page);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Open indexing configuration" }).click();
+  await page.getByRole("button", { name: "Open workflow editor" }).click();
 
-  await expect(page.getByRole("heading", { name: "Indexing Configuration" })).toBeVisible();
-  await expect(page.getByLabel("Image extensions")).toHaveValue(".jpg, .png, .gif");
-  await expect(page.getByLabel("OCR", { exact: true })).toBeChecked();
-  await expect(page.getByLabel("Audio transcription")).not.toBeChecked();
-  await expect(page.getByText("Collection")).toBeVisible();
-  await expect(page.getByText("image_similarity_test")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Processing Workflows" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Workflow document" })).toHaveValue(
+    "static_image",
+  );
+  await expect(page.getByRole("button", { exact: true, name: "Decode image" })).toBeVisible();
+  await expect(page.getByText("No workflow diagnostics.")).toBeVisible();
 
-  await page.getByLabel("Image extensions").fill(".jpg, .png, webp");
-  await page.getByLabel("Video frame stride").fill("12");
-  await page.getByLabel("GIF motion weight").fill("0.35");
-  await page.getByLabel("OCR", { exact: true }).uncheck();
+  await page.getByRole("button", { name: "Validate" }).click();
+  await expect.poll(() => mocks.workflowValidations.length).toBe(1);
+
   await page.getByRole("button", { name: "Save" }).click();
 
-  await expect(page.getByText("Saved indexing configuration.")).toBeVisible();
-  await expect(page.getByLabel("Image extensions")).toHaveValue(".jpg, .png, .webp");
-  await expect(page.getByLabel("Video frame stride")).toHaveValue("12");
-  await expect(page.getByLabel("OCR", { exact: true })).not.toBeChecked();
+  await expect.poll(() => mocks.workflowPuts.length).toBe(1);
+  await expect(page.getByText("Saved workflows.")).toBeVisible();
 
   await page.getByRole("button", { name: "Index Sources" }).last().click();
   await expect(
@@ -232,71 +230,35 @@ test("disables source saves when the source file is read-only", async ({ page })
   await expect(page.getByRole("button", { name: "Save" })).toBeDisabled();
 });
 
-test("covers indexing configuration edge cases", async ({ page }) => {
+test("covers workflow configuration edge cases", async ({ page }) => {
   const mocks = await resetApiMocks(page);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Open indexing configuration" }).click();
-  await page.getByLabel("Image extensions").fill("");
-  await expect(page.getByRole("button", { name: "Save" })).toBeDisabled();
+  await page.getByRole("button", { name: "Open workflow editor" }).click();
+  await page.getByRole("button", { name: "Reset" }).click();
 
-  await page.getByLabel("Image extensions").fill(".JPG, png, .jpg");
-  await page.getByLabel("Video max frames").fill("");
-  await page.getByRole("button", { name: "Save" }).click();
-
-  await expect.poll(() => mocks.indexingConfigPuts.length).toBe(1);
-  await expect
-    .poll(() => mocks.indexingConfigPuts[0])
-    .toMatchObject({
-      indexing: {
-        image_extensions: [".jpg", ".png"],
-        video_max_frames: null,
-      },
-    });
-  await expect(page.getByLabel("Image extensions")).toHaveValue(".jpg, .png");
-  await expect(page.getByLabel("Video max frames")).toHaveValue("");
-
-  await page.getByLabel("Video max frames").fill("24");
-  await page.getByLabel("PDF render DPI").fill("180");
-  await page.getByLabel("OCR frames").fill("8");
-  await page.getByLabel("Face confidence").fill("0.85");
-  await page.getByLabel("GIF preview frames").fill("20");
-  await page.getByRole("button", { name: "Save" }).click();
-
-  await expect.poll(() => mocks.indexingConfigPuts.length).toBe(2);
-  await expect
-    .poll(() => mocks.indexingConfigPuts[1])
-    .toMatchObject({
-      indexing: {
-        face_detection_min_confidence: 0.85,
-        gif_preview_frames: 20,
-        ocr_max_frames: 8,
-        pdf_render_dpi: 180,
-        video_max_frames: 24,
-      },
-    });
-  await expect(page.getByLabel("Video max frames")).toHaveValue("24");
+  await expect.poll(() => mocks.workflowResets.length).toBe(1);
+  await expect(page.getByText("No workflow diagnostics.")).toBeVisible();
 });
 
-test("renders indexing configuration save failures", async ({ page }) => {
+test("renders workflow configuration save failures", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open indexing configuration" }).click();
+  await page.getByRole("button", { name: "Open workflow editor" }).click();
 
-  await page.unroute("**/api/source-config");
-  await page.route("**/api/source-config", async (route) => {
+  await page.unroute("**/api/workflows");
+  await page.route("**/api/workflows", async (route) => {
     if (route.request().method() === "PUT") {
       await route.fulfill({
-        json: { detail: "indexing save failed" },
+        json: { detail: "workflow save failed" },
         status: 500,
       });
       return;
     }
 
-    await route.fulfill({ json: sourceConfigResponse });
+    await route.fallback();
   });
-  await page.getByLabel("Video frame stride").fill("9");
   await page.getByRole("button", { name: "Save" }).click();
 
-  await expect(page.getByText("indexing save failed")).toBeVisible();
-  await expect(page.getByText("Saved indexing configuration.")).toHaveCount(0);
+  await expect(page.getByText("workflow save failed")).toBeVisible();
+  await expect(page.getByText("Saved workflows.")).toHaveCount(0);
 });

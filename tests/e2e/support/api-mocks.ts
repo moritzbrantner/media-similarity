@@ -11,12 +11,14 @@ import {
   smartAlbum,
   smartAlbumResults,
   sourceConfigResponse,
+  workflowConfigResponse,
 } from "./media-fixtures";
 
 export type ApiMockOptions = {
   health?: unknown;
   models?: unknown;
   sourceConfig?: typeof sourceConfigResponse;
+  workflows?: typeof workflowConfigResponse;
   jobs?: unknown[];
   jobEvents?: unknown[];
   searchResponse?: unknown;
@@ -40,6 +42,7 @@ export type CapturedSearchRequest = {
 export async function installDefaultApiMocks(page: Page, options: ApiMockOptions = {}) {
   let jobs = options.jobs ?? [];
   let currentSourceConfig = options.sourceConfig ?? sourceConfigResponse;
+  let currentWorkflows = options.workflows ?? workflowConfigResponse;
   const cancelledJobIds: string[] = [];
   const deletedMediaIds: string[] = [];
   const mediaTagUpdates: Array<{ id: string; tags: string[] }> = [];
@@ -47,6 +50,9 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
   const modelEnables: Array<{ model: string | null; role: string }> = [];
   const sourceConfigPuts: unknown[] = [];
   const indexingConfigPuts: unknown[] = [];
+  const workflowPuts: unknown[] = [];
+  const workflowValidations: unknown[] = [];
+  const workflowResets: string[] = [];
   const smartAlbumCreates: unknown[] = [];
   const smartAlbumUpdates: Array<{ id: string; request: unknown }> = [];
   const smartAlbumDeletes: string[] = [];
@@ -245,6 +251,35 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
     await route.fulfill({ json: currentSourceConfig });
   });
 
+  await page.route("**/api/workflows/validate", async (route) => {
+    const request = route.request().postDataJSON();
+    workflowValidations.push(request);
+    await route.fulfill({ json: { diagnostics: [] } });
+  });
+
+  await page.route("**/api/workflows/reset", async (route) => {
+    workflowResets.push("reset");
+    currentWorkflows = workflowConfigResponse;
+    await route.fulfill({ json: currentWorkflows });
+  });
+
+  await page.route("**/api/workflows", async (route) => {
+    if (route.request().method() === "PUT") {
+      const request = route.request().postDataJSON() as {
+        library?: typeof workflowConfigResponse.library;
+      };
+      workflowPuts.push(request);
+      currentWorkflows = {
+        ...currentWorkflows,
+        library: request.library ?? currentWorkflows.library,
+      };
+      await route.fulfill({ json: currentWorkflows });
+      return;
+    }
+
+    await route.fulfill({ json: currentWorkflows });
+  });
+
   await page.route("**/api/search?**", async (route) => {
     await route.fulfill({ json: options.searchResponse ?? searchResponse });
   });
@@ -300,6 +335,9 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
     smartAlbumCreates,
     smartAlbumDeletes,
     smartAlbumUpdates,
+    workflowPuts,
+    workflowResets,
+    workflowValidations,
   };
 
   async function handleIdentityRename(route: Route, kind: "person" | "speaker") {

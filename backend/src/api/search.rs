@@ -23,6 +23,7 @@ use crate::workers::media::video::{
 use crate::workers::search::{
     ImageSearchService, NearDuplicateFilter, OrientationFilter, SearchFilters,
 };
+use crate::workers::workflows::{MediaFileKind, WorkflowMode};
 
 #[derive(Deserialize)]
 pub struct SearchQuery {
@@ -55,6 +56,7 @@ pub async fn search_upload(
     mut multipart: Multipart,
 ) -> Result<Json<SearchResponse>, ApiError> {
     let filters = query.search_filters()?;
+    let indexing_settings = state.indexing_settings();
     let mut uploaded = None;
     let mut upload_kind = None;
     while let Some(field) = multipart.next_field().await.map_err(multipart_error)? {
@@ -71,7 +73,7 @@ pub async fn search_upload(
         let is_image = content_type.starts_with("image/")
             || filename_extension
                 .as_ref()
-                .map(|extension| state.settings.image_extensions.contains(extension))
+                .map(|extension| indexing_settings.image_extensions.contains(extension))
                 .unwrap_or(false);
         let is_video = is_video_content_type(&content_type)
             || filename_extension
@@ -110,11 +112,11 @@ pub async fn search_upload(
     let upload_kind = upload_kind.ok_or_else(|| {
         ApiError::bad_request("Upload must be an image, video, audio, or PDF file")
     })?;
-    let max_bytes = state.settings.max_upload_mb as usize * 1024 * 1024;
+    let max_bytes = indexing_settings.max_upload_mb as usize * 1024 * 1024;
     if raw.len() > max_bytes {
         return Err(ApiError::payload_too_large(format!(
             "Upload is larger than {} MB",
-            state.settings.max_upload_mb
+            indexing_settings.max_upload_mb
         )));
     }
 
@@ -157,13 +159,22 @@ pub async fn search_upload(
         .map(Json);
     }
 
-    let media = load_media_bytes(&raw, &state.settings)
+    let kind = if upload_kind
+        .filename
+        .as_deref()
+        .and_then(|name| std::path::Path::new(name).extension())
+        .and_then(|extension| extension.to_str())
+        .map(|extension| extension.eq_ignore_ascii_case("gif"))
+        .unwrap_or(false)
+    {
+        MediaFileKind::AnimatedGif
+    } else {
+        MediaFileKind::StaticImage
+    };
+    let settings = workflow_settings_for_upload(&state, kind)?;
+    let media = load_media_bytes(&raw, &settings)
         .map_err(|_| ApiError::bad_request("Could not decode image"))?;
-    let service = ImageSearchService::new(
-        state.settings.clone(),
-        state.store.clone(),
-        state.embedder.clone(),
-    );
+    let service = ImageSearchService::new(settings, state.store.clone(), state.embedder.clone());
     service
         .search_media_filtered(&media, query.limit, query.ocr_text.as_deref(), filters)
         .await
@@ -210,8 +221,9 @@ fn normalized_filter(value: Option<&str>) -> Option<String> {
 
 fn validate_media_kind(value: String) -> Result<String, ApiError> {
     match value.as_str() {
-        "static_image" | "animated_gif" | "video_scene" | "audio" | "pdf_page"
-        | "pdf_document" => Ok(value),
+        "static_image" | "animated_gif" | "video_scene" | "audio" | "pdf_page" | "pdf_document" => {
+            Ok(value)
+        }
         _ => Err(ApiError::bad_request(
             "media_kind must be one of all, static_image, animated_gif, video_scene, audio, pdf_page, pdf_document",
         )),
@@ -274,9 +286,10 @@ async fn search_pdf_upload(
     raw: &[u8],
     filename: Option<&str>,
 ) -> Result<SearchResponse, ApiError> {
-    let upload_path = pdf_upload_path(&state.settings.upload_dir, filename);
+    let settings = workflow_settings_for_upload(&state, MediaFileKind::Pdf)?;
+    let upload_path = pdf_upload_path(&settings.upload_dir, filename);
     write_pdf_upload(&upload_path, raw).map_err(ApiError::internal)?;
-    let pdf = match decode_pdf(&upload_path, &state.settings) {
+    let pdf = match decode_pdf(&upload_path, &settings) {
         Ok(pdf) => pdf,
         Err(error) => {
             let _ = std::fs::remove_file(&upload_path);
@@ -286,11 +299,7 @@ async fn search_pdf_upload(
         }
     };
     let _ = std::fs::remove_file(&upload_path);
-    let service = ImageSearchService::new(
-        state.settings.clone(),
-        state.store.clone(),
-        state.embedder.clone(),
-    );
+    let service = ImageSearchService::new(settings, state.store.clone(), state.embedder.clone());
     let mut scene_responses = Vec::new();
     let mut flattened = Vec::new();
 
@@ -345,9 +354,10 @@ async fn search_audio_upload(
     raw: &[u8],
     filename: Option<&str>,
 ) -> Result<SearchResponse, ApiError> {
-    let upload_path = audio_upload_path(&state.settings.upload_dir, filename);
+    let settings = workflow_settings_for_upload(&state, MediaFileKind::Audio)?;
+    let upload_path = audio_upload_path(&settings.upload_dir, filename);
     write_audio_upload(&upload_path, raw).map_err(ApiError::internal)?;
-    let segments = match decode_audio_segments(&upload_path, &state.settings) {
+    let segments = match decode_audio_segments(&upload_path, &settings) {
         Ok(segments) => segments,
         Err(error) => {
             let _ = std::fs::remove_file(&upload_path);
@@ -357,11 +367,7 @@ async fn search_audio_upload(
         }
     };
     let _ = std::fs::remove_file(&upload_path);
-    let service = ImageSearchService::new(
-        state.settings.clone(),
-        state.store.clone(),
-        state.embedder.clone(),
-    );
+    let service = ImageSearchService::new(settings, state.store.clone(), state.embedder.clone());
     let mut scene_responses = Vec::new();
     let mut flattened = Vec::new();
 
@@ -418,9 +424,10 @@ async fn search_video_upload(
     raw: &[u8],
     filename: Option<&str>,
 ) -> Result<SearchResponse, ApiError> {
-    let upload_path = video_upload_path(&state.settings.upload_dir, filename);
+    let settings = workflow_settings_for_upload(&state, MediaFileKind::Video)?;
+    let upload_path = video_upload_path(&settings.upload_dir, filename);
     write_video_upload(&upload_path, raw).map_err(ApiError::internal)?;
-    let scenes = match decode_video_scenes(&upload_path, &state.settings) {
+    let scenes = match decode_video_scenes(&upload_path, &settings) {
         Ok(scenes) => scenes,
         Err(error) => {
             let _ = std::fs::remove_file(&upload_path);
@@ -430,11 +437,7 @@ async fn search_video_upload(
         }
     };
     let _ = std::fs::remove_file(&upload_path);
-    let service = ImageSearchService::new(
-        state.settings.clone(),
-        state.store.clone(),
-        state.embedder.clone(),
-    );
+    let service = ImageSearchService::new(settings, state.store.clone(), state.embedder.clone());
     let mut scene_responses = Vec::new();
     let mut flattened = Vec::new();
 
@@ -481,6 +484,18 @@ async fn search_video_upload(
     })
 }
 
+fn workflow_settings_for_upload(
+    state: &AppState,
+    kind: MediaFileKind,
+) -> Result<crate::config::Settings, ApiError> {
+    let workflow = state
+        .compiled_workflow(kind, WorkflowMode::Search)
+        .map_err(ApiError::internal)?;
+    let mut settings = state.indexing_settings();
+    workflow.apply_to_settings(&mut settings);
+    Ok(settings)
+}
+
 fn deduplicate_flat_results(results: Vec<SearchResult>) -> Vec<SearchResult> {
     let mut by_image_id = BTreeMap::<String, SearchResult>::new();
     for result in results {
@@ -510,5 +525,132 @@ fn multipart_error(error: axum::extract::multipart::MultipartError) -> ApiError 
     match error.status() {
         axum::http::StatusCode::PAYLOAD_TOO_LARGE => ApiError::payload_too_large(error.body_text()),
         _ => ApiError::bad_request(error.body_text()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SearchQuery;
+    use crate::workers::search::{NearDuplicateFilter, OrientationFilter};
+
+    #[test]
+    fn search_query_filters_trim_defaults_and_parse_enums() {
+        let query = SearchQuery {
+            limit: None,
+            ocr_text: None,
+            person_id: Some(" person-1 ".to_string()),
+            source_type: Some(" all ".to_string()),
+            media_kind: Some(" static_image ".to_string()),
+            name_query: Some(" sunrise ".to_string()),
+            camera_query: None,
+            keyword_query: Some(" travel ".to_string()),
+            has_gps: Some("yes".to_string()),
+            near_duplicate: Some("exclude".to_string()),
+            orientation: Some("landscape".to_string()),
+            min_width: Some(640),
+            max_width: Some(1920),
+            min_height: None,
+            max_height: None,
+            min_size_bytes: Some(1024),
+            max_size_bytes: None,
+            modified_from: Some(1_700_000_000.0),
+            modified_to: None,
+            captured_from: None,
+            captured_to: Some(1_800_000_000.0),
+        };
+
+        let filters = query.search_filters().unwrap();
+
+        assert_eq!(filters.source_type, None);
+        assert_eq!(filters.media_kind.as_deref(), Some("static_image"));
+        assert_eq!(filters.name_query.as_deref(), Some("sunrise"));
+        assert_eq!(filters.keyword_query.as_deref(), Some("travel"));
+        assert_eq!(filters.has_gps, Some(true));
+        assert_eq!(filters.near_duplicate, Some(NearDuplicateFilter::Exclude));
+        assert_eq!(filters.orientation, Some(OrientationFilter::Landscape));
+        assert_eq!(filters.person_id.as_deref(), Some("person-1"));
+        assert_eq!(filters.min_width, Some(640));
+        assert_eq!(filters.max_width, Some(1920));
+        assert_eq!(filters.min_size_bytes, Some(1024));
+        assert_eq!(filters.modified_from, Some(1_700_000_000.0));
+        assert_eq!(filters.captured_to, Some(1_800_000_000.0));
+    }
+
+    #[test]
+    fn search_query_rejects_invalid_filter_values() {
+        assert!(query_with_near_duplicate("sometimes")
+            .search_filters()
+            .unwrap_err()
+            .detail
+            .contains("near_duplicate"));
+        assert!(query_with_media_kind("spreadsheet")
+            .search_filters()
+            .unwrap_err()
+            .detail
+            .contains("media_kind"));
+        assert!(query_with_modified_from(-1.0)
+            .search_filters()
+            .unwrap_err()
+            .detail
+            .contains("modified_from"));
+        assert!(query_with_orientation("upside-down")
+            .search_filters()
+            .unwrap_err()
+            .detail
+            .contains("orientation"));
+    }
+
+    fn base_query() -> SearchQuery {
+        SearchQuery {
+            limit: None,
+            ocr_text: None,
+            person_id: None,
+            source_type: None,
+            media_kind: None,
+            name_query: None,
+            camera_query: None,
+            keyword_query: None,
+            has_gps: None,
+            near_duplicate: None,
+            orientation: None,
+            min_width: None,
+            max_width: None,
+            min_height: None,
+            max_height: None,
+            min_size_bytes: None,
+            max_size_bytes: None,
+            modified_from: None,
+            modified_to: None,
+            captured_from: None,
+            captured_to: None,
+        }
+    }
+
+    fn query_with_near_duplicate(value: &str) -> SearchQuery {
+        SearchQuery {
+            near_duplicate: Some(value.to_string()),
+            ..base_query()
+        }
+    }
+
+    fn query_with_media_kind(value: &str) -> SearchQuery {
+        SearchQuery {
+            media_kind: Some(value.to_string()),
+            ..base_query()
+        }
+    }
+
+    fn query_with_modified_from(value: f64) -> SearchQuery {
+        SearchQuery {
+            modified_from: Some(value),
+            ..base_query()
+        }
+    }
+
+    fn query_with_orientation(value: &str) -> SearchQuery {
+        SearchQuery {
+            orientation: Some(value.to_string()),
+            ..base_query()
+        }
     }
 }

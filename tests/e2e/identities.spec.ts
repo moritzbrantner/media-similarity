@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { installDefaultApiMocks } from "./support/api-mocks";
+import { installDefaultApiMocks, mockEndpointFailure } from "./support/api-mocks";
 import { inverseIndexResponse } from "./support/media-fixtures";
 
 test("renames a person from the inverse index", async ({ page }) => {
@@ -73,6 +73,23 @@ test("requires confirmation before merging speakers", async ({ page }) => {
   expect(api.identityMerges).toEqual([
     { kind: "speaker", sourceIds: ["voice-0002"], targetId: "voice-0001" },
   ]);
+});
+
+test("renders identity mutation failures without changing local state", async ({ page }) => {
+  const api = await installDefaultApiMocks(page, { inverseIndex: inverseIndexWithExtraEntries() });
+  await mockEndpointFailure(page, "**/api/identities/people/*", 500, "rename failed");
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open inverse index" }).click();
+
+  await page.getByRole("button", { name: "Rename Ada" }).click();
+  await page.getByRole("textbox", { name: "Label for Ada" }).fill("Ada Failed");
+  await page.getByRole("button", { name: "Save label for Ada" }).click();
+
+  await expect(page.getByText("rename failed")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Label for Ada" })).toHaveValue("Ada Failed");
+  await expect(page.getByText("person-0001")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ada Failed" })).toHaveCount(0);
+  expect(api.identityRenames).toHaveLength(0);
 });
 
 function inverseIndexWithExtraEntries() {

@@ -1,5 +1,7 @@
 FROM oven/bun:1.3.14 AS frontend-builder
 
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+
 WORKDIR /workspace
 
 COPY package.json bun.lock tsconfig.json vite.config.ts .oxfmtrc.json ./
@@ -11,6 +13,10 @@ RUN bun install --frozen-lockfile \
 FROM rust:1-bookworm AS rust-builder
 
 WORKDIR /workspace/image-similarity-service
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends cmake \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY --from=rust-packages . /workspace/rust-packages
 COPY backend ./backend

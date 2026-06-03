@@ -1,4 +1,4 @@
-import { Button } from "@moritzbrantner/ui/components/button";
+import { Button } from "@moritzbrantner/ui";
 import {
   AlertCircle,
   Check,

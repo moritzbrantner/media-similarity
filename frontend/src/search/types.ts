@@ -59,4 +59,4 @@ export type SearchVariables = {
   sortMode: ResultSortMode;
 };
 
-export type AppView = "albums" | "configure" | "indexing" | "inverse-index" | "search";
+export type AppView = "albums" | "configure" | "inverse-index" | "search" | "workflows";

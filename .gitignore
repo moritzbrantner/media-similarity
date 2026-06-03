@@ -1,6 +1,7 @@
 .env
 .env.local
 .env.*.local
+.dev-data/
 node_modules/
 /dist/
 data/

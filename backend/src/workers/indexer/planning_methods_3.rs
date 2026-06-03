@@ -1,10 +1,16 @@
 impl ImageIndexer {
-    async fn index_pdf(&self, source_image: &SourceImage) -> Result<IndexOneOutcome, String> {
+    async fn index_pdf(
+        &self,
+        source_image: &SourceImage,
+        recorder: &mut IndexRunRecorder,
+    ) -> Result<IndexOneOutcome, String> {
+        let (settings, workflow) = self.workflow_settings(MediaFileKind::Pdf)?;
+        recorder.check_cancelled()?;
         let source_pdf_id = image_id_for_uri(&source_image.id_base);
         let (pdf, full_pdf_url) = source_image
-            .with_local_media_path(&self.settings, |path| {
-                let pdf = decode_pdf(path, &self.settings)?;
-                let full_pdf_url = expose_source_pdf(path, &source_pdf_id, &self.settings)?;
+            .with_local_media_path(&settings, |path| {
+                let pdf = decode_pdf(path, &settings)?;
+                let full_pdf_url = expose_source_pdf(path, &source_pdf_id, &settings)?;
                 Ok((pdf, full_pdf_url))
             })
             .await?;
@@ -13,8 +19,11 @@ impl ImageIndexer {
         let mut outcome = IndexOneOutcome::default();
         let mut page_texts = Vec::new();
 
-        for page in &pdf.pages {
-            let page_ocr = extract_media_ocr(&page.media, &self.settings).unwrap_or_else(|error| {
+        let total_pages = pdf.pages.len();
+        for (index, page) in pdf.pages.iter().enumerate() {
+            recorder.current_part("pdf_page", index, total_pages);
+            recorder.check_cancelled()?;
+            let page_ocr = extract_media_ocr(&page.media, &settings).unwrap_or_else(|error| {
                 tracing::warn!(%error, "PDF page OCR extraction failed");
                 Default::default()
             });
@@ -41,6 +50,7 @@ impl ImageIndexer {
             let payload = self.build_payload(
                 source_image,
                 &page.media,
+                &settings,
                 PayloadBuildOptions::new(&face_analysis)
                     .with_pdf_context(&page_context)
                     .with_ocr(OcrAnalysis {
@@ -50,12 +60,20 @@ impl ImageIndexer {
             )?;
             let vector = self
                 .embedder
-                .embed_media(&page.media.sampled_frames, self.settings.gif_motion_weight)?;
+                .embed_media(&page.media.sampled_frames, settings.gif_motion_weight)?;
+            recorder.check_cancelled()?;
             let point_id = payload.id.clone();
             self.store.upsert_media(&payload, vector).await?;
+            recorder.committed_point(&point_id);
             outcome.insert(point_id);
         }
 
+        if !workflow.processor_enabled("pdf.build_document_summary") {
+            return Ok(outcome);
+        }
+
+        recorder.current_part("pdf_document", 0, 1);
+        recorder.check_cancelled()?;
         let document_text = merge_pdf_text(&pdf.document_text, &page_texts.join(" "));
         let document_context = PdfPayloadContext {
             id_base: document_id_base,
@@ -73,6 +91,7 @@ impl ImageIndexer {
         let payload = self.build_payload(
             source_image,
             &pdf.document_media,
+            &settings,
             PayloadBuildOptions::new(&face_analysis)
                 .with_pdf_context(&document_context)
                 .with_ocr(OcrAnalysis {
@@ -82,10 +101,12 @@ impl ImageIndexer {
         )?;
         let vector = self.embedder.embed_media(
             &pdf.document_media.sampled_frames,
-            self.settings.gif_motion_weight,
+            settings.gif_motion_weight,
         )?;
+        recorder.check_cancelled()?;
         let point_id = payload.id.clone();
         self.store.upsert_media(&payload, vector).await?;
+        recorder.committed_point(&point_id);
         outcome.insert(point_id);
 
         Ok(outcome)

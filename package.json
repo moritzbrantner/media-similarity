@@ -9,6 +9,9 @@
     "dev:containers": "docker compose up --build -d",
     "build": "tsc --noEmit && vite build",
     "build:rust": "cargo build --manifest-path backend/Cargo.toml --bins",
+    "bench": "bun run bench:rust",
+    "bench:rust": "cargo bench --manifest-path backend/Cargo.toml",
+    "bench:rust:quick": "IMAGE_SIM_BENCH_QUICK=1 IMAGE_SIM_BENCH_ITEMS=100 cargo bench --manifest-path backend/Cargo.toml",
     "format": "oxfmt --write package.json tsconfig.json vite.config.ts playwright.config.ts unlighthouse.config.ts scripts/run-unlighthouse.mjs scripts/serve-unlighthouse-preview.mjs frontend tests/e2e",
     "format:check": "oxfmt --check package.json tsconfig.json vite.config.ts playwright.config.ts unlighthouse.config.ts scripts/run-unlighthouse.mjs scripts/serve-unlighthouse-preview.mjs frontend tests/e2e",
     "format:rust": "cargo fmt --manifest-path backend/Cargo.toml",
@@ -36,9 +39,10 @@
     "test:sample:with-services": "COMPOSE_SERVICES=\"qdrant\" bash scripts/run-with-compose-services.sh bun run test:sample"
   },
   "dependencies": {
-    "@moritzbrantner/ui": "^0.5.4",
+    "@moritzbrantner/ui": "^0.8.0",
+    "@moritzbrantner/workflow-editor": "^0.1.1",
     "@tanstack/react-query": "^5.100.11",
-    "lucide-react": "^0.511.0",
+    "lucide-react": "^1.17.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

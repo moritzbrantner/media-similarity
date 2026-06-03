@@ -1,4 +1,4 @@
-import { Button } from "@moritzbrantner/ui/components/button";
+import { Button } from "@moritzbrantner/ui";
 import {
   AlertCircle,
   CheckCircle2,
@@ -10,7 +10,11 @@ import {
   Save,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { IndexResponse, ModelsResponse, SourceConfigResponse } from "../types";
+import type {
+  IndexResponse,
+  ModelsResponse,
+  SourceConfigResponse,
+} from "../types";
 import { completeIndexingConfig } from "./indexing-configuration-page";
 import { Metric } from "./source-config/metric";
 import { ModelStatusPanel } from "./source-config/model-status-panel";
@@ -40,6 +44,7 @@ export function SourceConfigurationPage({
   models,
   modelsError,
   modelsLoading,
+  onDownloadAllModels,
   onDownloadModel,
   onEnableModel,
   onIndex,
@@ -59,6 +64,7 @@ export function SourceConfigurationPage({
   models: ModelsResponse | null;
   modelsError: Error | null;
   modelsLoading: boolean;
+  onDownloadAllModels: () => void;
   onDownloadModel: (role: string, model?: string | null) => void;
   onEnableModel: (role: string, model?: string | null) => void;
   onIndex: () => void;
@@ -85,14 +91,17 @@ export function SourceConfigurationPage({
 
   function updateDraft(id: string, patch: Partial<SourceDraft>) {
     setDrafts((current) =>
-      current.map((source) => (source.id === id ? { ...source, ...patch } : source)),
+      current.map((source) =>
+        source.id === id ? { ...source, ...patch } : source,
+      ),
     );
   }
 
   function addSource(kind = "local") {
     const type =
-      config?.supported_source_types.find((item) => item.kind === kind && item.implemented) ??
-      config?.supported_source_types.find((item) => item.implemented);
+      config?.supported_source_types.find(
+        (item) => item.kind === kind && item.implemented,
+      ) ?? config?.supported_source_types.find((item) => item.implemented);
     if (!type) {
       return;
     }
@@ -114,20 +123,32 @@ export function SourceConfigurationPage({
     onSave(drafts.map((source) => source.spec.trim()).filter(Boolean));
   }
 
-  const configuredSources = drafts.map((source) => source.spec.trim()).filter(Boolean);
+  const configuredSources = drafts
+    .map((source) => source.spec.trim())
+    .filter(Boolean);
   const mediaSourcesWritable = config?.media_sources_writable ?? true;
-  const canSave = configuredSources.length > 0 && mediaSourcesWritable && !savePending;
+  const canSave =
+    configuredSources.length > 0 && mediaSourcesWritable && !savePending;
 
   if (loading) {
     return (
       <div className="grid min-h-96 place-items-center rounded-lg border border-neutral-300 bg-white text-neutral-600 shadow-sm">
-        <Loader2 className="size-7 animate-spin" aria-label="Loading source configuration" />
+        <Loader2
+          className="size-7 animate-spin"
+          aria-label="Loading source configuration"
+        />
       </div>
     );
   }
 
   if (error) {
-    return <Message icon={<AlertCircle className="size-4" />} text={error.message} tone="error" />;
+    return (
+      <Message
+        icon={<AlertCircle className="size-4" />}
+        text={error.message}
+        tone="error"
+      />
+    );
   }
 
   if (!config) {
@@ -142,7 +163,9 @@ export function SourceConfigurationPage({
         <section className="rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
           <div className="flex flex-col gap-3 border-b border-neutral-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
-              <h2 className="text-lg font-semibold text-neutral-950">Media Sources</h2>
+              <h2 className="text-lg font-semibold text-neutral-950">
+                Media Sources
+              </h2>
               <p
                 className="mt-1 truncate text-sm text-neutral-600"
                 title={config.media_sources_file}
@@ -272,12 +295,18 @@ export function SourceConfigurationPage({
 
         <section className="rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
           <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-neutral-950">
-            <FolderPlus className="size-4 text-neutral-600" aria-hidden="true" />
+            <FolderPlus
+              className="size-4 text-neutral-600"
+              aria-hidden="true"
+            />
             <span>Configured Source Status</span>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             {config.sources.map((source) => (
-              <SourceStatusCard key={`${source.kind}-${source.spec}`} source={source} />
+              <SourceStatusCard
+                key={`${source.kind}-${source.spec}`}
+                source={source}
+              />
             ))}
           </div>
         </section>
@@ -289,26 +318,43 @@ export function SourceConfigurationPage({
           error={modelError ?? modelsError}
           loading={modelsLoading}
           models={models?.models ?? []}
+          onDownloadAll={onDownloadAllModels}
           onDownload={onDownloadModel}
           onEnable={onEnableModel}
         />
 
         <section className="rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-neutral-950">Source Types</h2>
+          <h2 className="text-sm font-semibold text-neutral-950">
+            Source Types
+          </h2>
           <div className="mt-3 grid gap-2">
             {config.supported_source_types.map((sourceType) => (
-              <SupportedSourceTypeRow key={sourceType.kind} sourceType={sourceType} />
+              <SupportedSourceTypeRow
+                key={sourceType.kind}
+                sourceType={sourceType}
+              />
             ))}
           </div>
         </section>
 
         <section className="rounded-lg border border-neutral-300 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-neutral-950">Indexing Behavior</h2>
+          <h2 className="text-sm font-semibold text-neutral-950">
+            Indexing Behavior
+          </h2>
           <dl className="mt-3 grid gap-2 text-sm">
             <Metric label="Collection" value={config.indexing.collection} />
-            <Metric label="Images" value={indexing.image_extensions.join(", ")} />
-            <Metric label="Video" value={indexing.video_extensions.join(", ")} />
-            <Metric label="Audio" value={indexing.audio_extensions.join(", ")} />
+            <Metric
+              label="Images"
+              value={indexing.image_extensions.join(", ")}
+            />
+            <Metric
+              label="Video"
+              value={indexing.video_extensions.join(", ")}
+            />
+            <Metric
+              label="Audio"
+              value={indexing.audio_extensions.join(", ")}
+            />
             <Metric label="PDF" value={indexing.pdf_extensions.join(", ")} />
             <Metric
               label="Visual embeddings"
@@ -318,20 +364,38 @@ export function SourceConfigurationPage({
                   : "disabled"
               }
             />
-            <Metric label="Faces" value={indexing.face_analysis_enabled ? "enabled" : "disabled"} />
+            <Metric
+              label="Faces"
+              value={indexing.face_analysis_enabled ? "enabled" : "disabled"}
+            />
             <Metric
               label="Face confidence"
               value={indexing.face_detection_min_confidence.toFixed(2)}
             />
-            <Metric label="Face threshold" value={indexing.face_cluster_threshold.toFixed(2)} />
+            <Metric
+              label="Face threshold"
+              value={indexing.face_cluster_threshold.toFixed(2)}
+            />
             <Metric label="GIF samples" value={indexing.gif_sample_frames} />
-            <Metric label="GIF motion" value={indexing.gif_motion_weight.toFixed(2)} />
+            <Metric
+              label="GIF motion"
+              value={indexing.gif_motion_weight.toFixed(2)}
+            />
             <Metric label="Video stride" value={indexing.video_frame_stride} />
-            <Metric label="Video cap" value={indexing.video_max_frames ?? "none"} />
+            <Metric
+              label="Video cap"
+              value={indexing.video_max_frames ?? "none"}
+            />
             <Metric label="PDF DPI" value={indexing.pdf_render_dpi} />
             <Metric label="PDF page cap" value={indexing.pdf_max_pages} />
-            <Metric label="PDF summary pages" value={indexing.pdf_summary_pages} />
-            <Metric label="OCR" value={indexing.ocr_enabled ? "enabled" : "disabled"} />
+            <Metric
+              label="PDF summary pages"
+              value={indexing.pdf_summary_pages}
+            />
+            <Metric
+              label="OCR"
+              value={indexing.ocr_enabled ? "enabled" : "disabled"}
+            />
             <Metric label="OCR frames" value={indexing.ocr_max_frames} />
             <Metric
               label="Transcription"

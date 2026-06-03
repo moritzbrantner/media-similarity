@@ -1,4 +1,4 @@
-import { Button } from "@moritzbrantner/ui/components/button";
+import { Button } from "@moritzbrantner/ui";
 import {
   AlertCircle,
   CheckCircle2,
@@ -38,9 +38,9 @@ const navItems: Array<{
   { icon: Settings, label: "Sources", pressedLabel: "Open media configuration", view: "configure" },
   {
     icon: SlidersHorizontal,
-    label: "Indexing",
-    pressedLabel: "Open indexing configuration",
-    view: "indexing",
+    label: "Workflows",
+    pressedLabel: "Open workflow editor",
+    view: "workflows",
   },
 ];
 

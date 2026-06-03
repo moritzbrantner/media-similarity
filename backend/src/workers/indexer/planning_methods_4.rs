@@ -3,6 +3,7 @@ impl ImageIndexer {
         &self,
         source_image: &SourceImage,
         media: &DecodedMedia,
+        settings: &Settings,
         options: PayloadBuildOptions<'_>,
     ) -> Result<ImagePayload, String> {
         let video_scene = options.video_scene;
@@ -27,21 +28,23 @@ impl ImageIndexer {
         } else if media.kind == MediaKind::Audio {
             source_image
                 .local_path()
-                .and_then(|path| expose_source_audio(path, &image_id, &self.settings).ok())
+                .and_then(|path| expose_source_audio(path, &image_id, settings).ok())
                 .flatten()
         } else {
             None
         };
         let thumbnail_url = ensure_thumbnail(
             &media.poster,
-            &self.settings.thumbnail_dir,
+            &settings.thumbnail_dir,
             &image_id,
             (320, 320),
         )?;
-        let animated_thumbnail_url = if media.kind == MediaKind::AnimatedGif {
+        let animated_thumbnail_url = if options.animated_thumbnail_enabled
+            && media.kind == MediaKind::AnimatedGif
+        {
             Some(ensure_animated_thumbnail(
                 &media.preview_frames,
-                &self.settings.thumbnail_dir,
+                &settings.thumbnail_dir,
                 &image_id,
                 (320, 320),
             )?)
@@ -50,7 +53,7 @@ impl ImageIndexer {
         };
         let (width, height) = dimensions(&media.poster);
         let ocr_analysis = options.ocr_override.unwrap_or_else(|| {
-            extract_media_ocr(media, &self.settings).unwrap_or_else(|error| {
+            extract_media_ocr(media, settings).unwrap_or_else(|error| {
                 tracing::warn!(%error, "OCR extraction failed");
                 Default::default()
             })
@@ -165,7 +168,7 @@ impl ImageIndexer {
                 .or_else(|| audio_segment.map(|segment| segment.end_seconds)),
             source_type: source_image.source_type.clone(),
             source_item_uri: Some(source_image.item_uri.clone()),
-            indexing_profile: Some(indexing_profile(&self.settings)),
+            indexing_profile: Some(indexing_profile(settings)),
             source_uri: Some(source_image.source_uri.clone()),
         })
     }

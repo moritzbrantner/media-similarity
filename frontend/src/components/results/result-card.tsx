@@ -1,4 +1,4 @@
-import { Button } from "@moritzbrantner/ui/components/button";
+import { Button } from "@moritzbrantner/ui";
 import { ImageIcon, Loader2, Trash2 } from "lucide-react";
 import { formatFileSize, formatModifiedAt } from "../../lib/format";
 import type { SearchResult } from "../../types";

@@ -10,3 +10,4 @@ pub mod search;
 pub mod smart_albums;
 pub mod sources;
 pub mod watcher;
+pub mod workflows;

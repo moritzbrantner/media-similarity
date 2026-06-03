@@ -61,7 +61,6 @@ CI intentionally keeps frontend and Rust jobs separate. Do not change existing `
 - Prefer `rg --files` to list project files and `rg '<pattern>'` for text search.
 - Use `git status --short` before edits and before final reporting.
 - Use `bun run check:hygiene` when checkpoint noise or local generated files look suspicious.
-- Use `semble search --repo . '<query>'` for semantic orientation when exact text search is not enough.
 
 ## Expensive Or Stateful Commands
 

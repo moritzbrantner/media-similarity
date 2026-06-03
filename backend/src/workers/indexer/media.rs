@@ -5,6 +5,7 @@ struct PayloadBuildOptions<'a> {
     ocr_override: Option<OcrAnalysis>,
     photo_metadata: Option<PhotoMetadataPayload>,
     face_analysis: &'a FaceAnalysis,
+    animated_thumbnail_enabled: bool,
 }
 
 impl<'a> PayloadBuildOptions<'a> {
@@ -16,6 +17,7 @@ impl<'a> PayloadBuildOptions<'a> {
             ocr_override: None,
             photo_metadata: None,
             face_analysis,
+            animated_thumbnail_enabled: true,
         }
     }
 
@@ -41,6 +43,11 @@ impl<'a> PayloadBuildOptions<'a> {
 
     fn with_photo_metadata(mut self, photo_metadata: Option<PhotoMetadataPayload>) -> Self {
         self.photo_metadata = photo_metadata;
+        self
+    }
+
+    fn with_animated_thumbnail(mut self, enabled: bool) -> Self {
+        self.animated_thumbnail_enabled = enabled;
         self
     }
 }
@@ -109,7 +116,8 @@ fn generated_artifacts(
 
 fn indexing_profile(settings: &Settings) -> String {
     let profile = IndexingProfile {
-        version: 4,
+        version: 5,
+        processing_workflows_hash: settings.processing_workflows_hash.as_deref(),
         photo_metadata_version: "photo-metadata-v1",
         clip_model_name: &settings.clip_model_name,
         vector_size: settings.vector_size,
@@ -156,6 +164,7 @@ fn indexing_profile(settings: &Settings) -> String {
 #[derive(Serialize)]
 struct IndexingProfile<'a> {
     version: u32,
+    processing_workflows_hash: Option<&'a str>,
     photo_metadata_version: &'a str,
     clip_model_name: &'a str,
     vector_size: usize,

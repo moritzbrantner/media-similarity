@@ -45,6 +45,29 @@ impl ImageIndexer {
             let _ = context.metadata("needs_indexing", plan.pending.len().to_string());
         }
 
+        let indexing_profile = indexing_profile(&self.settings);
+        let mut recorder = IndexRunRecorder::start(
+            self.settings.indexing_ledger_file.clone(),
+            context
+                .map(|context| context.id().to_string())
+                .unwrap_or_else(|| format!("index.sync.{}", uuid::Uuid::new_v4())),
+            self.settings.qdrant_collection.clone(),
+            indexing_profile.clone(),
+            IndexLedgerRunTotals {
+                pending: plan.pending.len(),
+                already_indexed: plan.already_indexed,
+                indexed: 0,
+                skipped: plan.skipped,
+                failed: 0,
+                pruned: 0,
+            },
+            context,
+        );
+        recorder.register_pending_sources(
+            plan.pending.iter().map(|pending| &pending.source_image),
+            &indexing_profile,
+        );
+
         let mut indexed = 0;
         let mut pruned = 0;
         let skipped = plan.skipped + plan.already_indexed;
@@ -63,6 +86,7 @@ impl ImageIndexer {
                     if let Some(context) = context {
                         let _ = context.metadata("pruned", pruned.to_string());
                     }
+                    recorder.update_totals(indexed, skipped, failed, pruned);
                 }
                 Err(error) => {
                     failed += 1;
@@ -71,6 +95,7 @@ impl ImageIndexer {
                         let _ =
                             context.warn(format!("could not prune stale Qdrant records: {error}"));
                     }
+                    recorder.update_totals(indexed, skipped, failed, pruned);
                 }
             }
         }
@@ -83,7 +108,7 @@ impl ImageIndexer {
         for (index, pending_source) in plan.pending.iter().enumerate() {
             let source_image = &pending_source.source_image;
             if let Some(context) = context {
-                if let Err(error) = context.check_cancelled() {
+                if let Err(error) = recorder.check_cancelled() {
                     errors.truncate(50);
                     let _ = context.metadata("indexed", indexed.to_string());
                     let _ = context.metadata("failed", failed.to_string());
@@ -93,6 +118,7 @@ impl ImageIndexer {
                         "indexing cancelled before {}",
                         source_image.display_path
                     ));
+                    recorder.finish(IndexLedgerRunStatus::Cancelled);
                     return IndexResponse {
                         indexed,
                         skipped,
@@ -109,8 +135,9 @@ impl ImageIndexer {
                 }
                 let _ = context.info(format!("indexing {}", source_image.display_path));
             }
+            recorder.source_started(source_image, &indexing_profile);
 
-            match self.index_one(source_image).await {
+            match self.index_one(source_image, &mut recorder).await {
                 Ok(outcome) => {
                     indexed += outcome.indexed;
                     let stale_point_ids = pending_source
@@ -143,18 +170,69 @@ impl ImageIndexer {
                                         source_image.display_path
                                     ));
                                 }
+                                recorder.source_failed(&format!(
+                                    "could not prune stale Qdrant records: {error}"
+                                ));
                             }
                         }
                     }
+                    if failed == 0
+                        || !errors
+                            .last()
+                            .map(|error| error.contains(&source_image.display_path))
+                            .unwrap_or(false)
+                    {
+                        let point_ids = outcome.point_ids.iter().cloned().collect::<Vec<_>>();
+                        recorder.source_completed(&point_ids);
+                    }
                 }
                 Err(error) => {
+                    if context
+                        .map(|context| context.is_cancelled())
+                        .unwrap_or(false)
+                        || error == "job cancelled"
+                    {
+                        errors.truncate(50);
+                        recorder.source_cancelled();
+                        recorder.update_totals(indexed, skipped, failed, pruned);
+                        recorder.finish(IndexLedgerRunStatus::Cancelled);
+                        if let Some(context) = context {
+                            let _ = context.metadata("indexed", indexed.to_string());
+                            let _ = context.metadata("failed", failed.to_string());
+                            let _ = context.metadata("skipped", skipped.to_string());
+                            let _ = context.metadata("pruned", pruned.to_string());
+                            let _ = context.warn(format!(
+                                "indexing cancelled while processing {}",
+                                source_image.display_path
+                            ));
+                        }
+                        return IndexResponse {
+                            indexed,
+                            skipped,
+                            failed,
+                            pruned,
+                            collection: self.settings.qdrant_collection.clone(),
+                            source_dir: self
+                                .settings
+                                .source_image_dir
+                                .to_string_lossy()
+                                .to_string(),
+                            sources: plan.source_uris,
+                            errors: {
+                                errors.push(error);
+                                errors
+                            },
+                        };
+                    }
                     failed += 1;
                     errors.push(format!("{}: {error}", source_image.display_path));
+                    recorder.source_failed(&error);
                     if let Some(context) = context {
                         let _ = context.warn(format!("{}: {error}", source_image.display_path));
                     }
                 }
             }
+            recorder.update_totals(indexed, skipped, failed, pruned);
 
             if let Some(context) = context {
                 let completed = index as u64 + 1;
@@ -177,6 +255,11 @@ impl ImageIndexer {
                 "indexing complete: {indexed} media item(s), {skipped} skipped, {pruned} pruned, {failed} failed"
             ));
         }
+        recorder.finish(if failed > 0 {
+            IndexLedgerRunStatus::Failed
+        } else {
+            IndexLedgerRunStatus::Completed
+        });
 
         errors.truncate(50);
         IndexResponse {

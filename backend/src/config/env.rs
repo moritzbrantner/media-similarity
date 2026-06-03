@@ -82,6 +82,12 @@ impl Settings {
             )?,
             thumbnail_dir: path_var("THUMBNAIL_DIR", defaults.thumbnail_dir),
             upload_dir: path_var("UPLOAD_DIR", defaults.upload_dir),
+            indexing_ledger_file: path_var("INDEXING_LEDGER_FILE", defaults.indexing_ledger_file),
+            processing_workflows_file: path_var(
+                "PROCESSING_WORKFLOWS_FILE",
+                defaults.processing_workflows_file,
+            ),
+            processing_workflows_hash: None,
             voice_registry_path: path_var("VOICE_REGISTRY_PATH", defaults.voice_registry_path),
             smart_albums_file: path_var("SMART_ALBUMS_FILE", defaults.smart_albums_file),
             model_bundle_dir: path_var("MODEL_BUNDLE_DIR", defaults.model_bundle_dir),

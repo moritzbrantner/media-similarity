@@ -72,9 +72,9 @@ test("navigates between web UI pages with pressed tab state", async ({ page }) =
     "true",
   );
 
-  await page.getByRole("button", { name: "Open indexing configuration" }).click();
-  await expect(page.getByRole("heading", { name: "Indexing Configuration" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open indexing configuration" })).toHaveAttribute(
+  await page.getByRole("button", { name: "Open workflow editor" }).click();
+  await expect(page.getByRole("heading", { name: "Processing Workflows" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open workflow editor" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
@@ -111,8 +111,8 @@ test.describe("mobile viewport", () => {
     await expect(page.getByRole("heading", { name: "Media Sources" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
 
-    await page.getByRole("button", { name: "Open indexing configuration" }).click();
-    await expect(page.getByRole("heading", { name: "Indexing Configuration" })).toBeVisible();
+    await page.getByRole("button", { name: "Open workflow editor" }).click();
+    await expect(page.getByRole("heading", { name: "Processing Workflows" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
 
     await page.getByRole("button", { name: "Open query page" }).click();

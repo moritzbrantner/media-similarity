@@ -23,6 +23,10 @@ pub struct Settings {
     pub visual_embedding_batch_size: usize,
     pub thumbnail_dir: PathBuf,
     pub upload_dir: PathBuf,
+    pub indexing_ledger_file: PathBuf,
+    pub processing_workflows_file: PathBuf,
+    #[serde(default)]
+    pub processing_workflows_hash: Option<String>,
     pub voice_registry_path: PathBuf,
     pub smart_albums_file: PathBuf,
     pub model_bundle_dir: PathBuf,

@@ -3,16 +3,8 @@
 @import "shadcn/tailwind.css";
 
 @source "./**/*.{ts,tsx}";
-@source "../../node_modules/@moritzbrantner/ui/dist/chunk-2NEFAQLV.js";
-@source "../../node_modules/@moritzbrantner/ui/dist/chunk-6I3IZJWE.js";
-@source "../../node_modules/@moritzbrantner/ui/dist/chunk-734IV76M.js";
-@source "../../node_modules/@moritzbrantner/ui/dist/chunk-HERYNHTT.js";
-@source "../../node_modules/@moritzbrantner/ui/dist/chunk-HXURL5NZ.js";
-@source "../../node_modules/@moritzbrantner/ui/dist/chunk-P5LD5COQ.js";
-@source "../../node_modules/@moritzbrantner/ui/dist/chunk-PBJYNJ5Q.js";
-@source "../../node_modules/@moritzbrantner/ui/dist/chunk-TLXTLWEV.js";
-@source "../../node_modules/@moritzbrantner/ui/dist/chunk-TNYISD2Q.js";
-@source "../../node_modules/@moritzbrantner/ui/dist/chunk-YPVPNXPG.js";
+@source "../../node_modules/@moritzbrantner/ui/dist/**/*.js";
+@source "../../node_modules/@moritzbrantner/workflow-editor/dist/**/*.js";
 
 @custom-variant dark (&:is(.dark *));
 

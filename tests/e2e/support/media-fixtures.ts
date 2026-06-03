@@ -8,6 +8,7 @@ import type {
   SmartAlbum,
   SmartAlbumResultsResponse,
   SourceConfigResponse,
+  WorkflowConfigResponse,
 } from "../../../frontend/src/types";
 
 export const pngPixel = Buffer.from(
@@ -123,6 +124,19 @@ export function makeSourceConfigResponse(
     sources: overrides.sources ?? defaultSourceConfigResponse.sources,
     supported_source_types:
       overrides.supported_source_types ?? defaultSourceConfigResponse.supported_source_types,
+  };
+}
+
+export function makeWorkflowConfigResponse(
+  overrides: DeepPartial<typeof defaultWorkflowConfigResponse> = {},
+) {
+  return {
+    ...defaultWorkflowConfigResponse,
+    ...overrides,
+    diagnostics: overrides.diagnostics ?? defaultWorkflowConfigResponse.diagnostics,
+    library: overrides.library ?? defaultWorkflowConfigResponse.library,
+    node_templates: overrides.node_templates ?? defaultWorkflowConfigResponse.node_templates,
+    type_definitions: overrides.type_definitions ?? defaultWorkflowConfigResponse.type_definitions,
   };
 }
 
@@ -290,6 +304,155 @@ const defaultSourceConfigResponse = {
   ],
 };
 
+function workflowPort(id: "in" | "out", typeName: string) {
+  return {
+    id,
+    kind: typeName,
+    label: typeName,
+  };
+}
+
+function workflowNode(
+  processor: string,
+  label: string,
+  index: number,
+  inputType: string | null,
+  outputType: string | null,
+) {
+  return {
+    categoryPath: ["Media"],
+    data: {
+      enabled: true,
+      locked: [
+        "source.input",
+        "image.decode",
+        "embedding.visual",
+        "payload.build",
+        "qdrant.upsert",
+      ].includes(processor),
+      processor,
+    },
+    id: processor.replaceAll(".", "-"),
+    inputs: inputType ? [workflowPort("in", inputType)] : [],
+    kind: processor,
+    label,
+    outputs: outputType ? [workflowPort("out", outputType)] : [],
+    x: index * 280,
+    y: 0,
+  };
+}
+
+function workflowEntry(
+  id: string,
+  name: string,
+  processors: Array<[string, string, string | null, string | null]>,
+) {
+  return {
+    createdAt: "2026-06-03T00:00:00.000Z",
+    description: `Default ${name} processing workflow`,
+    document: {
+      edges: processors.slice(1).map(([processor], index) => {
+        const previous = processors[index][0];
+        return {
+          id: `${previous}-${processor}`.replaceAll(".", "-"),
+          sourceNodeId: previous.replaceAll(".", "-"),
+          sourcePortId: "out",
+          targetNodeId: processor.replaceAll(".", "-"),
+          targetPortId: "in",
+        };
+      }),
+      nodes: processors.map(([processor, label, inputType, outputType], index) =>
+        workflowNode(processor, label, index, inputType, outputType),
+      ),
+      viewport: { x: 40, y: 120, zoom: 0.85 },
+    },
+    id,
+    name,
+    tags: ["media-processing", id],
+    updatedAt: "2026-06-03T00:00:00.000Z",
+    version: 1,
+    versions: [],
+  };
+}
+
+const defaultWorkflowConfigResponse = {
+  diagnostics: [] as WorkflowConfigResponse["diagnostics"],
+  library: {
+    activeDocumentId: "static_image",
+    documents: [
+      workflowEntry("static_image", "Static Image", [
+        ["source.input", "Source input", null, "SourceFile"],
+        ["image.decode", "Decode image", "SourceFile", "DecodedImageMedia"],
+        ["ocr.extract", "OCR", "DecodedImageMedia", "AnalysisBundle"],
+        ["faces.analyze", "Face analysis", "DecodedImageMedia", "AnalysisBundle"],
+        ["thumbnail.ensure", "Thumbnail", "DecodedImageMedia", "DecodedImageMedia"],
+        ["embedding.visual", "Visual embedding", "DecodedImageMedia", "VectorSet"],
+        ["payload.build", "Build payload", "VectorSet", "PayloadSet"],
+        ["qdrant.upsert", "Upsert to Qdrant", "PayloadSet", "IndexedMediaSet"],
+      ]),
+      workflowEntry("animated_gif", "Animated GIF", [
+        ["source.input", "Source input", null, "SourceFile"],
+        ["gif.decode", "Decode GIF", "SourceFile", "DecodedGifMedia"],
+        ["thumbnail.ensure_animated", "Animated thumbnail", "DecodedGifMedia", "DecodedGifMedia"],
+        ["embedding.visual", "Visual embedding", "DecodedGifMedia", "VectorSet"],
+        ["payload.build", "Build payload", "VectorSet", "PayloadSet"],
+        ["qdrant.upsert", "Upsert to Qdrant", "PayloadSet", "IndexedMediaSet"],
+      ]),
+      workflowEntry("video", "Video", [
+        ["source.input", "Source input", null, "SourceFile"],
+        ["video.detect_scenes", "Detect video scenes", "SourceFile", "VideoSceneSet"],
+        ["embedding.visual", "Visual embedding", "VideoSceneSet", "VectorSet"],
+        ["payload.build", "Build payload", "VectorSet", "PayloadSet"],
+        ["qdrant.upsert", "Upsert to Qdrant", "PayloadSet", "IndexedMediaSet"],
+      ]),
+      workflowEntry("audio", "Audio", [
+        ["source.input", "Source input", null, "SourceFile"],
+        ["audio.decode_segments", "Decode audio segments", "SourceFile", "AudioSegmentSet"],
+        ["audio.analyze", "Audio analysis", "AudioSegmentSet", "AnalysisBundle"],
+        ["embedding.visual", "Visual embedding", "AudioSegmentSet", "VectorSet"],
+        ["payload.build", "Build payload", "VectorSet", "PayloadSet"],
+        ["qdrant.upsert", "Upsert to Qdrant", "PayloadSet", "IndexedMediaSet"],
+      ]),
+      workflowEntry("pdf", "PDF", [
+        ["source.input", "Source input", null, "SourceFile"],
+        ["pdf.render_pages", "Render PDF pages", "SourceFile", "PdfPageSet"],
+        ["pdf.build_document_summary", "Build PDF summary", "PdfPageSet", "PdfDocumentSummary"],
+        ["embedding.visual", "Visual embedding", "PdfPageSet", "VectorSet"],
+        ["payload.build", "Build payload", "VectorSet", "PayloadSet"],
+        ["qdrant.upsert", "Upsert to Qdrant", "PayloadSet", "IndexedMediaSet"],
+      ]),
+    ],
+    format: "@moritzbrantner/workflow-editor/library",
+    version: 1,
+  },
+  node_templates: [
+    workflowNode("ocr.extract", "OCR", 0, "DecodedImageMedia", "AnalysisBundle"),
+    workflowNode("faces.analyze", "Face analysis", 1, "DecodedImageMedia", "AnalysisBundle"),
+    workflowNode(
+      "thumbnail.ensure_animated",
+      "Animated thumbnail",
+      2,
+      "DecodedGifMedia",
+      "DecodedGifMedia",
+    ),
+  ],
+  type_definitions: [
+    "SourceFile",
+    "DecodedImageMedia",
+    "DecodedGifMedia",
+    "VideoSceneSet",
+    "AudioSegmentSet",
+    "PdfPageSet",
+    "PdfDocumentSummary",
+    "AnalysisBundle",
+    "PayloadSet",
+    "VectorSet",
+    "IndexedMediaSet",
+  ].map((name) => ({ name, type: { kind: "object" } })),
+  workflow_file: "/app/data/processing-workflows.json",
+  writable: true,
+} satisfies WorkflowConfigResponse;
+
 const defaultImage = {
   animated_thumbnail_url: null as string | null,
   audio_analysis: null as unknown,
@@ -419,6 +582,7 @@ export const indexResponse: IndexResponse = makeIndexResponse();
 export const completedIndexJob: JobSnapshot = makeJob();
 export const completedIndexEvents = makeJobEvents(completedIndexJob);
 export const sourceConfigResponse: SourceConfigResponse = makeSourceConfigResponse();
+export const workflowConfigResponse: WorkflowConfigResponse = makeWorkflowConfigResponse();
 export const searchResponse: SearchResponse = makeSearchResponse();
 
 export const smartAlbum: SmartAlbum = {

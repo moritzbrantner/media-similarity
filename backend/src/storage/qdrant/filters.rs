@@ -195,4 +195,43 @@ mod tests {
             })
         );
     }
+
+    #[test]
+    fn media_search_filter_serializes_combined_metadata_bounds() {
+        let filter = media_search_filter(Some(MediaSearchFilter {
+            source_type: Some("local".to_string()),
+            media_kind: Some("pdf_page".to_string()),
+            has_gps: Some(false),
+            min_width: Some(320),
+            max_width: Some(640),
+            min_height: Some(200),
+            max_height: Some(480),
+            min_size_bytes: Some(1_024),
+            max_size_bytes: Some(2_048),
+            modified_from: Some(1_700_000_000.0),
+            modified_to: Some(1_700_086_400.0),
+            captured_from: Some(1_600_000_000.0),
+            captured_to: Some(1_600_086_400.0),
+        }))
+        .unwrap();
+
+        let value = serde_json::to_value(filter).unwrap();
+
+        assert_eq!(
+            value,
+            json!({
+                "must": [
+                    { "key": "point_kind", "match": { "value": "media" } },
+                    { "key": "source_type", "match": { "value": "local" } },
+                    { "key": "media_kind", "match": { "value": "pdf_page" } },
+                    { "key": "photo_has_gps", "match": { "value": false } },
+                    { "key": "width", "range": { "gte": 320.0, "lte": 640.0 } },
+                    { "key": "height", "range": { "gte": 200.0, "lte": 480.0 } },
+                    { "key": "size_bytes", "range": { "gte": 1024.0, "lte": 2048.0 } },
+                    { "key": "modified_at", "range": { "gte": 1_700_000_000.0, "lte": 1_700_086_400.0 } },
+                    { "key": "photo_capture_time_epoch", "range": { "gte": 1_600_000_000.0, "lte": 1_600_086_400.0 } }
+                ]
+            })
+        );
+    }
 }

@@ -32,7 +32,8 @@ use image_similarity_service::app::upload_body_limit_bytes;
 use image_similarity_service::config::{parse_extensions, Settings};
 use image_similarity_service::domain::models::{
     AudioAnalysis, AudioRecognizedVoice, AudioSegmentGuess, FaceBoxPayload, FaceDetectionPayload,
-    FacePointPayload, ImagePayload, IndexResponse, PersonSummary, SearchResponse,
+    FacePointPayload, ImagePayload, IndexResponse, PersonSummary, PhotoGpsPayload,
+    PhotoMetadataPayload, SearchResponse,
 };
 use image_similarity_service::workers::media::voice::VoiceRegistry;
 
@@ -170,6 +171,111 @@ async fn search_api_applies_server_side_metadata_filters() {
 }
 
 #[tokio::test]
+async fn metadata_filter_combinations_are_applied_together() {
+    let app = TestApp::new(|settings| {
+        settings.default_search_limit = 10;
+        settings.duplicate_hash_distance = 0;
+    })
+    .await;
+    app.state.store.ensure_collection().await.unwrap();
+
+    let query = app.source_path("query.png");
+    write_pattern_image(&query, 80, 40, [220, 20, 20], [20, 20, 20]);
+    let query_media =
+        image_similarity_service::workers::media::image_io::load_media(&query, &app.state.settings)
+            .unwrap();
+    let query_phash =
+        image_similarity_service::workers::media::hashing::phash_image(&query_media.poster);
+
+    let mut matching = test_media_payload("matching-filtered", "matching-filtered.png");
+    matching.width = 80;
+    matching.height = 40;
+    matching.size_bytes = 2_000_000;
+    matching.modified_at = 1_710_000_000.0;
+    matching.phash = query_phash.clone();
+    matching.media_kind = "static_image".to_string();
+    matching.source_type = "s3".to_string();
+    matching.source_uri = Some("s3://archive/photos".to_string());
+    matching.source_item_uri = Some("s3://archive/photos/matching-filtered.png".to_string());
+    matching.ocr_text = "Invoice total due".to_string();
+    matching.tags = vec!["sunrise".to_string()];
+    matching.people = vec![test_person_summary(
+        "person-filter",
+        Some("Filtered Person"),
+        1,
+        0.9,
+    )];
+    matching.photo_metadata = Some(PhotoMetadataPayload {
+        capture_time: Some("2024-03-12T10:30:00Z".to_string()),
+        camera_make: Some("Acme".to_string()),
+        camera_model: Some("Pocket 7".to_string()),
+        gps: Some(PhotoGpsPayload {
+            latitude: 52.0,
+            longitude: 13.0,
+            altitude_meters: None,
+        }),
+        keywords: vec!["Travel".to_string(), "Sunrise".to_string()],
+        ..PhotoMetadataPayload::default()
+    });
+
+    let mut wrong_source = matching.clone();
+    wrong_source.id = "wrong-source".to_string();
+    wrong_source.filename = "wrong-source.png".to_string();
+    wrong_source.source_type = "local".to_string();
+    wrong_source.source_uri = Some("local://archive".to_string());
+    wrong_source.source_item_uri = Some("local://archive/wrong-source.png".to_string());
+
+    let mut wrong_person = matching.clone();
+    wrong_person.id = "wrong-person".to_string();
+    wrong_person.filename = "wrong-person.png".to_string();
+    wrong_person.people = vec![test_person_summary("other-person", None, 1, 0.7)];
+
+    for payload in [&matching, &wrong_source, &wrong_person] {
+        app.state
+            .store
+            .upsert_media(payload, vec![0.1; 32])
+            .await
+            .unwrap();
+    }
+
+    let filtered = app
+        .search_upload_with_params(
+            "query.png",
+            "image/png",
+            fs::read(&query).unwrap(),
+            vec![
+                ("limit", "10".to_string()),
+                ("source_type", "s3".to_string()),
+                ("media_kind", "static_image".to_string()),
+                ("name_query", "matching".to_string()),
+                ("camera_query", "Pocket".to_string()),
+                ("keyword_query", "sunrise".to_string()),
+                ("has_gps", "yes".to_string()),
+                ("near_duplicate", "only".to_string()),
+                ("orientation", "landscape".to_string()),
+                ("min_width", "80".to_string()),
+                ("max_width", "80".to_string()),
+                ("min_height", "40".to_string()),
+                ("max_height", "40".to_string()),
+                ("min_size_bytes", "2000000".to_string()),
+                ("max_size_bytes", "2000000".to_string()),
+                ("modified_from", "1710000000".to_string()),
+                ("modified_to", "1710000000".to_string()),
+                ("captured_from", "1710239400".to_string()),
+                ("captured_to", "1710239400".to_string()),
+                ("person_id", "person-filter".to_string()),
+                ("ocr_text", "invoice".to_string()),
+            ],
+        )
+        .await;
+
+    assert_eq!(filtered.count, 1);
+    assert_eq!(filtered.results[0].image.id, "matching-filtered");
+    assert_eq!(filtered.results[0].ocr_score, Some(1.0));
+    assert!(filtered.results[0].near_duplicate);
+}
+
+#[tokio::test]
 async fn index_skips_files_that_are_already_current() {
     let app = TestApp::new(|settings| {
         settings.image_extensions = parse_extensions(".png").unwrap();
@@ -287,6 +393,77 @@ async fn identity_person_merge_updates_inverse_index() {
     assert_eq!(people[0]["label"], "Ada");
     assert_eq!(people[0]["face_count"], 2);
     assert_eq!(people[0]["media_count"], 1);
+}
+
+#[tokio::test]
+async fn identity_merge_handles_missing_sources_without_corrupting_target() {
+    let app = TestApp::new(|settings| {
+        settings.face_analysis_enabled = true;
+    })
+    .await;
+    app.state.store.ensure_collection().await.unwrap();
+
+    let mut payload = test_media_payload("media-people-missing", "group-missing.jpg");
+    payload.faces = vec![
+        test_face_detection(
+            "face-a",
+            "media-people-missing",
+            "person-a",
+            Some("Ada"),
+            0.9,
+        ),
+        test_face_detection(
+            "face-b",
+            "media-people-missing",
+            "person-b",
+            Some("Grace"),
+            0.8,
+        ),
+    ];
+    payload.people = vec![
+        test_person_summary("person-a", Some("Ada"), 1, 0.9),
+        test_person_summary("person-b", Some("Grace"), 1, 0.8),
+    ];
+    app.state
+        .store
+        .upsert_media(&payload, vec![0.1; 32])
+        .await
+        .unwrap();
+    app.state
+        .store
+        .upsert_face(
+            &test_face_point(
+                "face-b",
+                "media-people-missing",
+                "person-b",
+                Some("Grace"),
+                0.8,
+            ),
+            vec![0.3; 32],
+        )
+        .await
+        .unwrap();
+
+    let response = app
+        .post_json(
+            "/api/identities/people/person-a/merge",
+            json!({ "source_ids": ["person-b", "person-missing"] }),
+        )
+        .await;
+    assert_eq!(response["target_id"], "person-a");
+    assert_eq!(response["updated_media"], 1);
+    assert_eq!(response["updated_faces"], 1);
+    assert!(response["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|warning| warning.as_str().unwrap().contains("person-missing")));
+
+    let inverse = app.get_json("/api/inverse-index").await;
+    let people = inverse["people"].as_array().unwrap();
+    assert_eq!(people.len(), 1, "{people:?}");
+    assert_eq!(people[0]["id"], "person-a");
+    assert_eq!(people[0]["face_count"], 2);
 }
 
 #[tokio::test]
@@ -450,6 +627,107 @@ async fn smart_album_crud_filters_text_and_duplicate_groups() {
 }
 
 #[tokio::test]
+async fn smart_album_pagination_sorting_and_invalid_inputs() {
+    let app = TestApp::new(|settings| {
+        settings.duplicate_hash_distance = 1;
+    })
+    .await;
+    app.state.store.ensure_collection().await.unwrap();
+
+    for index in 0..6 {
+        let mut payload =
+            test_media_payload(&format!("album-{index}"), &format!("item-{index}.jpg"));
+        payload.modified_at = 1_700_000_000.0 + index as f64;
+        payload.phash = if index < 3 {
+            format!("000000000000000{index}")
+        } else {
+            "ffffffffffffffff".to_string()
+        };
+        payload.ocr_text = if index % 2 == 0 {
+            "Invoice archive".to_string()
+        } else {
+            "Receipt archive".to_string()
+        };
+        app.state
+            .store
+            .upsert_media(&payload, vec![0.1; 32])
+            .await
+            .unwrap();
+    }
+
+    let created = app
+        .post_json(
+            "/api/smart-albums",
+            json!({
+                "name": "Paged",
+                "description": null,
+                "criteria": { "text_query": "archive", "duplicate_status": "all" },
+                "sort": "modified_newest",
+                "limit": 2
+            }),
+        )
+        .await;
+    let album_id = created["id"].as_str().unwrap();
+
+    let first_page = app
+        .get_json(&format!(
+            "/api/smart-albums/{album_id}/results?offset=0&limit=2"
+        ))
+        .await;
+    assert_eq!(first_page["count"], 2);
+    assert_eq!(first_page["total"], 6);
+    assert_eq!(first_page["results"][0]["image"]["filename"], "item-5.jpg");
+    assert_eq!(first_page["results"][1]["image"]["filename"], "item-4.jpg");
+
+    let second_page = app
+        .get_json(&format!(
+            "/api/smart-albums/{album_id}/results?offset=2&limit=2"
+        ))
+        .await;
+    assert_eq!(second_page["offset"], 2);
+    assert_eq!(second_page["results"][0]["image"]["filename"], "item-3.jpg");
+
+    let duplicate_preview = app
+        .post_json(
+            "/api/smart-albums/preview?offset=0&limit=10",
+            json!({
+                "name": "Duplicates",
+                "description": null,
+                "criteria": { "duplicate_status": "only" },
+                "sort": "duplicate_group_size",
+                "limit": 10
+            }),
+        )
+        .await;
+    assert_eq!(
+        duplicate_preview["duplicate_groups"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert!(duplicate_preview["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|result| result["duplicate_group_size"].as_u64().unwrap() >= 3));
+
+    let invalid = app
+        .raw_post_json(
+            "/api/smart-albums",
+            json!({
+                "name": "Invalid",
+                "description": null,
+                "criteria": { "media_kind": "spreadsheet" },
+                "sort": "modified_newest",
+                "limit": 0
+            }),
+        )
+        .await;
+    assert_eq!(invalid.status(), reqwest::StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn deletes_indexed_media_records_and_generated_artifacts() {
     let app = TestApp::new(|settings| {
         settings.image_extensions = parse_extensions(".png").unwrap();
@@ -493,6 +771,93 @@ async fn deletes_indexed_media_records_and_generated_artifacts() {
         )
         .await;
     assert_eq!(after.count, 0);
+}
+
+#[tokio::test]
+async fn delete_indexed_source_removes_only_matching_source_records() {
+    let app = TestApp::new(|settings| {
+        let root = settings.source_image_dir.parent().unwrap().to_path_buf();
+        let source_a = root.join("source-a");
+        let source_b = root.join("source-b");
+        fs::create_dir_all(&source_a).unwrap();
+        fs::create_dir_all(&source_b).unwrap();
+        settings.image_sources = vec![
+            source_a.to_string_lossy().to_string(),
+            source_b.to_string_lossy().to_string(),
+        ];
+        settings.image_extensions = parse_extensions(".png").unwrap();
+        settings.default_search_limit = 10;
+    })
+    .await;
+    let source_a = app.root_path().join("source-a");
+    let source_b = app.root_path().join("source-b");
+    let delete_by_source = source_a.join("delete-source.png");
+    let keep_after_source_delete = source_b.join("keep-source.png");
+    write_pattern_image(&delete_by_source, 64, 40, [220, 20, 20], [20, 20, 20]);
+    write_pattern_image(
+        &keep_after_source_delete,
+        64,
+        40,
+        [20, 180, 80],
+        [20, 20, 20],
+    );
+
+    let indexed = app.index().await;
+    assert_eq!(indexed.indexed, 2);
+    assert_eq!(indexed.failed, 0, "{:?}", indexed.errors);
+
+    let deleted_by_source = app
+        .delete_json(&format!(
+            "/api/indexed-sources?source_uri={}",
+            source_a.to_string_lossy()
+        ))
+        .await;
+    assert_eq!(deleted_by_source["deleted_points"], 1);
+
+    let after_source_delete = app
+        .search_upload(
+            "query.png",
+            "image/png",
+            fs::read(&keep_after_source_delete).unwrap(),
+            Some(10),
+        )
+        .await;
+    assert_eq!(after_source_delete.count, 1);
+    assert_eq!(
+        after_source_delete.results[0].image.filename,
+        "keep-source.png"
+    );
+
+    let keep_payload = app
+        .stored_media_payloads()
+        .into_iter()
+        .find(|payload| payload.filename == "keep-source.png")
+        .unwrap();
+    let deleted_by_item = app
+        .delete_json(&format!(
+            "/api/indexed-sources?source_item_uri={}",
+            keep_payload.source_item_uri.unwrap()
+        ))
+        .await;
+    assert_eq!(deleted_by_item["deleted_points"], 1);
+
+    let after_item_delete = app
+        .search_upload(
+            "query.png",
+            "image/png",
+            fs::read(&keep_after_source_delete).unwrap(),
+            Some(10),
+        )
+        .await;
+    assert_eq!(after_item_delete.count, 0);
+
+    let missing_filter = app
+        .client
+        .delete(format!("{}/api/indexed-sources", app.base_url))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(missing_filter.status(), reqwest::StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
@@ -719,6 +1084,87 @@ async fn pdf_recognition_indexes_document_pages_and_searches_uploaded_pdf() {
 }
 
 #[tokio::test]
+async fn mixed_media_indexing_reports_expected_record_shapes() {
+    let ffmpeg_available = has_tool("ffmpeg") && has_tool("ffprobe");
+    let poppler_available = has_tool("pdfinfo") && has_tool("pdftoppm") && has_tool("pdftotext");
+    let app = TestApp::new(|settings| {
+        settings.image_extensions = parse_extensions(".png,.gif,.wav,.mp4,.pdf").unwrap();
+        settings.audio_extensions = parse_extensions(".wav").unwrap();
+        settings.pdf_extensions = parse_extensions(".pdf").unwrap();
+        settings.default_search_limit = 10;
+        settings.video_frame_stride = 3;
+        settings.video_max_frames = Some(4);
+        settings.pdf_max_pages = 4;
+        settings.pdf_summary_pages = 2;
+        settings.ocr_enabled = false;
+    })
+    .await;
+
+    write_pattern_image(
+        &app.source_path("still.png"),
+        48,
+        32,
+        [220, 30, 30],
+        [20, 20, 20],
+    );
+    write_test_gif(
+        &app.source_path("motion.gif"),
+        &[[220, 40, 40], [40, 220, 40], [40, 40, 220]],
+        60,
+    );
+    if ffmpeg_available {
+        write_voice_like_audio(&app.source_path("voice.wav"));
+        write_two_scene_video(&app.source_path("scene.mp4"));
+    }
+    if poppler_available {
+        write_test_pdf(&app.source_path("doc.pdf"), &["Invoice", "Archive"]);
+    }
+
+    let indexed = app.index().await;
+    assert_eq!(indexed.failed, 0, "{:?}", indexed.errors);
+    assert!(indexed.indexed >= 2, "{indexed:?}");
+
+    let payloads = app.stored_media_payloads();
+    assert!(payloads.iter().any(|payload| {
+        payload.filename == "still.png"
+            && payload.media_kind == "static_image"
+            && payload.thumbnail_url.is_some()
+    }));
+    assert!(payloads.iter().any(|payload| {
+        payload.filename == "motion.gif"
+            && payload.media_kind == "animated_gif"
+            && payload.frame_count == Some(3)
+            && payload.animated_thumbnail_url.is_some()
+    }));
+    if ffmpeg_available {
+        assert!(payloads.iter().any(|payload| {
+            payload.media_kind == "audio"
+                && payload.full_audio_url.is_some()
+                && payload.audio_analysis.is_some()
+        }));
+        assert!(payloads.iter().any(|payload| {
+            payload.media_kind == "video_scene"
+                && payload.full_video_url.is_some()
+                && payload.scene_clip_url.is_some()
+                && payload.scene_end_seconds > payload.scene_start_seconds
+        }));
+    }
+    if poppler_available {
+        assert!(payloads.iter().any(|payload| {
+            payload.media_kind == "pdf_document"
+                && payload.full_pdf_url.is_some()
+                && payload.pdf_page_count == Some(2)
+        }));
+        assert!(payloads.iter().any(|payload| {
+            payload.media_kind == "pdf_page"
+                && payload.pdf_page_url.is_some()
+                && payload.pdf_page_number == Some(1)
+                && payload.pdf_page_count == Some(2)
+        }));
+    }
+}
+
+#[tokio::test]
 async fn upload_validation_covers_invalid_media_and_size_configuration() {
     let app = TestApp::new(|settings| {
         settings.max_upload_mb = 1;
@@ -734,6 +1180,16 @@ async fn upload_validation_covers_invalid_media_and_size_configuration() {
         invalid_body["detail"],
         "Upload must be an image, video, audio, or PDF file"
     );
+
+    let malformed = app
+        .client
+        .post(format!("{}/api/search", app.base_url))
+        .header(CONTENT_TYPE, "multipart/form-data; boundary=missing-body")
+        .body("not a valid multipart body")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(malformed.status(), reqwest::StatusCode::BAD_REQUEST);
 
     let oversized = app
         .raw_search_upload("large.png", "image/png", vec![0_u8; 1024 * 1024 + 1], None)
@@ -1187,7 +1643,25 @@ async fn jobs_api_exposes_index_job_snapshots_and_events() {
         .any(|job| job["spec"]["id"] == job_id));
 
     let events = app.get_json(&format!("/api/jobs/{job_id}/events")).await;
-    assert!(!events.as_array().unwrap().is_empty());
+    let events = events.as_array().unwrap();
+    assert!(!events.is_empty());
+    let mut previous_sequence = 0_u64;
+    for event in events {
+        let sequence = event["sequence"].as_u64().unwrap();
+        assert!(sequence > previous_sequence);
+        previous_sequence = sequence;
+    }
+    assert!(events.iter().any(|event| {
+        event["kind"]["StatusChanged"]["status"] == "Queued"
+            || event["kind"]["StatusChanged"]["status"] == "Running"
+            || event["kind"]["StatusChanged"]["status"] == "Succeeded"
+    }));
+    assert!(events
+        .iter()
+        .any(|event| event["kind"].get("Progress").is_some()));
+    assert!(events
+        .iter()
+        .any(|event| event["kind"].get("Log").is_some()));
 
     let fetched = app.get_json(&format!("/api/jobs/{job_id}")).await;
     assert_eq!(fetched["spec"]["id"], job_id);
@@ -1584,6 +2058,18 @@ impl TestApp {
 
     fn media_sources_file(&self) -> &Path {
         &self.state.settings.media_sources_file
+    }
+
+    fn stored_media_payloads(&self) -> Vec<ImagePayload> {
+        let state = self._qdrant.state.lock().unwrap();
+        let mut payloads = state
+            .points
+            .iter()
+            .filter(|((collection, _), _)| collection == &self.state.settings.qdrant_collection)
+            .filter_map(|(_, point)| serde_json::from_value(point.payload.clone()).ok())
+            .collect::<Vec<ImagePayload>>();
+        payloads.sort_by(|left, right| left.filename.cmp(&right.filename));
+        payloads
     }
 
     fn spawn_cancellable_job(&self) -> String {

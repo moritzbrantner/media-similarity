@@ -17,6 +17,7 @@ x-app-environment: &app-environment
   VECTOR_SIZE: ${VECTOR_SIZE:-512}
   THUMBNAIL_DIR: ${THUMBNAIL_DIR:-/app/data/thumbnails}
   UPLOAD_DIR: ${UPLOAD_DIR:-/app/data/uploads}
+  PROCESSING_WORKFLOWS_FILE: ${PROCESSING_WORKFLOWS_FILE:-/app/data/processing-workflows.json}
   VOICE_REGISTRY_PATH: ${VOICE_REGISTRY_PATH:-/app/data/recognized-voices.json}
   MODEL_BUNDLE_DIR: ${MODEL_BUNDLE_DIR:-/app/data/models/bundles}
   MODEL_HF_CACHE_DIR: ${MODEL_HF_CACHE_DIR:-/app/data/models/hf-cache}
@@ -55,7 +56,7 @@ services:
       - ${HOST_PICTURES_DIR:-${HOME}/Pictures}:/media/pictures:ro
       - ${HOST_VIDEO_DIR:-${HOME}/Videos}:/media/videos:ro
       - ${HOST_AUDIO_DIR:-${HOME}/Music}:/media/audio:ro
-      - app-data:/app/data
+      - ${APP_DATA_DIR:-./.dev-data/app}:/app/data
     depends_on:
       qdrant:
         condition: service_started
@@ -89,11 +90,7 @@ services:
     ports:
       - "127.0.0.1:6333:6333"
     volumes:
-      - qdrant-data:/qdrant/storage
-
-volumes:
-  app-data:
-  qdrant-data:
+      - ${QDRANT_DATA_DIR:-./.dev-data/qdrant}:/qdrant/storage
 
 networks:
   default:

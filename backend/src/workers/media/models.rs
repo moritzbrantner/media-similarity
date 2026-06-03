@@ -3,7 +3,9 @@ use std::str::FromStr;
 
 use image_analysis_detection::FaceDetectionPreset;
 use image_analysis_embeddings::{FaceEmbeddingPreset, ImageEmbeddingPreset};
-use model_runtime::{HuggingFaceDownloader, HuggingFaceModelSpec, ModelBundle, ModelBundleStore};
+use model_runtime::{
+    HuggingFaceDownloader, HuggingFaceModelSpec, ModelBundle, ModelBundleStore, ModelTask,
+};
 use serde::Serialize;
 use text_transcripts::{WhisperCppModel, WhisperCppModelStore};
 
@@ -148,6 +150,7 @@ pub fn load_role_bundle(role: ModelRole, settings: &Settings) -> Result<ModelBun
     let revision = spec.revision_value().unwrap_or("main");
     bundle_store(settings)
         .load(&spec.name, revision)
+        .and_then(|bundle| normalize_onnx_role_bundle(bundle, role))
         .map_err(|error| error.to_string())
 }
 
@@ -155,6 +158,7 @@ pub fn download_role_bundle(role: ModelRole, settings: &Settings) -> Result<Mode
     let spec = role_spec(role)?;
     bundle_store(settings)
         .download(&spec)
+        .and_then(|bundle| normalize_onnx_role_bundle(bundle, role))
         .map_err(|error| error.to_string())
 }
 
@@ -284,9 +288,45 @@ fn fallback_path(path: &std::path::Path) -> Option<PathBuf> {
     path.is_file().then(|| path.to_path_buf())
 }
 
+fn normalize_onnx_role_bundle(
+    mut bundle: ModelBundle,
+    role: ModelRole,
+) -> model_runtime::Result<ModelBundle> {
+    if role == ModelRole::AudioTranscription {
+        return Ok(bundle);
+    }
+
+    let task = onnx_role_task(role);
+    if bundle.manifest.task != task {
+        bundle.manifest.task = task;
+        let encoded = serde_json::to_vec_pretty(&bundle.manifest).map_err(|error| {
+            model_runtime::ModelRuntimeError::Source(format!(
+                "failed to encode normalized model manifest: {error}"
+            ))
+        })?;
+        std::fs::write(bundle.manifest_path(), encoded)?;
+    }
+    Ok(bundle)
+}
+
+fn onnx_role_task(role: ModelRole) -> ModelTask {
+    match role {
+        ModelRole::VisualEmbedding => ModelTask::ImageEmbedding,
+        ModelRole::FaceDetection => ModelTask::FaceDetection,
+        ModelRole::FaceEmbedding => ModelTask::FaceEmbedding,
+        ModelRole::AudioTranscription => {
+            ModelTask::Custom(ModelRole::AudioTranscription.as_str().to_string())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{model_status, ModelRole};
+    use std::collections::BTreeMap;
+
+    use model_runtime::{ModelBundle, ModelBundleManifest, ModelTask};
+
+    use super::{model_status, normalize_onnx_role_bundle, role_spec, ModelRole};
     use crate::config::Settings;
 
     #[test]
@@ -330,5 +370,41 @@ mod tests {
         assert!(!status.active);
         assert!(!status.blocking);
         assert_eq!(status.required_action, None);
+    }
+
+    #[test]
+    fn visual_embedding_role_uses_image_embedding_onnx_task() {
+        let spec = role_spec(ModelRole::VisualEmbedding).expect("visual embedding spec");
+
+        assert_eq!(spec.task, ModelTask::ImageEmbedding);
+    }
+
+    #[test]
+    fn normalize_visual_bundle_repairs_legacy_role_task() {
+        let root = std::env::temp_dir().join(format!(
+            "image-sim-model-task-normalize-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("create bundle root");
+        let manifest = ModelBundleManifest {
+            schema_version: 1,
+            name: "xenova-clip-vit-base-patch32-onnx".to_string(),
+            repo_id: "Xenova/clip-vit-base-patch32".to_string(),
+            revision: "main".to_string(),
+            task: ModelTask::Custom("visual_embedding".to_string()),
+            files: BTreeMap::new(),
+        };
+        std::fs::write(
+            root.join("manifest.json"),
+            serde_json::to_vec_pretty(&manifest).expect("encode manifest"),
+        )
+        .expect("write manifest");
+        let bundle = ModelBundle { root, manifest };
+
+        let bundle =
+            normalize_onnx_role_bundle(bundle, ModelRole::VisualEmbedding).expect("normalize");
+
+        assert_eq!(bundle.manifest.task, ModelTask::ImageEmbedding);
     }
 }
