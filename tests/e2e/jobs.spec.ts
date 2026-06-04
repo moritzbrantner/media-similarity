@@ -34,6 +34,31 @@ test("shows active job progress", async ({ page }) => {
   await expect(page.getByText("30%")).toBeVisible();
 });
 
+test("shows tiny nonzero indexing progress without rounding to zero", async ({ page }) => {
+  const runningJob = makeJob({
+    finished_at: null,
+    progress: {
+      completed: 4,
+      message: "indexing source 1/1258: /media/pictures/photo.jpg (ocr 4/7)",
+      total: 8806,
+      unit: "steps",
+    },
+    spec: {
+      id: "index.running.tiny-progress",
+      name: "Index media sources",
+    },
+    status: "Running",
+  });
+  await resetApiMocks(page, {
+    jobEvents: makeJobEvents(runningJob),
+    jobs: [runningJob],
+  });
+  await page.goto("/");
+
+  await expect(page.getByText("indexing source 1/1258").first()).toBeVisible();
+  await expect(page.getByText("<1%")).toBeVisible();
+});
+
 test("keeps indexing cancellation responsive until the job is cancelled", async ({ page }) => {
   const runningJob = makeJob({
     finished_at: null,

@@ -138,10 +138,16 @@ export function JobsPanel({
 }
 
 function JobProgressBar({ progress }: { progress: JobSnapshot["progress"] }) {
-  const percent =
+  const rawPercent =
     progress?.total && progress.total > 0
-      ? Math.min(100, Math.round((progress.completed / progress.total) * 100))
+      ? Math.min(100, (progress.completed / progress.total) * 100)
       : null;
+  const percent =
+    rawPercent === null
+      ? null
+      : Math.min(100, Math.max(rawPercent > 0 ? 1 : 0, Math.round(rawPercent)));
+  const percentLabel =
+    rawPercent !== null && rawPercent > 0 && rawPercent < 1 ? "<1%" : `${percent}%`;
   const value = progress
     ? `${progress.completed}${progress.total ? `/${progress.total}` : ""} ${progress.unit}`
     : "Waiting";
@@ -150,7 +156,7 @@ function JobProgressBar({ progress }: { progress: JobSnapshot["progress"] }) {
     <div className="mt-2">
       <div className="flex items-center justify-between gap-3 text-xs text-neutral-600">
         <span className="min-w-0 truncate">{progress?.message ?? value}</span>
-        <span className="shrink-0">{percent === null ? value : `${percent}%`}</span>
+        <span className="shrink-0">{percent === null ? value : percentLabel}</span>
       </div>
       <Progress className="mt-2 h-2 bg-neutral-200" value={percent ?? (progress ? 45 : 0)} />
     </div>

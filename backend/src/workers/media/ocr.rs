@@ -2,13 +2,15 @@ use std::collections::BTreeSet;
 use std::io::ErrorKind;
 use std::process::Command;
 
-use image::{ImageFormat, RgbImage};
+use image::{DynamicImage, ImageFormat, RgbImage};
 use text_analysis_core::normalize_whitespace;
 use uuid::Uuid;
 
 use crate::config::Settings;
 use crate::domain::models::{OcrAnalysis, OcrFrameText};
 use crate::workers::media::media::DecodedMedia;
+
+const MAX_OCR_IMAGE_EDGE: u32 = 2_000;
 
 pub fn extract_media_ocr(media: &DecodedMedia, settings: &Settings) -> Result<OcrAnalysis, String> {
     if !settings.ocr_enabled {
@@ -25,7 +27,8 @@ pub fn extract_media_ocr(media: &DecodedMedia, settings: &Settings) -> Result<Oc
         .take(settings.ocr_max_frames)
         .enumerate()
     {
-        let text = normalize_ocr_text(&recognize_image_text(&frame.image, settings)?);
+        let image = prepare_ocr_image(&frame.image);
+        let text = normalize_ocr_text(&recognize_image_text(&image, settings)?);
         if text.is_empty() {
             continue;
         }
@@ -115,9 +118,21 @@ fn recognize_image_text(image: &RgbImage, settings: &Settings) -> Result<String,
     }
 }
 
+fn prepare_ocr_image(image: &RgbImage) -> RgbImage {
+    if image.width().max(image.height()) <= MAX_OCR_IMAGE_EDGE {
+        return image.clone();
+    }
+
+    DynamicImage::ImageRgb8(image.clone())
+        .thumbnail(MAX_OCR_IMAGE_EDGE, MAX_OCR_IMAGE_EDGE)
+        .to_rgb8()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{normalize_ocr_query, normalize_ocr_text, ocr_match_score};
+    use image::{ImageBuffer, Rgb};
+
+    use super::{normalize_ocr_query, normalize_ocr_text, ocr_match_score, prepare_ocr_image};
 
     #[test]
     fn normalizes_ocr_whitespace() {
@@ -142,5 +157,15 @@ mod tests {
             ocr_match_score(text, &normalize_ocr_query(Some("receipt"))),
             None
         );
+    }
+
+    #[test]
+    fn ocr_image_is_downscaled_before_external_recognition() {
+        let image = ImageBuffer::from_pixel(4_000, 3_000, Rgb([255, 255, 255]));
+
+        let prepared = prepare_ocr_image(&image);
+
+        assert!(prepared.width().max(prepared.height()) <= super::MAX_OCR_IMAGE_EDGE);
+        assert_eq!(prepared.dimensions(), (2_000, 1_500));
     }
 }

@@ -136,7 +136,7 @@ impl ImageIndexer {
         }
 
         let (settings, workflow) = self.workflow_settings(kind)?;
-        recorder.current_part("static_image", 0, 1);
+        recorder.current_part("metadata", 0, 7);
         recorder.check_cancelled()?;
         let photo_metadata = if workflow.processor_enabled("photo.extract_metadata")
             && !source_image.is_video()
@@ -156,8 +156,10 @@ impl ImageIndexer {
             None
         };
         recorder.check_cancelled()?;
+        recorder.current_part("decode", 1, 7);
         let media = source_image.load_media(&settings).await?;
         recorder.check_cancelled()?;
+        recorder.current_part("face_analysis", 2, 7);
         let media_id = image_id_for_uri(&source_image.id_base);
         let face_analysis = await_with_cancel(
             analyze_faces_for_media(
@@ -172,14 +174,23 @@ impl ImageIndexer {
         )
         .await?;
         recorder.check_cancelled()?;
+        recorder.current_part("ocr", 3, 7);
+        let ocr_analysis = extract_media_ocr(&media, &settings).unwrap_or_else(|error| {
+            tracing::warn!(%error, "OCR extraction failed");
+            Default::default()
+        });
+        recorder.check_cancelled()?;
+        recorder.current_part("payload", 4, 7);
         let payload = self.build_payload(
             source_image,
             &media,
             &settings,
             PayloadBuildOptions::new(&face_analysis)
                 .with_photo_metadata(photo_metadata)
+                .with_ocr(ocr_analysis)
                 .with_animated_thumbnail(workflow.processor_enabled("thumbnail.ensure_animated")),
         )?;
+        recorder.current_part("embedding", 5, 7);
         let vector = embed_media_with_cancel(
             self.embedder.clone(),
             media.sampled_frames.clone(),
@@ -188,6 +199,7 @@ impl ImageIndexer {
         )
         .await?;
         recorder.check_cancelled()?;
+        recorder.current_part("qdrant", 6, 7);
         await_with_cancel(self.store.upsert_media(&payload, vector), recorder).await??;
         recorder.committed_point(&payload.id);
         Ok(IndexOneOutcome::single(payload.id))

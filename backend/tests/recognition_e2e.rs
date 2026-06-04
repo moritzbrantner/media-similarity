@@ -1667,6 +1667,12 @@ async fn jobs_api_exposes_index_job_snapshots_and_events() {
             })
             .unwrap_or(false)
     }));
+    assert!(events.iter().any(|event| {
+        event["kind"]["Progress"]["message"]
+            .as_str()
+            .map(|message| message.contains("(qdrant 7/7)"))
+            .unwrap_or(false)
+    }));
     assert!(events
         .iter()
         .any(|event| event["kind"].get("Log").is_some()));

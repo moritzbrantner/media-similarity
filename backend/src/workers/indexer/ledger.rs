@@ -447,11 +447,16 @@ impl IndexRunRecorder {
             ));
         }
 
-        let total_steps = progress.total_sources.saturating_mul(2).max(1);
+        let part_total = part.map(|part| part.total as u64).unwrap_or(2).max(1);
+        let part_completed = part
+            .map(|part| part.index as u64 + 1)
+            .unwrap_or(1)
+            .min(part_total);
+        let total_steps = progress.total_sources.saturating_mul(part_total).max(1);
         let completed_steps = progress
             .completed_before_source
-            .saturating_mul(2)
-            .saturating_add(1)
+            .saturating_mul(part_total)
+            .saturating_add(part_completed)
             .min(total_steps);
         let job_progress = jobs_core::JobProgress::new(completed_steps, Some(total_steps))
             .and_then(|progress| progress.unit("steps"))
