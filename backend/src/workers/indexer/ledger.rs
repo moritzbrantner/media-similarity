@@ -166,6 +166,14 @@ pub(crate) struct IndexRunRecorder {
     ledger: IndexingLedger,
     context: Option<LedgerJobContext>,
     current_source_item_uri: Option<String>,
+    current_source_progress: Option<IndexLedgerSourceProgress>,
+}
+
+#[derive(Clone, Debug)]
+struct IndexLedgerSourceProgress {
+    completed_before_source: u64,
+    total_sources: u64,
+    display_path: String,
 }
 
 impl IndexRunRecorder {
@@ -195,6 +203,7 @@ impl IndexRunRecorder {
             },
             context: context.cloned(),
             current_source_item_uri: None,
+            current_source_progress: None,
         };
         recorder.metadata("ledger_path", recorder.path.to_string_lossy().to_string());
         recorder
@@ -229,9 +238,20 @@ impl IndexRunRecorder {
         self.persist();
     }
 
-    pub(crate) fn source_started(&mut self, source: &LedgerSourceImage, indexing_profile: &str) {
+    pub(crate) fn source_started(
+        &mut self,
+        source: &LedgerSourceImage,
+        indexing_profile: &str,
+        completed_before_source: u64,
+        total_sources: u64,
+    ) {
         let now = LedgerUtc::now();
         self.current_source_item_uri = Some(source.item_uri.clone());
+        self.current_source_progress = Some(IndexLedgerSourceProgress {
+            completed_before_source,
+            total_sources,
+            display_path: source.display_path.clone(),
+        });
         if let Some(run) = self.ledger.active_run.as_mut() {
             run.updated_at = now;
             run.sources.insert(
@@ -254,6 +274,7 @@ impl IndexRunRecorder {
         self.metadata("current_source", source.display_path.clone());
         self.metadata("current_source_item_uri", source.item_uri.clone());
         self.metadata("committed_points", "0");
+        self.report_source_progress(None);
         self.persist();
     }
 
@@ -267,6 +288,11 @@ impl IndexRunRecorder {
             source.updated_at = LedgerUtc::now();
         });
         self.metadata("current_part", format!("{kind}:{index}/{total}"));
+        self.report_source_progress(Some(&IndexLedgerSourcePart {
+            kind: kind.to_string(),
+            index,
+            total,
+        }));
         self.persist();
     }
 
@@ -301,6 +327,7 @@ impl IndexRunRecorder {
             self.metadata("committed_points", committed.to_string());
         }
         self.current_source_item_uri = None;
+        self.current_source_progress = None;
         self.persist();
     }
 
@@ -395,6 +422,46 @@ impl IndexRunRecorder {
     fn metadata(&self, key: &str, value: impl Into<String>) {
         if let Some(context) = &self.context {
             let _ = context.metadata(key, value.into());
+        }
+    }
+
+    fn report_source_progress(&self, part: Option<&IndexLedgerSourcePart>) {
+        let Some(context) = &self.context else {
+            return;
+        };
+        let Some(progress) = &self.current_source_progress else {
+            return;
+        };
+
+        let source_number = progress.completed_before_source + 1;
+        let mut message = format!(
+            "indexing source {source_number}/{}: {}",
+            progress.total_sources, progress.display_path
+        );
+        if let Some(part) = part {
+            message.push_str(&format!(
+                " ({} {}/{})",
+                part.kind,
+                part.index + 1,
+                part.total
+            ));
+        }
+
+        let total_steps = progress.total_sources.saturating_mul(2).max(1);
+        let completed_steps = progress
+            .completed_before_source
+            .saturating_mul(2)
+            .saturating_add(1)
+            .min(total_steps);
+        let job_progress = jobs_core::JobProgress::new(completed_steps, Some(total_steps))
+            .and_then(|progress| progress.unit("steps"))
+            .map(|progress| progress.message(message))
+            .and_then(|progress| {
+                progress.validate()?;
+                Ok(progress)
+            });
+        if let Ok(progress) = job_progress {
+            let _ = context.progress(progress);
         }
     }
 }
@@ -496,7 +563,7 @@ mod tests {
             None,
         );
 
-        recorder.source_started(&image, "profile");
+        recorder.source_started(&image, "profile", 0, 1);
         recorder.current_part("pdf_page", 0, 2);
         recorder.committed_point("page-1");
         recorder.source_cancelled();

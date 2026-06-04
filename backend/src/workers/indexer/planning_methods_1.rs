@@ -135,7 +135,7 @@ impl ImageIndexer {
                 }
                 let _ = context.info(format!("indexing {}", source_image.display_path));
             }
-            recorder.source_started(source_image, &indexing_profile);
+            recorder.source_started(source_image, &indexing_profile, index as u64, total);
 
             match self.index_one(source_image, &mut recorder).await {
                 Ok(outcome) => {

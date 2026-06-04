@@ -1659,12 +1659,70 @@ async fn jobs_api_exposes_index_job_snapshots_and_events() {
     assert!(events
         .iter()
         .any(|event| event["kind"].get("Progress").is_some()));
+    assert!(events.iter().any(|event| {
+        event["kind"]["Progress"]["message"]
+            .as_str()
+            .map(|message| {
+                message.contains("indexing source 1/1") && message.contains("job-index.png")
+            })
+            .unwrap_or(false)
+    }));
     assert!(events
         .iter()
         .any(|event| event["kind"].get("Log").is_some()));
 
     let fetched = app.get_json(&format!("/api/jobs/{job_id}")).await;
     assert_eq!(fetched["spec"]["id"], job_id);
+}
+
+#[tokio::test]
+async fn async_index_job_indexes_static_pictures_and_search_finds_results() {
+    let app = TestApp::new(|settings| {
+        settings.image_extensions = parse_extensions(".png,.jpg").unwrap();
+        settings.default_search_limit = 5;
+        settings.duplicate_hash_distance = 0;
+    })
+    .await;
+    let red = app.source_path("async-red.png");
+    let green = app.source_path("async-green.png");
+    let blue = app.source_path("async-blue.jpg");
+    write_pattern_image(&red, 64, 40, [220, 20, 20], [20, 20, 20]);
+    write_pattern_image(&green, 48, 48, [20, 180, 80], [20, 20, 20]);
+    write_pattern_image(&blue, 40, 64, [30, 70, 220], [20, 20, 20]);
+
+    let started = app.post_json("/api/jobs/index", json!({})).await;
+    let job_id = started["spec"]["id"].as_str().unwrap().to_string();
+    assert_eq!(started["spec"]["kind"], "index.manual");
+
+    let finished = app.wait_for_job_status(&job_id, &["Succeeded"]).await;
+    assert_eq!(finished["status"], "Succeeded");
+    assert_eq!(finished["metadata"]["indexed"], "3");
+    assert_eq!(finished["metadata"]["failed"], "0");
+
+    let response = app
+        .search_upload(
+            "async-red-query.png",
+            "image/png",
+            fs::read(&red).unwrap(),
+            Some(3),
+        )
+        .await;
+    assert_eq!(response.query_media_kind, "static_image");
+    assert_eq!(response.count, 3);
+    assert_eq!(response.results[0].image.filename, "async-red.png");
+    assert_eq!(response.results[0].hash_distance, Some(0));
+    assert!(response.results[0].near_duplicate);
+    let filenames = response
+        .results
+        .iter()
+        .map(|result| result.image.filename.as_str())
+        .collect::<Vec<_>>();
+    assert!(filenames.contains(&"async-green.png"), "{filenames:?}");
+    assert!(filenames.contains(&"async-blue.jpg"), "{filenames:?}");
+    assert!(response
+        .results
+        .iter()
+        .all(|result| result.image.media_kind == "static_image"));
 }
 
 #[tokio::test]
