@@ -1,10 +1,11 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use image_analysis_detection::FaceDetectionPreset;
 use image_analysis_embeddings::{FaceEmbeddingPreset, ImageEmbeddingPreset};
 use model_runtime::{
-    HuggingFaceDownloader, HuggingFaceModelSpec, ModelBundle, ModelBundleStore, ModelTask,
+    HuggingFaceDownloader, HuggingFaceModelSpec, ModelBundle, ModelBundleFile, ModelBundleStore,
+    ModelRuntimeError, ModelTask,
 };
 use serde::Serialize;
 use text_transcripts::{WhisperCppModel, WhisperCppModelStore};
@@ -151,14 +152,17 @@ pub fn load_role_bundle(role: ModelRole, settings: &Settings) -> Result<ModelBun
     bundle_store(settings)
         .load(&spec.name, revision)
         .and_then(|bundle| normalize_onnx_role_bundle(bundle, role))
+        .and_then(|bundle| validate_onnx_role_bundle(bundle, role))
         .map_err(|error| error.to_string())
 }
 
 pub fn download_role_bundle(role: ModelRole, settings: &Settings) -> Result<ModelBundle, String> {
     let spec = role_spec(role)?;
     bundle_store(settings)
+        .overwrite(true)
         .download(&spec)
         .and_then(|bundle| normalize_onnx_role_bundle(bundle, role))
+        .and_then(|bundle| validate_onnx_role_bundle(bundle, role))
         .map_err(|error| error.to_string())
 }
 
@@ -198,7 +202,16 @@ fn bundle_model_status(
 ) -> ModelRuntimeStatus {
     let store = bundle_store(settings);
     let revision = spec.revision_value().unwrap_or("main");
-    let bundle = store.load(&spec.name, revision).ok();
+    let bundle = store
+        .load(&spec.name, revision)
+        .and_then(|bundle| normalize_onnx_role_bundle(bundle, role))
+        .and_then(|bundle| validate_onnx_role_bundle(bundle, role));
+    let bundle_error = match &bundle {
+        Err(ModelRuntimeError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => Some(error.to_string()),
+        Ok(_) => None,
+    };
+    let bundle = bundle.ok();
     let fallback_cached = fallback_path
         .as_ref()
         .map(|path| path.is_file())
@@ -212,6 +225,12 @@ fn bundle_model_status(
         Some(format!("Using model bundle `{}`", spec.name))
     } else if fallback_cached {
         Some("Using legacy path-based model configuration".to_string())
+    } else if let Some(error) = bundle_error {
+        Some(format!(
+            "Model bundle `{}` is malformed or incomplete in {}: {error}",
+            spec.name,
+            settings.model_bundle_dir.display()
+        ))
     } else if enabled {
         Some(format!(
             "Model bundle `{}` is not cached in {}",
@@ -297,8 +316,15 @@ fn normalize_onnx_role_bundle(
     }
 
     let task = onnx_role_task(role);
+    let mut changed = false;
     if bundle.manifest.task != task {
         bundle.manifest.task = task;
+        changed = true;
+    }
+    if ensure_default_face_config(&mut bundle, role)? {
+        changed = true;
+    }
+    if changed {
         let encoded = serde_json::to_vec_pretty(&bundle.manifest).map_err(|error| {
             model_runtime::ModelRuntimeError::Source(format!(
                 "failed to encode normalized model manifest: {error}"
@@ -306,6 +332,87 @@ fn normalize_onnx_role_bundle(
         })?;
         std::fs::write(bundle.manifest_path(), encoded)?;
     }
+    Ok(bundle)
+}
+
+fn ensure_default_face_config(
+    bundle: &mut ModelBundle,
+    role: ModelRole,
+) -> model_runtime::Result<bool> {
+    if !matches!(role, ModelRole::FaceDetection | ModelRole::FaceEmbedding) {
+        return Ok(false);
+    }
+
+    let relative_path = bundle
+        .manifest
+        .files
+        .get("config.json")
+        .map(|file| PathBuf::from(&file.local_path))
+        .unwrap_or_else(|| Path::new("files").join("config.json"));
+    let path = bundle.root.join(&relative_path);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut changed = false;
+    if !path.is_file() {
+        std::fs::write(&path, b"{}\n")?;
+        changed = true;
+    }
+
+    let size_bytes = std::fs::metadata(&path)?.len();
+    match bundle.manifest.files.get("config.json") {
+        Some(file) if file.size_bytes == size_bytes => Ok(changed),
+        _ => {
+            bundle.manifest.files.insert(
+                "config.json".to_string(),
+                ModelBundleFile {
+                    remote_path: "config.json".to_string(),
+                    local_path: path_to_manifest_string(&relative_path),
+                    size_bytes,
+                },
+            );
+            Ok(true)
+        }
+    }
+}
+
+fn validate_onnx_role_bundle(
+    bundle: ModelBundle,
+    role: ModelRole,
+) -> model_runtime::Result<ModelBundle> {
+    if role == ModelRole::AudioTranscription {
+        return Ok(bundle);
+    }
+
+    for (remote_path, file) in &bundle.manifest.files {
+        let local_path = bundle.root.join(&file.local_path);
+        if !local_path.is_file() {
+            return Err(ModelRuntimeError::Source(format!(
+                "model bundle `{}` is missing cached file `{remote_path}` at {}",
+                bundle.manifest.name,
+                local_path.display()
+            )));
+        }
+    }
+
+    let onnx_count = bundle
+        .manifest
+        .files
+        .values()
+        .filter(|file| {
+            Path::new(&file.remote_path)
+                .extension()
+                .and_then(|value| value.to_str())
+                == Some("onnx")
+        })
+        .count();
+    if onnx_count != 1 {
+        return Err(ModelRuntimeError::Source(format!(
+            "model bundle `{}` must contain exactly one `.onnx` model file, found {onnx_count}",
+            bundle.manifest.name
+        )));
+    }
+
     Ok(bundle)
 }
 
@@ -320,11 +427,18 @@ fn onnx_role_task(role: ModelRole) -> ModelTask {
     }
 }
 
+fn path_to_manifest_string(path: &Path) -> String {
+    path.components()
+        .map(|component| component.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
 
-    use model_runtime::{ModelBundle, ModelBundleManifest, ModelTask};
+    use model_runtime::{ModelBundle, ModelBundleFile, ModelBundleManifest, ModelTask};
 
     use super::{model_status, normalize_onnx_role_bundle, role_spec, ModelRole};
     use crate::config::Settings;
@@ -406,5 +520,100 @@ mod tests {
             normalize_onnx_role_bundle(bundle, ModelRole::VisualEmbedding).expect("normalize");
 
         assert_eq!(bundle.manifest.task, ModelTask::ImageEmbedding);
+    }
+
+    #[test]
+    fn normalize_face_detection_bundle_adds_default_config() {
+        let root = std::env::temp_dir().join(format!(
+            "image-sim-face-config-normalize-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("files")).expect("create bundle files");
+        std::fs::write(root.join("files/model.onnx"), b"model").expect("write model");
+        let manifest = ModelBundleManifest {
+            schema_version: 1,
+            name: "opencv-yunet-onnx".to_string(),
+            repo_id: "opencv/face_detection_yunet".to_string(),
+            revision: "main".to_string(),
+            task: ModelTask::FaceDetection,
+            files: BTreeMap::from([(
+                "face_detection_yunet_2023mar.onnx".to_string(),
+                ModelBundleFile {
+                    remote_path: "face_detection_yunet_2023mar.onnx".to_string(),
+                    local_path: "files/model.onnx".to_string(),
+                    size_bytes: 5,
+                },
+            )]),
+        };
+        let bundle = ModelBundle { root, manifest };
+
+        let bundle =
+            normalize_onnx_role_bundle(bundle, ModelRole::FaceDetection).expect("normalize");
+
+        let config_path = bundle.file_path("config.json").expect("config path");
+        assert!(config_path.is_file());
+        assert_eq!(
+            std::fs::read_to_string(config_path).expect("read config"),
+            "{}\n"
+        );
+    }
+
+    #[test]
+    fn missing_bundle_file_is_not_reported_as_cached() {
+        let root = std::env::temp_dir().join(format!(
+            "image-sim-missing-bundle-file-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let bundle_root = root.join("bundles/opencv-yunet-onnx/main");
+        std::fs::create_dir_all(bundle_root.join("files")).expect("create bundle files");
+        std::fs::write(bundle_root.join("files/config.json"), b"{}").expect("write config");
+        let manifest = ModelBundleManifest {
+            schema_version: 1,
+            name: "opencv-yunet-onnx".to_string(),
+            repo_id: "opencv/face_detection_yunet".to_string(),
+            revision: "main".to_string(),
+            task: ModelTask::FaceDetection,
+            files: BTreeMap::from([
+                (
+                    "config.json".to_string(),
+                    ModelBundleFile {
+                        remote_path: "config.json".to_string(),
+                        local_path: "files/config.json".to_string(),
+                        size_bytes: 2,
+                    },
+                ),
+                (
+                    "face_detection_yunet_2023mar.onnx".to_string(),
+                    ModelBundleFile {
+                        remote_path: "face_detection_yunet_2023mar.onnx".to_string(),
+                        local_path: "files/missing.onnx".to_string(),
+                        size_bytes: 5,
+                    },
+                ),
+            ]),
+        };
+        std::fs::write(
+            bundle_root.join("manifest.json"),
+            serde_json::to_vec_pretty(&manifest).expect("encode manifest"),
+        )
+        .expect("write manifest");
+        let settings = Settings {
+            model_bundle_dir: root.join("bundles"),
+            face_analysis_enabled: true,
+            face_detection_model_path: root.join("missing-legacy-face-detector.onnx"),
+            ..Settings::default()
+        };
+
+        let status = model_status(ModelRole::FaceDetection, &settings);
+
+        assert!(!status.cached);
+        assert!(!status.active);
+        assert_eq!(status.required_action, Some("download"));
+        assert!(status
+            .detail
+            .expect("detail")
+            .contains("missing cached file"));
     }
 }

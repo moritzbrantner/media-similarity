@@ -2,11 +2,16 @@ use image::RgbImage;
 use image_analysis_core::{ImagePixelFormat, ImageView};
 use image_analysis_embeddings::ImageEmbedderBackend;
 use image_analysis_onnx::{NativeOnnxRunner, OnnxImageEmbedder};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc};
+use std::time::Duration;
 
 use crate::config::Settings;
 use crate::workers::media::embedder::ImageEmbedder;
 use crate::workers::media::media::MediaFrame;
 use crate::workers::media::models::{load_role_bundle, ModelRole};
+
+const ONNX_EMBEDDING_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub trait VisualEmbeddingBackend: Send + Sync {
     fn model_name(&self) -> &str;
@@ -182,25 +187,83 @@ impl VisualEmbeddingBackend for OnnxVisualEmbedder {
 }
 
 pub struct FallbackVisualEmbedder {
-    primary: OnnxVisualEmbedder,
+    primary: Arc<OnnxVisualEmbedder>,
     fallback: LegacyColorEmbedder,
+    primary_disabled: AtomicBool,
+    primary_timeout: Duration,
 }
 
 impl FallbackVisualEmbedder {
     pub fn new(settings: &Settings) -> Self {
         Self {
-            primary: OnnxVisualEmbedder::new(settings),
+            primary: Arc::new(OnnxVisualEmbedder::new(settings)),
             fallback: LegacyColorEmbedder::new(
                 format!("legacy-fallback:{}", settings.clip_model_name),
                 settings.visual_embedding_vector_size,
             ),
+            primary_disabled: AtomicBool::new(false),
+            primary_timeout: ONNX_EMBEDDING_TIMEOUT,
         }
+    }
+
+    #[cfg(test)]
+    fn with_timeout(settings: &Settings, timeout: Duration) -> Self {
+        Self {
+            primary: Arc::new(OnnxVisualEmbedder::new(settings)),
+            fallback: LegacyColorEmbedder::new(
+                format!("legacy-fallback:{}", settings.clip_model_name),
+                settings.visual_embedding_vector_size,
+            ),
+            primary_disabled: AtomicBool::new(false),
+            primary_timeout: timeout,
+        }
+    }
+
+    fn primary_embed_image(&self, image: &RgbImage) -> Result<Vec<f32>, String> {
+        if self.primary_disabled.load(Ordering::Relaxed) {
+            return Err("visual ONNX embedding is disabled after an earlier failure".to_string());
+        }
+        let primary = self.primary.clone();
+        let image = image.clone();
+        run_with_timeout(self.primary_timeout, move || primary.embed_image(&image)).map_err(
+            |error| {
+                if error.contains("timed out") {
+                    self.primary_disabled.store(true, Ordering::Relaxed);
+                }
+                error
+            },
+        )?
+    }
+
+    fn primary_embed_media(
+        &self,
+        frames: &[MediaFrame],
+        motion_weight: f32,
+    ) -> Result<Vec<f32>, String> {
+        if self.primary_disabled.load(Ordering::Relaxed) {
+            return Err("visual ONNX embedding is disabled after an earlier failure".to_string());
+        }
+        let primary = self.primary.clone();
+        let frames = frames.to_vec();
+        run_with_timeout(self.primary_timeout, move || {
+            primary.embed_media(&frames, motion_weight)
+        })
+        .map_err(|error| {
+            if error.contains("timed out") {
+                self.primary_disabled.store(true, Ordering::Relaxed);
+            }
+            error
+        })?
     }
 }
 
 impl VisualEmbeddingBackend for FallbackVisualEmbedder {
     fn model_name(&self) -> &str {
-        self.primary.model_name()
+        if self.primary_disabled.load(Ordering::Relaxed) {
+            self.fallback.model_name()
+        } else {
+            self.primary.model_name()
+        }
     }
 
     fn vector_size(&self) -> usize {
@@ -208,7 +271,7 @@ impl VisualEmbeddingBackend for FallbackVisualEmbedder {
     }
 
     fn embed_image(&self, image: &RgbImage) -> Result<Vec<f32>, String> {
-        match self.primary.embed_image(image) {
+        match self.primary_embed_image(image) {
             Ok(vector) => Ok(vector),
             Err(error) => {
                 tracing::warn!(%error, "falling back to legacy visual embedding");
@@ -218,12 +281,40 @@ impl VisualEmbeddingBackend for FallbackVisualEmbedder {
     }
 
     fn embed_media(&self, frames: &[MediaFrame], motion_weight: f32) -> Result<Vec<f32>, String> {
-        match self.primary.embed_media(frames, motion_weight) {
-            Ok(vector) => Ok(vector),
-            Err(error) => {
+        if frames.len() == 1 {
+            return self.embed_image(&frames[0].image);
+        }
+        if self.primary_disabled.load(Ordering::Relaxed) {
+            return self.fallback.embed_media(frames, motion_weight);
+        }
+
+        self.primary_embed_media(frames, motion_weight)
+            .or_else(|error| {
                 tracing::warn!(%error, "falling back to legacy visual media embedding");
                 self.fallback.embed_media(frames, motion_weight)
-            }
+            })
+    }
+}
+
+fn run_with_timeout<T>(
+    timeout: Duration,
+    run: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, String>
+where
+    T: Send + 'static,
+{
+    let (sender, receiver) = mpsc::sync_channel(1);
+    std::thread::spawn(move || {
+        let _ = sender.send(run());
+    });
+    match receiver.recv_timeout(timeout) {
+        Ok(output) => Ok(output),
+        Err(mpsc::RecvTimeoutError::Timeout) => Err(format!(
+            "visual ONNX embedding timed out after {} seconds",
+            timeout.as_secs()
+        )),
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            Err("visual ONNX embedding ended without a result".to_string())
         }
     }
 }
@@ -234,7 +325,7 @@ pub fn build_visual_embedder(settings: &Settings) -> std::sync::Arc<dyn VisualEm
             .visual_embedding_backend
             .eq_ignore_ascii_case("onnx")
     {
-        std::sync::Arc::new(OnnxVisualEmbedder::new(settings))
+        std::sync::Arc::new(FallbackVisualEmbedder::new(settings))
     } else {
         std::sync::Arc::new(LegacyColorEmbedder::new(
             "legacy-disabled",
@@ -266,7 +357,13 @@ fn rgb_image_view(image: &RgbImage) -> Result<ImageView<'_>, String> {
 mod tests {
     use image::{ImageBuffer, Rgb};
 
-    use super::{build_visual_embedder, LegacyColorEmbedder, VisualEmbeddingBackend};
+    use std::sync::atomic::Ordering;
+    use std::time::Duration;
+
+    use super::{
+        build_visual_embedder, run_with_timeout, FallbackVisualEmbedder, LegacyColorEmbedder,
+        OnnxVisualEmbedder, VisualEmbeddingBackend,
+    };
     use crate::config::Settings;
 
     #[test]
@@ -291,10 +388,56 @@ mod tests {
             ..Settings::default()
         };
         let image = ImageBuffer::from_pixel(4, 4, Rgb([10, 20, 30]));
-        let embedder = build_visual_embedder(&settings);
+        let embedder = OnnxVisualEmbedder::new(&settings);
 
         let error = embedder.embed_image(&image).unwrap_err();
 
         assert!(error.contains("visual ONNX model is not available"));
+    }
+
+    #[test]
+    fn build_visual_embedder_falls_back_when_onnx_model_is_unavailable() {
+        let settings = Settings {
+            visual_embedding_model_path: std::env::temp_dir().join("missing-clip-model.onnx"),
+            visual_embedding_preprocessor_path: std::env::temp_dir()
+                .join("missing-preprocessor-config.json"),
+            visual_embedding_vector_size: 16,
+            ..Settings::default()
+        };
+        let image = ImageBuffer::from_pixel(4, 4, Rgb([10, 20, 30]));
+        let embedder = build_visual_embedder(&settings);
+
+        let vector = embedder.embed_image(&image).unwrap();
+
+        assert_eq!(vector.len(), 16);
+    }
+
+    #[test]
+    fn fallback_visual_embedder_uses_legacy_after_primary_timeout() {
+        let settings = Settings {
+            visual_embedding_model_path: std::env::temp_dir().join("missing-clip-model.onnx"),
+            visual_embedding_preprocessor_path: std::env::temp_dir()
+                .join("missing-preprocessor-config.json"),
+            visual_embedding_vector_size: 16,
+            ..Settings::default()
+        };
+        let embedder = FallbackVisualEmbedder::with_timeout(&settings, Duration::from_millis(1));
+        embedder.primary_disabled.store(true, Ordering::Relaxed);
+        let image = ImageBuffer::from_pixel(4, 4, Rgb([10, 20, 30]));
+
+        let vector = embedder.embed_image(&image).unwrap();
+
+        assert_eq!(vector.len(), 16);
+        assert!(embedder.model_name().starts_with("legacy-fallback:"));
+    }
+
+    #[test]
+    fn run_with_timeout_reports_slow_work() {
+        let error = run_with_timeout(Duration::from_millis(1), || {
+            std::thread::sleep(Duration::from_millis(20));
+        })
+        .unwrap_err();
+
+        assert!(error.contains("timed out"));
     }
 }
