@@ -47,6 +47,8 @@ There is no safe release or publish script in this repo. The root package is pri
 
 `bun run verify` runs the hygiene report, frontend format check, TypeScript/Rust static checks, Rust tests, Playwright tests, and frontend build. It requires `../rust-packages` and Playwright Chromium. It may be slower than the fast Rust test command.
 
+Always run `bun run lint` before finishing a job. If linting cannot be run, report the blocker in the final response.
+
 CI intentionally keeps frontend and Rust jobs separate. Do not change existing `build` or `format:check` behavior without checking `.github/workflows/tests.yml`.
 
 ## Files Agents Should Not Edit Manually
@@ -88,6 +90,7 @@ Standard commands:
 Codex/T3 rules:
 
 - Run `git status --short` before editing and before the final response.
+- Run `bun run lint` before the final response, and report any lint failures or blockers.
 - Preserve unrelated dirty files; do not mix them into commits.
 - Prefer `test:with-services` for tests that need Docker.
 - Do not run raw `docker compose up` for tests unless you also add trap-based cleanup.
