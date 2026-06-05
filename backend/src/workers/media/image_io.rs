@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::{BufReader, Cursor};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use image::codecs::gif::GifDecoder;
 use image::{AnimationDecoder, DynamicImage, ImageFormat, ImageReader, RgbImage};
@@ -18,6 +18,7 @@ pub fn iter_image_paths(source_dir: &Path, extensions: &BTreeSet<String>) -> Vec
     let mut paths = WalkDir::new(source_dir)
         .into_iter()
         .filter_map(Result::ok)
+        .filter(|entry| !has_hidden_component(entry.path(), source_dir))
         .filter(|entry| entry.file_type().is_file())
         .map(|entry| entry.into_path())
         .filter(|path| {
@@ -31,6 +32,17 @@ pub fn iter_image_paths(source_dir: &Path, extensions: &BTreeSet<String>) -> Vec
         .collect::<Vec<_>>();
     paths.sort();
     paths
+}
+
+fn has_hidden_component(path: &Path, root: &Path) -> bool {
+    let relative = path.strip_prefix(root).unwrap_or(path);
+    relative.components().any(|component| match component {
+        Component::Normal(name) => name
+            .to_str()
+            .map(|name| name.starts_with('.') && name != "." && name != "..")
+            .unwrap_or(false),
+        _ => false,
+    })
 }
 
 pub fn load_image(path: &Path) -> Result<RgbImage, image::ImageError> {
@@ -214,6 +226,29 @@ mod tests {
             .map(|path| relative_path(path, &temp))
             .collect::<Vec<_>>();
         assert_eq!(relative, vec!["a.jpg", "b.PNG", "nested/c.webp"]);
+    }
+
+    #[test]
+    fn iter_image_paths_skips_hidden_cache_paths() {
+        let temp = tempfile_dir();
+        fs::create_dir_all(temp.join(".gs").join("cache")).unwrap();
+        fs::create_dir_all(temp.join("Phone").join(".thumbnails")).unwrap();
+        fs::write(temp.join("visible.jpg"), b"x").unwrap();
+        fs::write(temp.join(".hidden.jpg"), b"x").unwrap();
+        fs::write(temp.join(".gs").join("cache").join("ghost.jpg"), b"x").unwrap();
+        fs::write(
+            temp.join("Phone").join(".thumbnails").join("thumb.jpg"),
+            b"x",
+        )
+        .unwrap();
+
+        let paths = iter_image_paths(&temp, &parse_extensions(".jpg").unwrap());
+        let relative = paths
+            .iter()
+            .map(|path| relative_path(path, &temp))
+            .collect::<Vec<_>>();
+
+        assert_eq!(relative, vec!["visible.jpg"]);
     }
 
     #[test]

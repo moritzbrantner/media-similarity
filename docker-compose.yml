@@ -90,6 +90,10 @@ services:
     image: qdrant/qdrant:v1.12.5
     ports:
       - "127.0.0.1:6333:6333"
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
     volumes:
       - ${QDRANT_DATA_DIR:-./.dev-data/qdrant}:/qdrant/storage
 
