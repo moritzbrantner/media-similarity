@@ -30,12 +30,7 @@ import type { IdentityKind } from "./api";
 import type { IdentityMutationResponse } from "./api";
 import { AppHeader } from "./components/app-header";
 import { JobsPanel } from "./components/jobs-panel";
-import {
-  jobIsActive,
-  jobIsTerminal,
-  numberFromMetadata,
-  sortJobs,
-} from "./jobs/job-utils";
+import { jobIsActive, jobIsTerminal, numberFromMetadata, sortJobs } from "./jobs/job-utils";
 import { isAudioFile, isPdfFile } from "./lib/media";
 import {
   DEFAULT_LIMIT,
@@ -98,23 +93,16 @@ export function App() {
   const [activeView, setActiveView] = useState<AppView>("search");
   const [file, setFile] = useState<File | null>(null);
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
-  const [metadataFilters, setMetadataFilters] = useState<MetadataFilters>(
-    DEFAULT_METADATA_FILTERS,
-  );
+  const [metadataFilters, setMetadataFilters] = useState<MetadataFilters>(DEFAULT_METADATA_FILTERS);
   const [ocrTextQuery, setOcrTextQuery] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [resultSortMode, setResultSortMode] =
-    useState<ResultSortMode>(DEFAULT_RESULT_SORT);
+  const [resultSortMode, setResultSortMode] = useState<ResultSortMode>(DEFAULT_RESULT_SORT);
   const [lastIndex, setLastIndex] = useState<IndexResponse | null>(null);
   const [activeSearchId, setActiveSearchId] = useState<string | null>(null);
   const [albumDraft, setAlbumDraft] = useState<EditableSmartAlbum | null>(null);
-  const [selectedQuerySceneIndex, setSelectedQuerySceneIndex] = useState<
-    number | null
-  >(null);
+  const [selectedQuerySceneIndex, setSelectedQuerySceneIndex] = useState<number | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
-  const [refreshedModelJobId, setRefreshedModelJobId] = useState<string | null>(
-    null,
-  );
+  const [refreshedModelJobId, setRefreshedModelJobId] = useState<string | null>(null);
   const sourceConfigViewActive = activeView === "configure";
 
   const searchHistoryQuery = useQuery({
@@ -162,14 +150,9 @@ export function App() {
   });
 
   const jobs = useMemo(() => sortJobs(jobsQuery.data ?? []), [jobsQuery.data]);
-  const selectedJob =
-    jobs.find((job) => job.spec.id === selectedJobId) ?? jobs[0] ?? null;
-  const latestIndexJob = jobs.find((job) =>
-    job.spec.kind?.startsWith("index."),
-  );
-  const latestModelJob = jobs.find((job) =>
-    job.spec.kind?.startsWith("model."),
-  );
+  const selectedJob = jobs.find((job) => job.spec.id === selectedJobId) ?? jobs[0] ?? null;
+  const latestIndexJob = jobs.find((job) => job.spec.kind?.startsWith("index."));
+  const latestModelJob = jobs.find((job) => job.spec.kind?.startsWith("model."));
 
   const jobEventsQuery = useQuery({
     queryKey: ["job-events", selectedJob?.spec.id],
@@ -286,15 +269,8 @@ export function App() {
   });
 
   const renameIdentityMutation = useMutation({
-    mutationFn: ({
-      id,
-      kind,
-      label,
-    }: {
-      id: string;
-      kind: IdentityKind;
-      label: string;
-    }) => renameIdentity(kind, id, label),
+    mutationFn: ({ id, kind, label }: { id: string; kind: IdentityKind; label: string }) =>
+      renameIdentity(kind, id, label),
     onSuccess: (response) => {
       applyIdentityMutationToSearchHistory(response);
       invalidateIdentityQueries();
@@ -318,12 +294,7 @@ export function App() {
   });
 
   const searchMutation = useMutation({
-    mutationFn: ({
-      filters,
-      ocrTextQuery,
-      queryFile,
-      resultLimit,
-    }: SearchVariables) =>
+    mutationFn: ({ filters, ocrTextQuery, queryFile, resultLimit }: SearchVariables) =>
       searchMedia(queryFile, resultLimit, ocrTextQuery, filters),
     onSuccess: (response, variables) => {
       const nextItem: SearchHistoryItem = {
@@ -339,9 +310,7 @@ export function App() {
         response,
       };
 
-      updateSearchHistory((history) =>
-        [nextItem, ...history].slice(0, MAX_SEARCH_HISTORY),
-      );
+      updateSearchHistory((history) => [nextItem, ...history].slice(0, MAX_SEARCH_HISTORY));
       setActiveSearchId(nextItem.id);
       setSelectedQuerySceneIndex(response.scenes[0]?.scene_index ?? null);
     },
@@ -381,10 +350,7 @@ export function App() {
     }
 
     setLastIndex({
-      collection:
-        latestIndexJob.metadata.collection ??
-        healthQuery.data?.collection ??
-        "",
+      collection: latestIndexJob.metadata.collection ?? healthQuery.data?.collection ?? "",
       errors: latestIndexJob.logs
         .filter((entry) => entry.level === "Warn" || entry.level === "Error")
         .map((entry) => entry.message),
@@ -417,26 +383,19 @@ export function App() {
     queryClient.invalidateQueries({ queryKey: ["source-config"] });
   }, [latestModelJob, queryClient, refreshedModelJobId]);
 
-  function updateSearchHistory(
-    updater: (history: SearchHistoryItem[]) => SearchHistoryItem[],
-  ) {
-    queryClient.setQueryData<SearchHistoryItem[]>(
-      SEARCH_HISTORY_QUERY_KEY,
-      (history = []) => updater(history),
+  function updateSearchHistory(updater: (history: SearchHistoryItem[]) => SearchHistoryItem[]) {
+    queryClient.setQueryData<SearchHistoryItem[]>(SEARCH_HISTORY_QUERY_KEY, (history = []) =>
+      updater(history),
     );
   }
 
-  function updateActiveSearch(
-    updater: (item: SearchHistoryItem) => SearchHistoryItem,
-  ) {
+  function updateActiveSearch(updater: (item: SearchHistoryItem) => SearchHistoryItem) {
     if (!activeSearchId) {
       return;
     }
 
     updateSearchHistory((history) =>
-      history.map((item) =>
-        item.id === activeSearchId ? updater(item) : item,
-      ),
+      history.map((item) => (item.id === activeSearchId ? updater(item) : item)),
     );
   }
 
@@ -458,9 +417,7 @@ export function App() {
     );
   }
 
-  function applyIdentityMutationToSearchHistory(
-    mutation: IdentityMutationResponse,
-  ) {
+  function applyIdentityMutationToSearchHistory(mutation: IdentityMutationResponse) {
     updateSearchHistory((history) =>
       history.map((item) => ({
         ...item,
@@ -488,13 +445,10 @@ export function App() {
   const sourcesLabel = useMemo(() => {
     const health = healthQuery.data;
     if (!health) {
-      return healthQuery.isError
-        ? "Service is not responding"
-        : "Checking service status";
+      return healthQuery.isError ? "Service is not responding" : "Checking service status";
     }
 
-    const sources =
-      health.sources.length > 0 ? health.sources : [health.source_dir];
+    const sources = health.sources.length > 0 ? health.sources : [health.source_dir];
     return sources.join(", ");
   }, [healthQuery.data, healthQuery.isError]);
 
@@ -543,12 +497,9 @@ export function App() {
     updateActiveSearch((item) => ({ ...item, sortMode }));
   }
 
-  const activeSearch =
-    searchHistory.find((item) => item.id === activeSearchId) ?? null;
+  const activeSearch = searchHistory.find((item) => item.id === activeSearchId) ?? null;
   const activeResponse = activeSearch?.response ?? null;
-  const displayedPreviewUrl = activeSearch
-    ? activeSearch.queryImageUrl
-    : previewUrl;
+  const displayedPreviewUrl = activeSearch ? activeSearch.queryImageUrl : previewUrl;
   const previewIsVideo = activeSearch
     ? activeSearch.queryMediaKind === "video"
     : Boolean(file?.type.startsWith("video/"));
@@ -645,9 +596,7 @@ export function App() {
             }}
             onSearchSubmit={handleSubmit}
             onSelectQueryScene={setSelectedQuerySceneIndex}
-            onUpdateTags={(id, tags) =>
-              updateMediaTagsMutation.mutate({ id, tags })
-            }
+            onUpdateTags={(id, tags) => updateMediaTagsMutation.mutate({ id, tags })}
             previewIsAudio={previewIsAudio}
             previewIsPdf={previewIsPdf}
             previewIsVideo={previewIsVideo}
@@ -660,9 +609,7 @@ export function App() {
             showMetadataFilters={showMetadataFilters}
             sourceTypeOptions={sourceTypeOptions}
             tagSavingId={
-              updateMediaTagsMutation.isPending
-                ? updateMediaTagsMutation.variables?.id
-                : undefined
+              updateMediaTagsMutation.isPending ? updateMediaTagsMutation.variables?.id : undefined
             }
           />
         ) : (
@@ -679,8 +626,7 @@ export function App() {
                 loading={inverseIndexQuery.isLoading}
                 mergeError={mergeIdentitiesMutation.error}
                 mergeErrorIdentity={
-                  mergeIdentitiesMutation.isError &&
-                  mergeIdentitiesMutation.variables
+                  mergeIdentitiesMutation.isError && mergeIdentitiesMutation.variables
                     ? {
                         id: mergeIdentitiesMutation.variables.targetId,
                         kind: mergeIdentitiesMutation.variables.kind,
@@ -688,8 +634,7 @@ export function App() {
                     : null
                 }
                 mergingIdentity={
-                  mergeIdentitiesMutation.isPending &&
-                  mergeIdentitiesMutation.variables
+                  mergeIdentitiesMutation.isPending && mergeIdentitiesMutation.variables
                     ? {
                         id: mergeIdentitiesMutation.variables.targetId,
                         kind: mergeIdentitiesMutation.variables.kind,
@@ -710,8 +655,7 @@ export function App() {
                 refreshing={inverseIndexQuery.isFetching}
                 renameError={renameIdentityMutation.error}
                 renameErrorIdentity={
-                  renameIdentityMutation.isError &&
-                  renameIdentityMutation.variables
+                  renameIdentityMutation.isError && renameIdentityMutation.variables
                     ? {
                         id: renameIdentityMutation.variables.id,
                         kind: renameIdentityMutation.variables.kind,
@@ -719,8 +663,7 @@ export function App() {
                     : null
                 }
                 renamingIdentity={
-                  renameIdentityMutation.isPending &&
-                  renameIdentityMutation.variables
+                  renameIdentityMutation.isPending && renameIdentityMutation.variables
                     ? {
                         id: renameIdentityMutation.variables.id,
                         kind: renameIdentityMutation.variables.kind,
@@ -739,11 +682,9 @@ export function App() {
                 modelActionPending={
                   downloadAllModelsMutation.isPending
                     ? "all"
-                    : downloadModelMutation.isPending ||
-                        enableModelMutation.isPending
+                    : downloadModelMutation.isPending || enableModelMutation.isPending
                       ? (
-                          (downloadModelMutation.variables ??
-                            enableModelMutation.variables) as
+                          (downloadModelMutation.variables ?? enableModelMutation.variables) as
                             | { role: string }
                             | undefined
                         )?.role
@@ -758,12 +699,8 @@ export function App() {
                 modelsError={modelsQuery.error}
                 modelsLoading={modelsQuery.isLoading}
                 onDownloadAllModels={() => downloadAllModelsMutation.mutate()}
-                onDownloadModel={(role, model) =>
-                  downloadModelMutation.mutate({ role, model })
-                }
-                onEnableModel={(role, model) =>
-                  enableModelMutation.mutate({ role, model })
-                }
+                onDownloadModel={(role, model) => downloadModelMutation.mutate({ role, model })}
+                onEnableModel={(role, model) => enableModelMutation.mutate({ role, model })}
                 onIndex={() => indexMutation.mutate()}
                 onSave={(sources) => sourceConfigMutation.mutate(sources)}
                 saveError={sourceConfigMutation.error}
@@ -853,9 +790,7 @@ function applyPersonMutation(
   });
   const people = new Map<string, SearchResult["image"]["people"][number]>();
   for (const person of image.people) {
-    const nextId = sourceIds.has(person.person_id)
-      ? mutation.target_id
-      : person.person_id;
+    const nextId = sourceIds.has(person.person_id) ? mutation.target_id : person.person_id;
     const nextPerson = {
       ...person,
       label: nextId === mutation.target_id ? targetLabel : person.label,
@@ -893,9 +828,7 @@ function applySpeakerMutation(
   const voiceWeights = new Map<string, number>();
   const recognizedVoices = new Map<
     string,
-    NonNullable<
-      SearchResult["image"]["audio_analysis"]
-    >["recognized_voices"][number]
+    NonNullable<SearchResult["image"]["audio_analysis"]>["recognized_voices"][number]
   >();
 
   for (const voice of image.audio_analysis.recognized_voices) {

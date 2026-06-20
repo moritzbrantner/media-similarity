@@ -25,9 +25,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 
   if (!response.ok) {
     const parsedDetail = errorDetail(payload);
-    const detail =
-      parsedDetail ??
-      (text ? text : `${response.status} ${response.statusText}`);
+    const detail = parsedDetail ?? (text ? text : `${response.status} ${response.statusText}`);
     throw new Error(detail);
   }
 
@@ -59,12 +57,7 @@ function errorDetail(payload: unknown): string | null {
   if (Array.isArray(detail)) {
     return detail
       .map((item) => {
-        if (
-          item &&
-          typeof item === "object" &&
-          "msg" in item &&
-          typeof item.msg === "string"
-        ) {
+        if (item && typeof item === "object" && "msg" in item && typeof item.msg === "string") {
           return item.msg;
         }
         return JSON.stringify(item);
@@ -90,9 +83,7 @@ export async function fetchSmartAlbums(): Promise<{ albums: SmartAlbum[] }> {
   return parseResponse<{ albums: SmartAlbum[] }>(response);
 }
 
-export async function createSmartAlbum(
-  input: EditableSmartAlbum,
-): Promise<SmartAlbum> {
+export async function createSmartAlbum(input: EditableSmartAlbum): Promise<SmartAlbum> {
   const response = await fetch("/api/smart-albums", {
     body: JSON.stringify(input),
     headers: { "Content-Type": "application/json" },
@@ -101,10 +92,7 @@ export async function createSmartAlbum(
   return parseResponse<SmartAlbum>(response);
 }
 
-export async function updateSmartAlbum(
-  id: string,
-  input: EditableSmartAlbum,
-): Promise<SmartAlbum> {
+export async function updateSmartAlbum(id: string, input: EditableSmartAlbum): Promise<SmartAlbum> {
   const response = await fetch(`/api/smart-albums/${encodeURIComponent(id)}`, {
     body: JSON.stringify(input),
     headers: { "Content-Type": "application/json" },
@@ -113,9 +101,7 @@ export async function updateSmartAlbum(
   return parseResponse<SmartAlbum>(response);
 }
 
-export async function deleteSmartAlbum(
-  id: string,
-): Promise<{ deleted: boolean }> {
+export async function deleteSmartAlbum(id: string): Promise<{ deleted: boolean }> {
   const response = await fetch(`/api/smart-albums/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
@@ -131,9 +117,7 @@ export async function fetchSmartAlbumResults(
   if (limit) {
     params.set("limit", String(limit));
   }
-  const response = await fetch(
-    `/api/smart-albums/${encodeURIComponent(id)}/results?${params}`,
-  );
+  const response = await fetch(`/api/smart-albums/${encodeURIComponent(id)}/results?${params}`);
   return parseResponse<SmartAlbumResultsResponse>(response);
 }
 
@@ -172,14 +156,11 @@ export async function renameIdentity(
   id: string,
   label: string,
 ): Promise<IdentityMutationResponse> {
-  const response = await fetch(
-    `${identityRoute(kind)}/${encodeURIComponent(id)}`,
-    {
-      body: JSON.stringify({ label }),
-      headers: { "Content-Type": "application/json" },
-      method: "PUT",
-    },
-  );
+  const response = await fetch(`${identityRoute(kind)}/${encodeURIComponent(id)}`, {
+    body: JSON.stringify({ label }),
+    headers: { "Content-Type": "application/json" },
+    method: "PUT",
+  });
   return parseResponse<IdentityMutationResponse>(response);
 }
 
@@ -188,21 +169,16 @@ export async function mergeIdentities(
   targetId: string,
   sourceIds: string[],
 ): Promise<IdentityMutationResponse> {
-  const response = await fetch(
-    `${identityRoute(kind)}/${encodeURIComponent(targetId)}/merge`,
-    {
-      body: JSON.stringify({ source_ids: sourceIds }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    },
-  );
+  const response = await fetch(`${identityRoute(kind)}/${encodeURIComponent(targetId)}/merge`, {
+    body: JSON.stringify({ source_ids: sourceIds }),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
   return parseResponse<IdentityMutationResponse>(response);
 }
 
 function identityRoute(kind: IdentityKind) {
-  return kind === "person"
-    ? "/api/identities/people"
-    : "/api/identities/speakers";
+  return kind === "person" ? "/api/identities/people" : "/api/identities/speakers";
 }
 
 export async function indexSources(): Promise<IndexResponse> {
@@ -225,18 +201,12 @@ export async function fetchModels(): Promise<ModelsResponse> {
   return parseResponse<ModelsResponse>(response);
 }
 
-export async function downloadModel(
-  role: string,
-  model?: string | null,
-): Promise<JobSnapshot> {
-  const response = await fetch(
-    `/api/models/${encodeURIComponent(role)}/download`,
-    {
-      body: JSON.stringify({ model: model ?? null }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    },
-  );
+export async function downloadModel(role: string, model?: string | null): Promise<JobSnapshot> {
+  const response = await fetch(`/api/models/${encodeURIComponent(role)}/download`, {
+    body: JSON.stringify({ model: model ?? null }),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
   return parseResponse<JobSnapshot>(response);
 }
 
@@ -245,24 +215,16 @@ export async function downloadAllModels(): Promise<JobSnapshot> {
   return parseResponse<JobSnapshot>(response);
 }
 
-export async function enableModel(
-  role: string,
-  model?: string | null,
-): Promise<JobSnapshot> {
-  const response = await fetch(
-    `/api/models/${encodeURIComponent(role)}/enable`,
-    {
-      body: JSON.stringify({ model: model ?? null }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    },
-  );
+export async function enableModel(role: string, model?: string | null): Promise<JobSnapshot> {
+  const response = await fetch(`/api/models/${encodeURIComponent(role)}/enable`, {
+    body: JSON.stringify({ model: model ?? null }),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
   return parseResponse<JobSnapshot>(response);
 }
 
-export async function deleteIndexedMedia(
-  id: string,
-): Promise<DeleteIndexResponse> {
+export async function deleteIndexedMedia(id: string): Promise<DeleteIndexResponse> {
   const response = await fetch(`/api/indexed-media/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
@@ -276,14 +238,11 @@ export async function updateIndexedMediaTags({
   id: string;
   tags: string[];
 }): Promise<ImagePayload> {
-  const response = await fetch(
-    `/api/indexed-media/${encodeURIComponent(id)}/tags`,
-    {
-      body: JSON.stringify({ tags }),
-      headers: { "Content-Type": "application/json" },
-      method: "PUT",
-    },
-  );
+  const response = await fetch(`/api/indexed-media/${encodeURIComponent(id)}/tags`, {
+    body: JSON.stringify({ tags }),
+    headers: { "Content-Type": "application/json" },
+    method: "PUT",
+  });
   return parseResponse<ImagePayload>(response);
 }
 
@@ -310,10 +269,7 @@ export async function fetchJobEvents(jobId: string): Promise<JobEvent[]> {
 }
 
 export async function cancelJob(jobId: string): Promise<JobSnapshot> {
-  const response = await fetch(
-    `/api/jobs/${encodeURIComponent(jobId)}/cancel`,
-    { method: "POST" },
-  );
+  const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" });
   return parseResponse<JobSnapshot>(response);
 }
 
@@ -322,9 +278,7 @@ export async function fetchSourceConfig(): Promise<SourceConfigResponse> {
   return parseResponse<SourceConfigResponse>(response);
 }
 
-export async function updateSourceConfig(
-  sources: string[],
-): Promise<SourceConfigResponse> {
+export async function updateSourceConfig(sources: string[]): Promise<SourceConfigResponse> {
   const response = await fetch("/api/source-config", {
     body: JSON.stringify({ sources }),
     headers: { "Content-Type": "application/json" },
@@ -420,10 +374,7 @@ export type SearchMediaFilters = {
   sourceType: string;
 };
 
-function appendSearchFilterParams(
-  params: URLSearchParams,
-  filters: SearchMediaFilters,
-) {
+function appendSearchFilterParams(params: URLSearchParams, filters: SearchMediaFilters) {
   appendStringParam(params, "source_type", filters.sourceType, "all");
   appendStringParam(params, "media_kind", filters.mediaKind, "all");
   appendStringParam(params, "name_query", filters.nameQuery);
@@ -457,11 +408,7 @@ function appendStringParam(
   }
 }
 
-function appendNumberParam(
-  params: URLSearchParams,
-  name: string,
-  value: string,
-) {
+function appendNumberParam(params: URLSearchParams, name: string, value: string) {
   const parsed = Number(value);
   if (Number.isFinite(parsed) && parsed >= 0) {
     params.set(name, String(parsed));
