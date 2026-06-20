@@ -2,8 +2,9 @@ import { Button } from "@moritzbrantner/ui";
 import { Input } from "@moritzbrantner/ui";
 import { Label } from "@moritzbrantner/ui";
 import { NativeSelect } from "@moritzbrantner/ui";
-import { ArrowUpDown, SlidersHorizontal } from "lucide-react";
+import { ArrowUpDown, ChevronDown, SlidersHorizontal } from "lucide-react";
 import type { ComponentProps } from "react";
+import { useState } from "react";
 import { DEFAULT_METADATA_FILTERS } from "../search/defaults";
 import { countActiveFilters } from "../search/filtering";
 import type { MetadataFilters, ResultSortMode } from "../search/types";
@@ -57,6 +58,8 @@ export function MetadataFiltersPanel({
   ocrTextQuery?: string;
   sourceTypeOptions: string[];
 }) {
+  const [filtersExpanded, setFiltersExpanded] = useState(true);
+
   function updateFilter<Key extends keyof MetadataFilters>(key: Key, value: MetadataFilters[Key]) {
     onChange({ ...filters, [key]: value });
   }
@@ -67,10 +70,28 @@ export function MetadataFiltersPanel({
   return (
     <fieldset className="rounded-md border border-neutral-200 bg-neutral-50 p-3">
       <legend className="flex w-full items-center justify-between gap-2 px-1 text-sm font-semibold text-neutral-900">
-        <span className="flex items-center gap-2">
+        <Button
+          aria-controls="metadata-filter-options"
+          aria-expanded={filtersExpanded}
+          className="flex items-center gap-2 px-0 text-sm font-semibold text-neutral-900 transition hover:text-neutral-700"
+          onClick={() => setFiltersExpanded((current) => !current)}
+          type="button"
+          variant="ghost"
+        >
           <SlidersHorizontal className="size-4 text-neutral-600" aria-hidden="true" />
           <span>Metadata filters</span>
-        </span>
+          {activeFilterCount > 0 ? (
+            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+              {activeFilterCount}
+            </span>
+          ) : null}
+          <ChevronDown
+            className={`size-4 text-neutral-500 transition-transform ${
+              filtersExpanded ? "rotate-180" : ""
+            }`}
+            aria-hidden="true"
+          />
+        </Button>
         <span className="flex items-center gap-2">
           {onSaveAsAlbum ? (
             <Button
@@ -96,7 +117,10 @@ export function MetadataFiltersPanel({
         </span>
       </legend>
 
-      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div
+        className={`${filtersExpanded ? "mt-3 grid" : "hidden"} gap-3 md:grid-cols-2 xl:grid-cols-4`}
+        id="metadata-filter-options"
+      >
         <FieldInput
           id="name-query"
           label="Name or path"
