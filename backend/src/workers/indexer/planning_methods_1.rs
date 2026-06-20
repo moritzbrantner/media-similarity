@@ -21,6 +21,7 @@ impl ImageIndexer {
             Err(error) => {
                 return IndexResponse {
                     indexed: 0,
+                    already_indexed: 0,
                     skipped: 0,
                     failed: 1,
                     pruned: 0,
@@ -70,7 +71,8 @@ impl ImageIndexer {
 
         let mut indexed = 0;
         let mut pruned = 0;
-        let skipped = plan.skipped + plan.already_indexed;
+        let already_indexed = plan.already_indexed;
+        let skipped = plan.skipped;
         let mut failed = 0;
         let mut errors = plan.errors;
         if !plan.prune_point_ids.is_empty() {
@@ -121,6 +123,7 @@ impl ImageIndexer {
                     recorder.finish(IndexLedgerRunStatus::Cancelled);
                     return IndexResponse {
                         indexed,
+                        already_indexed,
                         skipped,
                         failed,
                         pruned,
@@ -208,6 +211,7 @@ impl ImageIndexer {
                         }
                         return IndexResponse {
                             indexed,
+                            already_indexed,
                             skipped,
                             failed,
                             pruned,
@@ -249,10 +253,11 @@ impl ImageIndexer {
         if let Some(context) = context {
             let _ = context.metadata("indexed", indexed.to_string());
             let _ = context.metadata("failed", failed.to_string());
+            let _ = context.metadata("already_indexed", already_indexed.to_string());
             let _ = context.metadata("skipped", skipped.to_string());
             let _ = context.metadata("pruned", pruned.to_string());
             let _ = context.info(format!(
-                "indexing complete: {indexed} media item(s), {skipped} skipped, {pruned} pruned, {failed} failed"
+                "indexing complete: {indexed} media item(s), {already_indexed} already indexed, {skipped} skipped, {pruned} pruned, {failed} failed"
             ));
         }
         recorder.finish(if failed > 0 {
@@ -264,6 +269,7 @@ impl ImageIndexer {
         errors.truncate(50);
         IndexResponse {
             indexed,
+            already_indexed,
             skipped,
             failed,
             pruned,

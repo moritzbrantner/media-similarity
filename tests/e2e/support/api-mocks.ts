@@ -48,6 +48,7 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
   const mediaTagUpdates: Array<{ id: string; tags: string[] }> = [];
   const modelDownloads: Array<{ model: string | null; role: string }> = [];
   const modelEnables: Array<{ model: string | null; role: string }> = [];
+  const modelDisables: Array<{ role: string }> = [];
   const sourceConfigPuts: unknown[] = [];
   const indexingConfigPuts: unknown[] = [];
   const workflowPuts: unknown[] = [];
@@ -217,6 +218,13 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
     await route.fulfill({ json: completedIndexJob });
   });
 
+  await page.route("**/api/models/*/disable", async (route) => {
+    const role = modelRoleFromUrl(route.request().url(), "disable");
+    modelDisables.push({ role });
+    jobs = [completedIndexJob];
+    await route.fulfill({ json: completedIndexJob });
+  });
+
   await page.route("**/api/source-config", async (route) => {
     if (route.request().method() === "PUT") {
       const request = route.request().postDataJSON() as {
@@ -329,6 +337,7 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
     identityMerges,
     identityRenames,
     mediaTagUpdates,
+    modelDisables,
     modelDownloads,
     modelEnables,
     sourceConfigPuts,
@@ -446,7 +455,7 @@ function isJobWithSpec(value: unknown): value is { spec: { id: string } } {
   );
 }
 
-function modelRoleFromUrl(url: string, action: "download" | "enable") {
+function modelRoleFromUrl(url: string, action: "disable" | "download" | "enable") {
   const match = url.match(new RegExp(`/api/models/([^/]+)/${action}`));
   return match ? decodeURIComponent(match[1]) : "";
 }

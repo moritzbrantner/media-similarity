@@ -303,6 +303,8 @@ pub struct SearchSceneResponse {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct IndexResponse {
     pub indexed: usize,
+    #[serde(default)]
+    pub already_indexed: usize,
     pub skipped: usize,
     pub failed: usize,
     #[serde(default)]
@@ -391,6 +393,7 @@ mod tests {
     fn response_defaults_match_api_contract() {
         let response = IndexResponse {
             indexed: 0,
+            already_indexed: 0,
             skipped: 0,
             failed: 0,
             pruned: 0,

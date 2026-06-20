@@ -12,6 +12,7 @@ export type HealthResponse = {
 
 export type IndexResponse = {
   indexed: number;
+  already_indexed: number;
   skipped: number;
   failed: number;
   pruned: number;

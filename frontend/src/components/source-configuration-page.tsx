@@ -10,6 +10,7 @@ import {
   Save,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { formatIndexSummary } from "../indexing/summary";
 import type { IndexResponse, ModelsResponse, SourceConfigResponse } from "../types";
 import { completeIndexingConfig } from "./indexing-configuration-page";
 import { Metric } from "./source-config/metric";
@@ -42,6 +43,7 @@ export function SourceConfigurationPage({
   modelsLoading,
   onDownloadAllModels,
   onDownloadModel,
+  onDisableModel,
   onEnableModel,
   onIndex,
   onSave,
@@ -62,6 +64,7 @@ export function SourceConfigurationPage({
   modelsLoading: boolean;
   onDownloadAllModels: () => void;
   onDownloadModel: (role: string, model?: string | null) => void;
+  onDisableModel: (role: string) => void;
   onEnableModel: (role: string, model?: string | null) => void;
   onIndex: () => void;
   onSave: (sources: string[]) => void;
@@ -264,7 +267,7 @@ export function SourceConfigurationPage({
               ) : lastIndex ? (
                 <Message
                   icon={<CheckCircle2 className="size-4" />}
-                  text={`Indexed ${lastIndex.indexed} media item(s), skipped ${lastIndex.skipped}, pruned ${lastIndex.pruned}, failed ${lastIndex.failed}.`}
+                  text={formatIndexSummary(lastIndex)}
                   tone={lastIndex.failed > 0 ? "warn" : "ok"}
                 />
               ) : null}
@@ -293,6 +296,7 @@ export function SourceConfigurationPage({
           models={models?.models ?? []}
           onDownloadAll={onDownloadAllModels}
           onDownload={onDownloadModel}
+          onDisable={onDisableModel}
           onEnable={onEnableModel}
         />
 

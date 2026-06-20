@@ -161,16 +161,14 @@ impl ImageIndexer {
         recorder.check_cancelled()?;
         recorder.current_part("face_analysis", 2, 7);
         let media_id = image_id_for_uri(&source_image.id_base);
-        let face_analysis = await_with_cancel(
-            analyze_faces_for_media(
-                &settings,
-                self.store.as_ref(),
-                &media,
-                &media_id,
-                Some(source_image.source_uri.clone()),
-                Some(source_image.item_uri.clone()),
-            ),
-            recorder,
+        let face_analysis = analyze_faces_for_media_cancellable(
+            &settings,
+            self.store.as_ref(),
+            &media,
+            &media_id,
+            Some(source_image.source_uri.clone()),
+            Some(source_image.item_uri.clone()),
+            || recorder.is_cancelled(),
         )
         .await?;
         recorder.check_cancelled()?;
@@ -245,16 +243,14 @@ impl ImageIndexer {
             recorder.check_cancelled()?;
             let id_base = format!("{}#scene={}", source_image.id_base, scene.scene_index + 1);
             let media_id = image_id_for_uri(&id_base);
-            let face_analysis = await_with_cancel(
-                analyze_faces_for_media(
-                    &settings,
-                    self.store.as_ref(),
-                    &scene.media,
-                    &media_id,
-                    Some(source_image.source_uri.clone()),
-                    Some(source_image.item_uri.clone()),
-                ),
-                recorder,
+            let face_analysis = analyze_faces_for_media_cancellable(
+                &settings,
+                self.store.as_ref(),
+                &scene.media,
+                &media_id,
+                Some(source_image.source_uri.clone()),
+                Some(source_image.item_uri.clone()),
+                || recorder.is_cancelled(),
             )
             .await?;
             recorder.check_cancelled()?;

@@ -180,6 +180,7 @@ const defaultIndexResponse = {
   errors: [],
   failed: 0,
   indexed: 3,
+  already_indexed: 2,
   pruned: 1,
   skipped: 1,
   source_dir: "/images",
@@ -194,11 +195,13 @@ const defaultCompletedIndexJob = {
   logs: [
     {
       level: "Info",
-      message: "indexing complete: 3 media item(s), 1 skipped, 1 pruned, 0 failed",
+      message:
+        "indexing complete: 3 media item(s), 2 already indexed, 1 skipped, 1 pruned, 0 failed",
       timestamp: "2026-05-22T10:00:03Z",
     },
   ],
   metadata: {
+    already_indexed: "2",
     collection: "image_similarity_test",
     failed: "0",
     indexed: "3",

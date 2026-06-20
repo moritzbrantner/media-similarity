@@ -21,7 +21,7 @@ use crate::workers::indexing::planner::{
 use crate::workers::media::audio::{
     decode_source_audio_segments_cancellable, expose_source_audio, SourceAudioSegment,
 };
-use crate::workers::media::faces::{analyze_faces_for_media, FaceAnalysis};
+use crate::workers::media::faces::{analyze_faces_for_media_cancellable, FaceAnalysis};
 use crate::workers::media::hashing::phash_image;
 use crate::workers::media::image_io::{dimensions, image_id_for_uri};
 use crate::workers::media::media::{DecodedMedia, MediaFrame, MediaKind};

@@ -12,7 +12,7 @@ use tracing_subscriber::EnvFilter;
 
 use crate::api::{
     album_results, audio_transcription_models, cancel_job, create_album, delete_album,
-    delete_indexed_media_route, delete_indexed_sources_route, download_all_models,
+    delete_indexed_media_route, delete_indexed_sources_route, disable_model, download_all_models,
     download_audio_transcription_model, download_model, enable_audio_transcription_model,
     enable_model, get_job, get_job_events, get_models, get_source_config, get_workflows, health,
     index_images, inverse_index, list_albums, list_jobs, merge_people, merge_speakers,
@@ -84,6 +84,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .route("/api/models/download-all", post(download_all_models))
         .route("/api/models/:role/download", post(download_model))
         .route("/api/models/:role/enable", post(enable_model))
+        .route("/api/models/:role/disable", post(disable_model))
         .route(
             "/api/models/audio-transcription",
             get(audio_transcription_models),

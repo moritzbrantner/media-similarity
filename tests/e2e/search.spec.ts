@@ -73,6 +73,28 @@ test("uploads query media and renders search results", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("omits empty numeric search filters from search requests", async ({ page }) => {
+  let searchUrl: string | null = null;
+  await page.unroute("**/api/search?**");
+  await page.route("**/api/search?**", async (route) => {
+    searchUrl = route.request().url();
+    await route.fulfill({ json: fixtureSearchResponse });
+  });
+  await page.goto("/");
+
+  await page.locator("#query-image").setInputFiles(imageUpload);
+  await page.getByRole("button", { name: "Search" }).click();
+
+  await expect.poll(() => searchUrl).not.toBeNull();
+  const params = new URL(searchUrl ?? "").searchParams;
+  expect(params.get("min_width")).toBeNull();
+  expect(params.get("max_width")).toBeNull();
+  expect(params.get("min_height")).toBeNull();
+  expect(params.get("max_height")).toBeNull();
+  expect(params.get("min_size_bytes")).toBeNull();
+  expect(params.get("max_size_bytes")).toBeNull();
+});
+
 test("deletes a search result from the index", async ({ page }) => {
   const mocks = await resetApiMocks(page);
   await page.goto("/");

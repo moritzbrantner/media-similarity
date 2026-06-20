@@ -77,6 +77,8 @@ pub struct EditableIndexingConfig {
     pub image_extensions: Vec<String>,
     pub audio_extensions: Vec<String>,
     pub pdf_extensions: Vec<String>,
+    #[serde(default = "default_true")]
+    pub visual_embedding_enabled: bool,
     pub face_analysis_enabled: bool,
     pub face_detection_min_confidence: f32,
     pub face_cluster_threshold: f32,
@@ -103,6 +105,7 @@ impl EditableIndexingConfig {
             image_extensions: settings.image_extensions.iter().cloned().collect(),
             audio_extensions: settings.audio_extensions.iter().cloned().collect(),
             pdf_extensions: settings.pdf_extensions.iter().cloned().collect(),
+            visual_embedding_enabled: settings.visual_embedding_enabled,
             face_analysis_enabled: settings.face_analysis_enabled,
             face_detection_min_confidence: settings.face_detection_min_confidence,
             face_cluster_threshold: settings.face_cluster_threshold,
@@ -131,6 +134,7 @@ impl EditableIndexingConfig {
             .expect("validated indexing config contains audio extensions");
         settings.pdf_extensions = parse_extensions(&self.pdf_extensions.join(","))
             .expect("validated indexing config contains PDF extensions");
+        settings.visual_embedding_enabled = self.visual_embedding_enabled;
         settings.face_analysis_enabled = self.face_analysis_enabled;
         settings.face_detection_min_confidence = self.face_detection_min_confidence;
         settings.face_cluster_threshold = self.face_cluster_threshold;
@@ -192,6 +196,10 @@ impl EditableIndexingConfig {
         validate_range_usize("ocr_max_frames", self.ocr_max_frames, 1, 64)?;
         Ok(self)
     }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 pub async fn get_source_config(State(state): State<Arc<AppState>>) -> Json<SourceConfigResponse> {

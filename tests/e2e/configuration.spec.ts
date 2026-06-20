@@ -63,7 +63,7 @@ test("configures media sources from the UI", async ({ page }) => {
 
   await page.getByRole("button", { name: "Index Sources" }).last().click();
   await expect(
-    page.getByText("Indexed 3 media item(s), skipped 1, pruned 1, failed 0."),
+    page.getByText("Indexed 3 media item(s), already indexed 2, skipped 1, pruned 1, failed 0."),
   ).toBeVisible();
 });
 
@@ -76,6 +76,16 @@ test("renders model status from the source configuration panel", async ({ page }
   await expect(page.getByRole("heading", { name: "Visual embedding" })).toBeVisible();
   await expect(page.getByTitle("xenova-clip-vit-base-patch32-onnx")).toBeVisible();
   await expect(page.getByText("Audio transcription")).toBeVisible();
+});
+
+test("disables active models from the source configuration panel", async ({ page }) => {
+  const mocks = await resetApiMocks(page);
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Open media configuration" }).click();
+  await page.getByRole("button", { exact: true, name: "Disable" }).click();
+
+  await expect.poll(() => mocks.modelDisables).toEqual([{ role: "visual_embedding" }]);
 });
 
 test("calls out blocking first-run models and downloads them from the panel", async ({ page }) => {
@@ -102,7 +112,7 @@ test("calls out blocking first-run models and downloads them from the panel", as
   await expect(page.getByText("blocking")).toBeVisible();
   await expect(page.getByText("blocks indexing and search")).toBeVisible();
 
-  await page.getByRole("button", { name: "Download" }).first().click();
+  await page.getByRole("button", { exact: true, name: "Download" }).first().click();
 
   await expect
     .poll(() => mocks.modelDownloads)
@@ -137,7 +147,7 @@ test("configures processing workflows from the UI", async ({ page }) => {
 
   await page.getByRole("button", { name: "Index Sources" }).last().click();
   await expect(
-    page.getByText("Indexed 3 media item(s), skipped 1, pruned 1, failed 0."),
+    page.getByText("Indexed 3 media item(s), already indexed 2, skipped 1, pruned 1, failed 0."),
   ).toBeVisible();
 });
 

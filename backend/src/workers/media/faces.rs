@@ -8,6 +8,8 @@ use image_analysis_embeddings::{FaceEmbedderBackend, OnnxFaceEmbedder};
 use model_runtime::{ModelBundle, ModelBundleFile, ModelBundleManifest, ModelTask};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::time::Duration;
 
 use crate::config::Settings;
 use crate::domain::models::{FaceBoxPayload, FaceDetectionPayload, PersonSummary};
@@ -49,24 +51,82 @@ pub async fn analyze_faces_for_media(
     source_uri: Option<String>,
     source_item_uri: Option<String>,
 ) -> FaceAnalysis {
+    match analyze_faces_for_media_cancellable(
+        settings,
+        store,
+        media,
+        media_id,
+        source_uri,
+        source_item_uri,
+        || false,
+    )
+    .await
+    {
+        Ok(analysis) => analysis,
+        Err(error) => {
+            tracing::warn!(%error, %media_id, "face analysis skipped");
+            FaceAnalysis::default()
+        }
+    }
+}
+
+pub async fn analyze_faces_for_media_cancellable(
+    settings: &Settings,
+    store: &dyn MediaVectorStore,
+    media: &DecodedMedia,
+    media_id: &str,
+    source_uri: Option<String>,
+    source_item_uri: Option<String>,
+    mut is_cancelled: impl FnMut() -> bool,
+) -> Result<FaceAnalysis, String> {
     if !settings.face_analysis_enabled || media.kind.as_str() == "audio" {
-        return FaceAnalysis::default();
+        return Ok(FaceAnalysis::default());
     }
 
-    let detector = FaceDetector::new(settings);
-    let embedder = FaceEmbedder::new(settings);
-    let mut detected = match FaceAnalyzer::new(detector, embedder).analyze(media, media_id) {
+    let analysis_settings = settings.clone();
+    let analysis_media = media.clone();
+    let analysis_media_id = media_id.to_string();
+    let (sender, receiver) = mpsc::sync_channel(1);
+    std::thread::spawn(move || {
+        let detector = FaceDetector::new(&analysis_settings);
+        let embedder = FaceEmbedder::new(&analysis_settings);
+        let result =
+            FaceAnalyzer::new(detector, embedder).analyze(&analysis_media, &analysis_media_id);
+        let _ = sender.send(result);
+    });
+
+    let detected = loop {
+        if is_cancelled() {
+            return Err("job cancelled".to_string());
+        }
+        match receiver.try_recv() {
+            Ok(result) => break result,
+            Err(mpsc::TryRecvError::Empty) => {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            Err(mpsc::TryRecvError::Disconnected) => {
+                return Err("face analysis worker stopped before returning a result".to_string());
+            }
+        }
+    };
+    let mut detected = match detected {
         Ok(faces) => faces,
         Err(error) => {
             tracing::warn!(%error, %media_id, "face analysis skipped");
-            return FaceAnalysis::default();
+            return Ok(FaceAnalysis::default());
         }
     };
 
     let mut payload_faces = Vec::new();
     for face in &mut detected {
+        if is_cancelled() {
+            return Err("job cancelled".to_string());
+        }
         let assignment =
             assign_person(store, settings, &face.face_id, face.embedding.clone()).await;
+        if is_cancelled() {
+            return Err("job cancelled".to_string());
+        }
         face.person_id = Some(assignment.person_id.clone());
         face.person_label = assignment.person_label.clone();
 
@@ -92,10 +152,10 @@ pub async fn analyze_faces_for_media(
     }
 
     let person_clusters = summarize_people(&payload_faces);
-    FaceAnalysis {
+    Ok(FaceAnalysis {
         faces: payload_faces,
         person_clusters,
-    }
+    })
 }
 
 pub struct FaceAnalyzer {

@@ -5,6 +5,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   cancelJob,
   deleteIndexedMedia,
+  disableModel,
   downloadAllModels,
   downloadModel,
   enableModel,
@@ -213,6 +214,17 @@ export function App() {
     },
   });
 
+  const disableModelMutation = useMutation({
+    mutationFn: ({ role }: { role: string }) => disableModel(role),
+    onSuccess: (job) => {
+      setSelectedJobId(job.spec.id);
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["models"] });
+      queryClient.invalidateQueries({ queryKey: ["health"] });
+      queryClient.invalidateQueries({ queryKey: ["source-config"] });
+    },
+  });
+
   const deleteMediaMutation = useMutation({
     mutationFn: deleteIndexedMedia,
     onSuccess: (_response, id) => {
@@ -343,6 +355,7 @@ export function App() {
     }
 
     const indexed = numberFromMetadata(latestIndexJob.metadata.indexed);
+    const alreadyIndexed = numberFromMetadata(latestIndexJob.metadata.already_indexed);
     const skipped = numberFromMetadata(latestIndexJob.metadata.skipped);
     const failed = numberFromMetadata(latestIndexJob.metadata.failed);
     if (indexed === null || skipped === null || failed === null) {
@@ -356,6 +369,7 @@ export function App() {
         .map((entry) => entry.message),
       failed,
       indexed,
+      already_indexed: alreadyIndexed ?? 0,
       pruned: numberFromMetadata(latestIndexJob.metadata.pruned) ?? 0,
       skipped,
       source_dir: healthQuery.data?.source_dir ?? "",
@@ -682,24 +696,28 @@ export function App() {
                 modelActionPending={
                   downloadAllModelsMutation.isPending
                     ? "all"
-                    : downloadModelMutation.isPending || enableModelMutation.isPending
+                    : downloadModelMutation.isPending ||
+                        enableModelMutation.isPending ||
+                        disableModelMutation.isPending
                       ? (
-                          (downloadModelMutation.variables ?? enableModelMutation.variables) as
-                            | { role: string }
-                            | undefined
+                          (downloadModelMutation.variables ??
+                            enableModelMutation.variables ??
+                            disableModelMutation.variables) as { role: string } | undefined
                         )?.role
                       : undefined
                 }
                 modelError={
                   downloadAllModelsMutation.error ??
                   downloadModelMutation.error ??
-                  enableModelMutation.error
+                  enableModelMutation.error ??
+                  disableModelMutation.error
                 }
                 models={modelsQuery.data ?? null}
                 modelsError={modelsQuery.error}
                 modelsLoading={modelsQuery.isLoading}
                 onDownloadAllModels={() => downloadAllModelsMutation.mutate()}
                 onDownloadModel={(role, model) => downloadModelMutation.mutate({ role, model })}
+                onDisableModel={(role) => disableModelMutation.mutate({ role })}
                 onEnableModel={(role, model) => enableModelMutation.mutate({ role, model })}
                 onIndex={() => indexMutation.mutate()}
                 onSave={(sources) => sourceConfigMutation.mutate(sources)}

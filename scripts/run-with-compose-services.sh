@@ -7,6 +7,8 @@ cd "$project_root"
 started_services=()
 wrapper_tmp="$(mktemp -d)"
 export TMPDIR="$wrapper_tmp"
+export HOST_UID="${HOST_UID:-$(id -u)}"
+export HOST_GID="${HOST_GID:-$(id -g)}"
 
 running_services() {
   docker compose ps --services --filter status=running 2>/dev/null || true
@@ -64,6 +66,7 @@ if [[ -x ./scripts/ci/bootstrap-e2e-db.sh ]]; then
   ./scripts/ci/bootstrap-e2e-db.sh
 else
   mapfile -t before < <(running_services)
+  ./scripts/prepare-dev-data.sh
 
   if [[ -n "${COMPOSE_SERVICES:-}" ]]; then
     # shellcheck disable=SC2086

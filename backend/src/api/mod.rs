@@ -24,8 +24,9 @@ pub use indexing::{index_images, spawn_index_job, spawn_startup_index_job};
 pub use inverse_index::inverse_index;
 pub use jobs::{cancel_job, get_job, get_job_events, list_jobs};
 pub use models::{
-    audio_transcription_models, download_all_models, download_audio_transcription_model,
-    download_model, enable_audio_transcription_model, enable_model, get_models,
+    audio_transcription_models, disable_model, download_all_models,
+    download_audio_transcription_model, download_model, enable_audio_transcription_model,
+    enable_model, get_models,
 };
 pub use readiness::ready;
 pub use search::search_upload;

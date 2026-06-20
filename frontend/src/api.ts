@@ -224,6 +224,13 @@ export async function enableModel(role: string, model?: string | null): Promise<
   return parseResponse<JobSnapshot>(response);
 }
 
+export async function disableModel(role: string): Promise<JobSnapshot> {
+  const response = await fetch(`/api/models/${encodeURIComponent(role)}/disable`, {
+    method: "POST",
+  });
+  return parseResponse<JobSnapshot>(response);
+}
+
 export async function deleteIndexedMedia(id: string): Promise<DeleteIndexResponse> {
   const response = await fetch(`/api/indexed-media/${encodeURIComponent(id)}`, {
     method: "DELETE",
@@ -409,14 +416,22 @@ function appendStringParam(
 }
 
 function appendNumberParam(params: URLSearchParams, name: string, value: string) {
-  const parsed = Number(value);
+  const normalized = value.trim();
+  if (!normalized) {
+    return;
+  }
+  const parsed = Number(normalized);
   if (Number.isFinite(parsed) && parsed >= 0) {
     params.set(name, String(parsed));
   }
 }
 
 function appendSizeParam(params: URLSearchParams, name: string, value: string) {
-  const parsed = Number(value);
+  const normalized = value.trim();
+  if (!normalized) {
+    return;
+  }
+  const parsed = Number(normalized);
   if (Number.isFinite(parsed) && parsed >= 0) {
     params.set(name, String(Math.round(parsed * 1024 * 1024)));
   }

@@ -242,21 +242,30 @@ pub async fn enable_model(
     .and_then(|spec| spec.with_metadata("role", role.as_str()))
     .and_then(|spec| spec.with_metadata("model", status.configured.clone()))
     .map_err(ApiError::from_job)?;
-    state
-        .jobs
-        .spawn(spec, move |context| {
-            context.info(format!("model role `{}` is ready", role.as_str()))?;
-            context.metadata("enabled", "true")?;
-            context.progress(
-                JobProgress::new(1, Some(1))?
-                    .unit("steps")?
-                    .message("model enable check complete"),
-            )?;
-            Ok(())
-        })
-        .map(ApiJobSnapshot::from)
-        .map(Json)
-        .map_err(ApiError::from_job)
+    let jobs = state.jobs.clone();
+    let state_for_job = Arc::clone(&state);
+    jobs.spawn(spec, move |context| {
+        context.info(format!("enabling model role `{}`", role.as_str()))?;
+        state_for_job.set_model_role_enabled(role, true);
+        context.metadata("enabled", "true")?;
+        context.progress(
+            JobProgress::new(1, Some(1))?
+                .unit("steps")?
+                .message("model enable check complete"),
+        )?;
+        Ok(())
+    })
+    .map(ApiJobSnapshot::from)
+    .map(Json)
+    .map_err(ApiError::from_job)
+}
+
+pub async fn disable_model(
+    State(state): State<Arc<AppState>>,
+    AxumPath(role): AxumPath<String>,
+) -> Result<Json<ApiJobSnapshot>, ApiError> {
+    let role = role.parse::<ModelRole>().map_err(ApiError::bad_request)?;
+    spawn_disable_model(state, role).map(Json)
 }
 
 pub async fn download_audio_transcription_model(
@@ -298,14 +307,56 @@ fn spawn_audio_transcription_enable(
     let store = audio_transcription_model_store(&state.settings);
     let settings = state.settings.clone();
     let spec = model_job_spec("model.enable", "Enable whisper.cpp model", model)?;
-    state
-        .jobs
-        .spawn(spec, move |context| {
-            enable_whisper_cpp_model(&context, &settings, &store, model)?;
-            Ok(())
-        })
-        .map(ApiJobSnapshot::from)
-        .map_err(ApiError::from_job)
+    let jobs = state.jobs.clone();
+    let state_for_job = Arc::clone(&state);
+    jobs.spawn(spec, move |context| {
+        enable_whisper_cpp_model(&context, &settings, &store, model)?;
+        state_for_job.set_model_role_enabled(ModelRole::AudioTranscription, true);
+        context.metadata("enabled", "true")?;
+        Ok(())
+    })
+    .map(ApiJobSnapshot::from)
+    .map_err(ApiError::from_job)
+}
+
+fn spawn_disable_model(state: Arc<AppState>, role: ModelRole) -> Result<ApiJobSnapshot, ApiError> {
+    let status = crate::workers::media::models::model_status(role, &state.indexing_settings());
+    let spec = JobSpec::new(
+        format!("model.disable.{}.{}", role.as_str(), Uuid::new_v4()),
+        format!("Disable {}", role.label()),
+    )
+    .and_then(|spec| spec.with_kind("model.disable"))
+    .and_then(|spec| spec.with_metadata("role", role.as_str()))
+    .and_then(|spec| spec.with_metadata("model", status.configured.clone()))
+    .map_err(ApiError::from_job)?;
+    let jobs = state.jobs.clone();
+    let state_for_job = Arc::clone(&state);
+    jobs.spawn(spec, move |context| {
+        context.info(format!("disabling model role `{}`", role.as_str()))?;
+        context.progress(
+            JobProgress::new(0, Some(1))?
+                .unit("steps")?
+                .message("disabling model role"),
+        )?;
+        state_for_job.set_model_role_enabled(role, false);
+        let cancelled = state_for_job.jobs.request_cancel_kind_prefix("index.")?;
+        if !cancelled.is_empty() {
+            context.warn(format!(
+                "requested cancellation for {} active indexing job(s)",
+                cancelled.len()
+            ))?;
+        }
+        context.metadata("enabled", "false")?;
+        context.metadata("cancelled_index_jobs", cancelled.len().to_string())?;
+        context.progress(
+            JobProgress::new(1, Some(1))?
+                .unit("steps")?
+                .message("model role disabled"),
+        )?;
+        Ok(())
+    })
+    .map(ApiJobSnapshot::from)
+    .map_err(ApiError::from_job)
 }
 
 fn requested_audio_transcription_model(
@@ -432,10 +483,6 @@ fn enable_whisper_cpp_model(
         )));
     }
 
-    if !settings.audio_transcription_enabled {
-        context
-            .warn("AUDIO_TRANSCRIPTION_ENABLED is false; set it to true to use transcription")?;
-    }
     if !settings
         .audio_transcription_model
         .eq_ignore_ascii_case(model.id())

@@ -1,5 +1,5 @@
 import { Button } from "@moritzbrantner/ui";
-import { AlertCircle, AlertTriangle, CheckCircle2, Cloud, Loader2 } from "lucide-react";
+import { AlertCircle, AlertTriangle, CheckCircle2, CircleOff, Cloud, Loader2 } from "lucide-react";
 import type { ModelRuntimeStatus } from "../../types";
 import { Message } from "../status-message";
 
@@ -10,6 +10,7 @@ export function ModelStatusPanel({
   models,
   onDownloadAll,
   onDownload,
+  onDisable,
   onEnable,
 }: {
   actionPendingRole?: string;
@@ -18,6 +19,7 @@ export function ModelStatusPanel({
   models: ModelRuntimeStatus[];
   onDownloadAll: () => void;
   onDownload: (role: string, model?: string | null) => void;
+  onDisable: (role: string) => void;
   onEnable: (role: string, model?: string | null) => void;
 }) {
   const downloadingAll = actionPendingRole === "all";
@@ -57,6 +59,7 @@ export function ModelStatusPanel({
               key={model.role}
               model={model}
               onDownload={onDownload}
+              onDisable={onDisable}
               onEnable={onEnable}
               pending={downloadingAll || actionPendingRole === model.role}
             />
@@ -70,14 +73,18 @@ export function ModelStatusPanel({
 function ModelStatusCard({
   model,
   onDownload,
+  onDisable,
   onEnable,
   pending,
 }: {
   model: ModelRuntimeStatus;
   onDownload: (role: string, model?: string | null) => void;
+  onDisable: (role: string) => void;
   onEnable: (role: string, model?: string | null) => void;
   pending: boolean;
 }) {
+  const actionLabel = model.active ? "Disable" : "Enable";
+
   return (
     <article className="rounded-md border border-neutral-200 bg-neutral-50 p-3">
       <div className="flex items-start justify-between gap-3">
@@ -137,16 +144,20 @@ function ModelStatusCard({
         <Button
           variant="outline"
           className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-neutral-300 bg-white px-2 text-xs font-semibold text-neutral-800 transition hover:border-neutral-500 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"
-          disabled={pending || !model.cached}
-          onClick={() => onEnable(model.role, model.configured)}
+          disabled={pending || (!model.active && !model.cached)}
+          onClick={() =>
+            model.active ? onDisable(model.role) : onEnable(model.role, model.configured)
+          }
           type="button"
         >
-          {pending && model.cached ? (
+          {pending && (model.active || model.cached) ? (
             <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+          ) : model.active ? (
+            <CircleOff className="size-3.5" aria-hidden="true" />
           ) : (
             <CheckCircle2 className="size-3.5" aria-hidden="true" />
           )}
-          <span>Enable</span>
+          <span>{actionLabel}</span>
         </Button>
       </div>
     </article>

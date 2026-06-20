@@ -49,6 +49,7 @@ x-app-environment: &app-environment
 services:
   app:
     build: *app-build
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     environment: *app-environment
     ports:
       - "127.0.0.1:8000:8000"
@@ -88,6 +89,7 @@ services:
 
   qdrant:
     image: qdrant/qdrant:v1.12.5
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     ports:
       - "127.0.0.1:6333:6333"
     ulimits:
@@ -96,6 +98,7 @@ services:
         hard: 65535
     volumes:
       - ${QDRANT_DATA_DIR:-./.dev-data/qdrant}:/qdrant/storage
+      - ${QDRANT_SNAPSHOTS_DIR:-./.dev-data/qdrant-snapshots}:/qdrant/snapshots
 
 networks:
   default:

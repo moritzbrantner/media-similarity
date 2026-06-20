@@ -6,6 +6,7 @@ import {
 import { Button } from "@moritzbrantner/ui";
 import { AlertCircle, CheckCircle2, Database, Loader2, RotateCcw, Save } from "lucide-react";
 import { useEffect, useState } from "react";
+import { formatIndexSummary } from "../indexing/summary";
 import type {
   IndexResponse,
   MediaWorkflowNodeData,
@@ -372,7 +373,7 @@ export function WorkflowConfigurationPage({
             ) : lastIndex ? (
               <Message
                 icon={<CheckCircle2 className="size-4" />}
-                text={`Indexed ${lastIndex.indexed} media item(s), skipped ${lastIndex.skipped}, pruned ${lastIndex.pruned}, failed ${lastIndex.failed}.`}
+                text={formatIndexSummary(lastIndex)}
                 tone={lastIndex.failed > 0 ? "warn" : "ok"}
               />
             ) : null}

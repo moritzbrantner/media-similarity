@@ -4,6 +4,7 @@ use crate::config::Settings;
 use crate::storage::qdrant::{QdrantHttpOptions, QdrantImageStore};
 use crate::storage::MediaVectorStore;
 use crate::workers::jobs::JobManager;
+use crate::workers::media::models::ModelRole;
 use crate::workers::media::visual_embedding::{build_visual_embedder, VisualEmbeddingBackend};
 use crate::workers::workflows::{
     compile_media_workflow, default_media_workflow_library, load_media_workflow_library,
@@ -90,6 +91,24 @@ impl AppState {
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         *current = indexing_config;
+    }
+
+    pub(crate) fn set_model_role_enabled(&self, role: ModelRole, enabled: bool) {
+        let mut current = self
+            .indexing_config
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        match role {
+            ModelRole::VisualEmbedding => {
+                current.visual_embedding_enabled = enabled;
+            }
+            ModelRole::FaceDetection | ModelRole::FaceEmbedding => {
+                current.face_analysis_enabled = enabled;
+            }
+            ModelRole::AudioTranscription => {
+                current.audio_transcription_enabled = enabled;
+            }
+        }
     }
 
     pub(crate) fn replace_workflow_library(&self, library: MediaWorkflowLibrary) {

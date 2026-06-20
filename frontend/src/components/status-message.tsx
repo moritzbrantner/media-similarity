@@ -1,6 +1,7 @@
 import { Alert, AlertDescription } from "@moritzbrantner/ui";
 import { AlertCircle, CheckCircle2, Loader2, RotateCw } from "lucide-react";
 import type { ReactNode } from "react";
+import { formatIndexSummary } from "../indexing/summary";
 import type { IndexResponse } from "../types";
 
 export function StatusMessage({
@@ -38,7 +39,7 @@ export function StatusMessage({
 
   if (lastIndex) {
     const tone = lastIndex.failed > 0 ? "warn" : "ok";
-    const text = `Indexed ${lastIndex.indexed} media item(s), skipped ${lastIndex.skipped}, pruned ${lastIndex.pruned}, failed ${lastIndex.failed}.`;
+    const text = formatIndexSummary(lastIndex);
     return <Message icon={<CheckCircle2 className="size-4" />} text={text} tone={tone} />;
   }
 

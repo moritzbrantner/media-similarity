@@ -22,11 +22,11 @@ use uuid::Uuid;
 
 use image_similarity_service::api::{
     album_results, audio_transcription_models, cancel_job, create_album, delete_album,
-    delete_indexed_media_route, delete_indexed_sources_route, download_audio_transcription_model,
-    download_model, enable_audio_transcription_model, enable_model, get_job, get_job_events,
-    get_models, get_source_config, health, index_images, list_albums, list_jobs, merge_people,
-    merge_speakers, preview_album, ready, rename_person, rename_speaker, search_upload,
-    spawn_index_job, update_album, update_source_config, AppState,
+    delete_indexed_media_route, delete_indexed_sources_route, disable_model,
+    download_audio_transcription_model, download_model, enable_audio_transcription_model,
+    enable_model, get_job, get_job_events, get_models, get_source_config, health, index_images,
+    list_albums, list_jobs, merge_people, merge_speakers, preview_album, ready, rename_person,
+    rename_speaker, search_upload, spawn_index_job, update_album, update_source_config, AppState,
 };
 use image_similarity_service::app::upload_body_limit_bytes;
 use image_similarity_service::config::{parse_extensions, Settings};
@@ -428,7 +428,7 @@ async fn metadata_filter_combinations_are_applied_together() {
 }
 
 #[tokio::test]
-async fn index_skips_files_that_are_already_current() {
+async fn index_reports_files_that_are_already_current_separately_from_skipped_sources() {
     let app = TestApp::new(|settings| {
         settings.image_extensions = parse_extensions(".png").unwrap();
     })
@@ -444,7 +444,8 @@ async fn index_skips_files_that_are_already_current() {
 
     let second = app.index().await;
     assert_eq!(second.indexed, 0);
-    assert_eq!(second.skipped, 1);
+    assert_eq!(second.already_indexed, 1);
+    assert_eq!(second.skipped, 0);
     assert_eq!(second.failed, 0, "{:?}", second.errors);
 
     write_pattern_image(&source, 65, 40, [20, 20, 220], [20, 20, 20]);
@@ -473,7 +474,8 @@ async fn index_prunes_records_for_removed_source_files() {
     fs::remove_file(&remove).unwrap();
     let second = app.index().await;
     assert_eq!(second.indexed, 0);
-    assert_eq!(second.skipped, 1);
+    assert_eq!(second.already_indexed, 1);
+    assert_eq!(second.skipped, 0);
     assert_eq!(second.pruned, 1);
     assert_eq!(second.failed, 0, "{:?}", second.errors);
 
@@ -1205,7 +1207,8 @@ async fn pdf_recognition_indexes_document_pages_and_searches_uploaded_pdf() {
 
     let second = app.index().await;
     assert_eq!(second.indexed, 0);
-    assert_eq!(second.skipped, 1);
+    assert_eq!(second.already_indexed, 1);
+    assert_eq!(second.skipped, 0);
 
     let response = app
         .search_upload(
@@ -1499,6 +1502,7 @@ async fn source_config_api_updates_runtime_indexing_configuration() {
                     "audio_extensions": [".mp3"],
                     "pdf_extensions": ["pdf"],
                     "face_analysis_enabled": false,
+                    "visual_embedding_enabled": false,
                     "face_detection_min_confidence": 0.6,
                     "face_cluster_threshold": 0.4,
                     "face_min_cluster_images": 3,
@@ -1526,6 +1530,7 @@ async fn source_config_api_updates_runtime_indexing_configuration() {
     assert_eq!(updated["indexing"]["audio_extensions"][0], ".mp3");
     assert_eq!(updated["indexing"]["pdf_extensions"][0], ".pdf");
     assert_eq!(updated["indexing"]["face_analysis_enabled"], false);
+    assert_eq!(updated["indexing"]["visual_embedding_enabled"], false);
     assert_eq!(updated["indexing"]["video_frame_stride"], 12);
     assert_eq!(updated["indexing"]["video_max_frames"], 48);
     assert_eq!(updated["indexing"]["ocr_enabled"], false);
@@ -2007,6 +2012,69 @@ async fn generic_model_catalog_reports_runtime_roles() {
 }
 
 #[tokio::test]
+async fn model_disable_updates_runtime_config_and_cancels_active_index_jobs() {
+    let app = TestApp::new(|settings| {
+        settings.face_analysis_enabled = true;
+    })
+    .await;
+    let index_spec = JobSpec::new(
+        format!("index.manual.{}", Uuid::new_v4()),
+        "Cancellable index job",
+    )
+    .and_then(|spec| spec.with_kind("index.manual"))
+    .unwrap();
+    let index_job = app
+        .state
+        .jobs
+        .spawn(index_spec, |context| loop {
+            context.check_cancelled()?;
+            std::thread::sleep(Duration::from_millis(5));
+        })
+        .unwrap();
+
+    let disable = app
+        .client
+        .post(format!(
+            "{}/api/models/face_detection/disable",
+            app.base_url
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(disable.status(), reqwest::StatusCode::OK);
+    let disable_job: Value = disable.json().await.unwrap();
+    let disable_job_id = disable_job["spec"]["id"].as_str().unwrap();
+    app.wait_for_job_status(disable_job_id, &["Succeeded"])
+        .await;
+    app.state
+        .jobs
+        .wait_for_terminal(
+            std::slice::from_ref(&index_job.spec.id),
+            Duration::from_secs(2),
+        )
+        .unwrap();
+
+    let source_config = app.get_json("/api/source-config").await;
+    assert_eq!(source_config["indexing"]["face_analysis_enabled"], false);
+    let catalog = app.get_json("/api/models").await;
+    let face_detection = catalog["models"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|model| model["role"] == "face_detection")
+        .unwrap();
+    assert_eq!(face_detection["active"], false);
+
+    let snapshot = app
+        .state
+        .jobs
+        .snapshot(&index_job.spec.id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(snapshot.status, jobs_core::JobStatus::Cancelled);
+}
+
+#[tokio::test]
 async fn sample_corpus_showcase_files_can_be_indexed_and_searched_when_downloaded() {
     let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -2223,6 +2291,7 @@ impl TestApp {
             .route("/api/models", get(get_models))
             .route("/api/models/:role/download", post(download_model))
             .route("/api/models/:role/enable", post(enable_model))
+            .route("/api/models/:role/disable", post(disable_model))
             .route(
                 "/api/models/audio-transcription",
                 get(audio_transcription_models),

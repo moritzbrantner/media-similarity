@@ -90,6 +90,7 @@ test("keeps indexing cancellation responsive until the job is cancelled", async 
       },
     ],
     metadata: {
+      already_indexed: "0",
       failed: "0",
       indexed: "3",
       pruned: "0",
@@ -133,7 +134,7 @@ test("indexes sources from the UI", async ({ page }) => {
   await page.getByRole("button", { name: "Index Sources" }).click();
 
   await expect(
-    page.getByText("Indexed 3 media item(s), skipped 1, pruned 1, failed 0."),
+    page.getByText("Indexed 3 media item(s), already indexed 2, skipped 1, pruned 1, failed 0."),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Background Jobs" })).toBeVisible();
   await expect(page.getByText("indexing complete: 3 media item(s)")).toBeVisible();
