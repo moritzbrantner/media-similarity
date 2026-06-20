@@ -17,11 +17,11 @@ audio-analysis-rhythm = { package = "moritzbrantner-audio-analysis-rhythm", path
 audio-analysis-speakers = { package = "moritzbrantner-audio-analysis-speakers", path = "../../rust-packages/crates/audio/audio-analysis-speakers" }
 image-analysis-core = { package = "moritzbrantner-image-analysis-core", path = "../../rust-packages/crates/image/image-analysis-core" }
 image-analysis-io = { package = "moritzbrantner-image-analysis-io", path = "../../rust-packages/crates/image/image-analysis-io" }
-image-analysis-onnx = { package = "moritzbrantner-image-analysis-onnx", path = "../../rust-packages/crates/image/image-analysis-onnx", features = ["onnxruntime"] }
 image-analysis-processing = { package = "moritzbrantner-image-analysis-processing", path = "../../rust-packages/crates/image/image-analysis-processing" }
 jobs-core = { package = "moritzbrantner-jobs-core", path = "../../rust-packages/crates/jobs/jobs-core" }
 metastrip = "0.1"
 model-runtime = { package = "moritzbrantner-model-runtime", version = "0.1.0", path = "../../rust-packages/crates/runtime/model-runtime" }
+runtime-onnx = { package = "moritzbrantner-runtime-onnx", version = "0.1.0", path = "../../rust-packages/crates/runtime/runtime-onnx", features = ["onnxruntime"] }
 text-analysis-core = { path = "shims/text-analysis-core" }
 text-transcripts = { package = "moritzbrantner-text-transcripts", path = "../../rust-packages/crates/text/text-transcripts", features = ["native"] }
 async-trait = "0.1"
@@ -50,8 +50,8 @@ object_store = { version = "0.13.2", features = ["aws"] }
 futures-util = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
 notify = "8.2.0"
-image-analysis-embeddings = { package = "moritzbrantner-image-analysis-embeddings", version = "0.1.0", path = "../../rust-packages/crates/image/image-analysis-embeddings" }
-image-analysis-detection = { package = "moritzbrantner-image-analysis-detection", version = "0.1.0", path = "../../rust-packages/crates/image/image-analysis-detection" }
+image-analysis-embeddings = { package = "moritzbrantner-image-analysis-embeddings", version = "0.1.0", path = "../../rust-packages/crates/image/image-analysis-embeddings", features = ["onnx"] }
+image-analysis-detection = { package = "moritzbrantner-image-analysis-detection", version = "0.1.0", path = "../../rust-packages/crates/image/image-analysis-detection", features = ["onnx"] }
 
 [dev-dependencies]
 criterion = "0.8.2"

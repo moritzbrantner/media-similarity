@@ -2,11 +2,12 @@ use image::RgbImage;
 use image_analysis_core::{ImagePixelFormat, ImageView};
 use image_analysis_detection::{
     FaceBox as SharedFaceBox, FaceDetection as SharedFaceDetection, FaceDetectorBackend,
+    OnnxFaceDetectionOptions, OnnxFaceDetector,
 };
-use image_analysis_embeddings::FaceEmbedderBackend;
-use image_analysis_onnx::{
-    NativeOnnxRunner, OnnxFaceDetectionOptions, OnnxFaceDetector, OnnxFaceEmbedder,
-};
+use image_analysis_embeddings::{FaceEmbedderBackend, OnnxFaceEmbedder};
+use model_runtime::{ModelBundle, ModelBundleFile, ModelBundleManifest, ModelTask};
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 use crate::config::Settings;
 use crate::domain::models::{FaceBoxPayload, FaceDetectionPayload, PersonSummary};
@@ -148,8 +149,9 @@ pub struct FaceDetector {
     min_confidence: f32,
     max_frames: usize,
     cluster_threshold: f32,
-    runner:
-        std::sync::OnceLock<std::sync::Mutex<Result<OnnxFaceDetector<NativeOnnxRunner>, String>>>,
+    runner: std::sync::OnceLock<
+        std::sync::Mutex<Result<OnnxFaceDetector<runtime_onnx::OnnxSession>, String>>,
+    >,
 }
 
 impl FaceDetector {
@@ -185,13 +187,13 @@ impl FaceDetector {
                 };
                 let runner = load_role_bundle(ModelRole::FaceDetection, &settings)
                     .and_then(|bundle| {
-                        OnnxFaceDetector::<NativeOnnxRunner>::from_bundle(bundle)
-                            .map_err(|error| error.to_string())
+                        OnnxFaceDetector::from_bundle(bundle).map_err(|error| error.to_string())
                     })
                     .or_else(|bundle_error| {
                         if model_path.is_file() {
-                            NativeOnnxRunner::new(model_path)
-                                .and_then(|runner| OnnxFaceDetector::with_options(options, runner))
+                            let runner = runtime_onnx::OnnxSession::from_file(&model_path)
+                                .map_err(|error| error.to_string())?;
+                            OnnxFaceDetector::with_options(options, runner)
                                 .map_err(|error| error.to_string())
                         } else {
                             Err(bundle_error)
@@ -213,8 +215,9 @@ pub struct FaceEmbedder {
     model_path: std::path::PathBuf,
     settings: Settings,
     vector_size: usize,
-    runner:
-        std::sync::OnceLock<std::sync::Mutex<Result<OnnxFaceEmbedder<NativeOnnxRunner>, String>>>,
+    runner: std::sync::OnceLock<
+        std::sync::Mutex<Result<OnnxFaceEmbedder<runtime_onnx::OnnxSession>, String>>,
+    >,
 }
 
 impl FaceEmbedder {
@@ -248,13 +251,15 @@ impl FaceEmbedder {
             .get_or_init(|| {
                 let runner = load_role_bundle(ModelRole::FaceEmbedding, &settings)
                     .and_then(|bundle| {
-                        OnnxFaceEmbedder::<NativeOnnxRunner>::from_bundle(bundle)
-                            .map_err(|error| error.to_string())
+                        OnnxFaceEmbedder::from_bundle(bundle).map_err(|error| error.to_string())
                     })
                     .or_else(|bundle_error| {
                         if model_path.is_file() {
-                            OnnxFaceEmbedder::from_model_path(model_path, Some(vector_size))
-                                .map_err(|error| error.to_string())
+                            OnnxFaceEmbedder::from_bundle(legacy_face_embedding_bundle(
+                                &model_path,
+                                vector_size,
+                            ))
+                            .map_err(|error| error.to_string())
                         } else {
                             Err(bundle_error)
                         }
@@ -325,6 +330,62 @@ fn rgb_image_view(image: &RgbImage) -> Result<ImageView<'_>, String> {
         image.as_raw(),
     )
     .map_err(|error| error.to_string())
+}
+
+fn legacy_face_embedding_bundle(model_path: &Path, vector_size: usize) -> ModelBundle {
+    let mut files = BTreeMap::new();
+    files.insert(
+        "model.onnx".to_string(),
+        bundle_file("model.onnx", model_path),
+    );
+    files.insert(
+        "config.json".to_string(),
+        ModelBundleFile {
+            remote_path: "config.json".to_string(),
+            local_path: legacy_config_path(model_path, vector_size)
+                .to_string_lossy()
+                .into_owned(),
+            size_bytes: 0,
+        },
+    );
+    ModelBundle {
+        root: PathBuf::new(),
+        manifest: ModelBundleManifest {
+            schema_version: 1,
+            name: "legacy-face-embedding".to_string(),
+            repo_id: "legacy/face-embedding".to_string(),
+            revision: "local".to_string(),
+            task: ModelTask::FaceEmbedding,
+            files,
+        },
+    }
+}
+
+fn legacy_config_path(model_path: &Path, vector_size: usize) -> PathBuf {
+    let config_path = std::env::temp_dir().join(format!(
+        "media-similarity-legacy-face-embedding-{vector_size}.json"
+    ));
+    if !config_path.is_file() {
+        let _ = std::fs::write(
+            &config_path,
+            format!(r#"{{"embedding_size":{vector_size}}}"#),
+        );
+    }
+    if config_path.is_file() {
+        config_path
+    } else {
+        model_path.with_file_name("config.json")
+    }
+}
+
+fn bundle_file(remote_path: &str, local_path: &Path) -> ModelBundleFile {
+    ModelBundleFile {
+        remote_path: remote_path.to_string(),
+        local_path: local_path.to_string_lossy().into_owned(),
+        size_bytes: std::fs::metadata(local_path)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0),
+    }
 }
 
 #[cfg(test)]

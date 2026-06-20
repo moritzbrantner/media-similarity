@@ -1,7 +1,9 @@
 use image::RgbImage;
 use image_analysis_core::{ImagePixelFormat, ImageView};
-use image_analysis_embeddings::ImageEmbedderBackend;
-use image_analysis_onnx::{NativeOnnxRunner, OnnxImageEmbedder};
+use image_analysis_embeddings::{ImageEmbedderBackend, OnnxImageEmbedder};
+use model_runtime::{ModelBundle, ModelBundleFile, ModelBundleManifest, ModelTask};
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
@@ -97,8 +99,9 @@ pub struct OnnxVisualEmbedder {
     preprocessor_path: std::path::PathBuf,
     vector_size: usize,
     settings: Settings,
-    runner:
-        std::sync::OnceLock<std::sync::Mutex<Result<OnnxImageEmbedder<NativeOnnxRunner>, String>>>,
+    runner: std::sync::OnceLock<
+        std::sync::Mutex<Result<OnnxImageEmbedder<runtime_onnx::OnnxSession>, String>>,
+    >,
 }
 
 impl OnnxVisualEmbedder {
@@ -129,7 +132,7 @@ impl OnnxVisualEmbedder {
     fn runner(
         &self,
     ) -> Result<
-        std::sync::MutexGuard<'_, Result<OnnxImageEmbedder<NativeOnnxRunner>, String>>,
+        std::sync::MutexGuard<'_, Result<OnnxImageEmbedder<runtime_onnx::OnnxSession>, String>>,
         String,
     > {
         let model_path = self.model_path.clone();
@@ -140,16 +143,15 @@ impl OnnxVisualEmbedder {
             .get_or_init(|| {
                 let runner = load_role_bundle(ModelRole::VisualEmbedding, &settings)
                     .and_then(|bundle| {
-                        OnnxImageEmbedder::<NativeOnnxRunner>::from_bundle(bundle)
-                            .map_err(|error| error.to_string())
+                        OnnxImageEmbedder::from_bundle(bundle).map_err(|error| error.to_string())
                     })
                     .or_else(|bundle_error| {
                         if model_path.is_file() && preprocessor_path.is_file() {
-                            OnnxImageEmbedder::from_paths(
-                                model_path,
-                                preprocessor_path,
-                                Some(vector_size),
-                            )
+                            OnnxImageEmbedder::from_bundle(legacy_visual_embedding_bundle(
+                                &model_path,
+                                &preprocessor_path,
+                                vector_size,
+                            ))
                             .map_err(|error| error.to_string())
                         } else {
                             Err(bundle_error)
@@ -225,12 +227,11 @@ impl FallbackVisualEmbedder {
         }
         let primary = self.primary.clone();
         let image = image.clone();
-        run_with_timeout(self.primary_timeout, move || primary.embed_image(&image)).map_err(
+        run_with_timeout(self.primary_timeout, move || primary.embed_image(&image)).inspect_err(
             |error| {
                 if error.contains("timed out") {
                     self.primary_disabled.store(true, Ordering::Relaxed);
                 }
-                error
             },
         )?
     }
@@ -248,11 +249,10 @@ impl FallbackVisualEmbedder {
         run_with_timeout(self.primary_timeout, move || {
             primary.embed_media(&frames, motion_weight)
         })
-        .map_err(|error| {
+        .inspect_err(|error| {
             if error.contains("timed out") {
                 self.primary_disabled.store(true, Ordering::Relaxed);
             }
-            error
         })?
     }
 }
@@ -351,6 +351,70 @@ fn rgb_image_view(image: &RgbImage) -> Result<ImageView<'_>, String> {
         image.as_raw(),
     )
     .map_err(|error| error.to_string())
+}
+
+fn legacy_visual_embedding_bundle(
+    model_path: &Path,
+    preprocessor_path: &Path,
+    vector_size: usize,
+) -> ModelBundle {
+    let mut files = BTreeMap::new();
+    files.insert(
+        "model.onnx".to_string(),
+        bundle_file("model.onnx", model_path),
+    );
+    files.insert(
+        "preprocessor_config.json".to_string(),
+        bundle_file("preprocessor_config.json", preprocessor_path),
+    );
+    files.insert(
+        "config.json".to_string(),
+        ModelBundleFile {
+            remote_path: "config.json".to_string(),
+            local_path: legacy_config_path(model_path, vector_size)
+                .to_string_lossy()
+                .into_owned(),
+            size_bytes: 0,
+        },
+    );
+    ModelBundle {
+        root: PathBuf::new(),
+        manifest: ModelBundleManifest {
+            schema_version: 1,
+            name: "legacy-visual-embedding".to_string(),
+            repo_id: "legacy/visual-embedding".to_string(),
+            revision: "local".to_string(),
+            task: ModelTask::ImageEmbedding,
+            files,
+        },
+    }
+}
+
+fn legacy_config_path(model_path: &Path, vector_size: usize) -> PathBuf {
+    let config_path = std::env::temp_dir().join(format!(
+        "media-similarity-legacy-visual-embedding-{vector_size}.json"
+    ));
+    if !config_path.is_file() {
+        let _ = std::fs::write(
+            &config_path,
+            format!(r#"{{"projection_dim":{vector_size}}}"#),
+        );
+    }
+    if config_path.is_file() {
+        config_path
+    } else {
+        model_path.with_file_name("config.json")
+    }
+}
+
+fn bundle_file(remote_path: &str, local_path: &Path) -> ModelBundleFile {
+    ModelBundleFile {
+        remote_path: remote_path.to_string(),
+        local_path: local_path.to_string_lossy().into_owned(),
+        size_bytes: std::fs::metadata(local_path)
+            .map(|metadata| metadata.len())
+            .unwrap_or(0),
+    }
 }
 
 #[cfg(test)]

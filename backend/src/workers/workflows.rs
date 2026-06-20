@@ -718,280 +718,112 @@ fn validate_config(
     config: &BTreeMap<String, Value>,
     diagnostics: &mut Vec<WorkflowDiagnostic>,
 ) {
+    let mut validator = ConfigValidator {
+        document_id,
+        node_id,
+        processor,
+        config,
+        diagnostics,
+    };
     match processor {
-        "ocr.extract" => validate_usize_config(
-            document_id,
-            node_id,
-            processor,
-            config,
-            "ocr_max_frames",
-            1,
-            64,
-            diagnostics,
-        ),
+        "ocr.extract" => validator.validate_usize_config("ocr_max_frames", 1, 64),
         "faces.analyze" => {
-            validate_f32_config(
-                document_id,
-                node_id,
-                processor,
-                config,
-                "face_detection_min_confidence",
-                0.0,
-                1.0,
-                diagnostics,
-            );
-            validate_f32_config(
-                document_id,
-                node_id,
-                processor,
-                config,
-                "face_cluster_threshold",
-                0.0,
-                2.0,
-                diagnostics,
-            );
-            validate_u32_config(
-                document_id,
-                node_id,
-                processor,
-                config,
-                "face_min_cluster_images",
-                1,
-                u32::MAX,
-                diagnostics,
-            );
-            validate_usize_config(
-                document_id,
-                node_id,
-                processor,
-                config,
-                "face_max_frames_per_media",
-                1,
-                usize::MAX,
-                diagnostics,
-            );
+            validator.validate_f32_config("face_detection_min_confidence", 0.0, 1.0);
+            validator.validate_f32_config("face_cluster_threshold", 0.0, 2.0);
+            validator.validate_u32_config("face_min_cluster_images", 1, u32::MAX);
+            validator.validate_usize_config("face_max_frames_per_media", 1, usize::MAX);
         }
         "gif.decode" => {
-            validate_usize_config(
-                document_id,
-                node_id,
-                processor,
-                config,
-                "gif_sample_frames",
-                1,
-                usize::MAX,
-                diagnostics,
-            );
-            validate_usize_config(
-                document_id,
-                node_id,
-                processor,
-                config,
-                "gif_max_decode_frames",
-                1,
-                usize::MAX,
-                diagnostics,
-            );
-            validate_usize_config(
-                document_id,
-                node_id,
-                processor,
-                config,
-                "gif_preview_frames",
-                1,
-                usize::MAX,
-                diagnostics,
-            );
-            validate_u32_config(
-                document_id,
-                node_id,
-                processor,
-                config,
-                "gif_default_frame_delay_ms",
-                1,
-                u32::MAX,
-                diagnostics,
-            );
-            validate_f32_config(
-                document_id,
-                node_id,
-                processor,
-                config,
-                "gif_motion_weight",
-                0.0,
-                1.0,
-                diagnostics,
-            );
+            validator.validate_usize_config("gif_sample_frames", 1, usize::MAX);
+            validator.validate_usize_config("gif_max_decode_frames", 1, usize::MAX);
+            validator.validate_usize_config("gif_preview_frames", 1, usize::MAX);
+            validator.validate_u32_config("gif_default_frame_delay_ms", 1, u32::MAX);
+            validator.validate_f32_config("gif_motion_weight", 0.0, 1.0);
         }
         "video.detect_scenes" => {
-            validate_u32_config(
-                document_id,
-                node_id,
-                processor,
-                config,
-                "video_frame_stride",
-                1,
-                u32::MAX,
-                diagnostics,
-            );
-            validate_optional_u32_config(
-                document_id,
-                node_id,
-                processor,
-                config,
-                "video_max_frames",
-                1,
-                u32::MAX,
-                diagnostics,
-            );
+            validator.validate_u32_config("video_frame_stride", 1, u32::MAX);
+            validator.validate_optional_u32_config("video_max_frames", 1, u32::MAX);
         }
         "pdf.render_pages" => {
-            validate_u32_config(
-                document_id,
-                node_id,
-                processor,
-                config,
-                "pdf_render_dpi",
-                72,
-                300,
-                diagnostics,
-            );
-            validate_u32_config(
-                document_id,
-                node_id,
-                processor,
-                config,
-                "pdf_max_pages",
-                1,
-                10_000,
-                diagnostics,
-            );
-            validate_usize_config(
-                document_id,
-                node_id,
-                processor,
-                config,
-                "pdf_summary_pages",
-                1,
-                256,
-                diagnostics,
-            );
+            validator.validate_u32_config("pdf_render_dpi", 72, 300);
+            validator.validate_u32_config("pdf_max_pages", 1, 10_000);
+            validator.validate_usize_config("pdf_summary_pages", 1, 256);
         }
         _ => {}
     }
 }
 
-fn validate_u32_config(
-    document_id: &str,
-    node_id: &str,
-    processor: &str,
-    config: &BTreeMap<String, Value>,
-    key: &str,
-    min: u32,
-    max: u32,
-    diagnostics: &mut Vec<WorkflowDiagnostic>,
-) {
-    if let Some(value) = config.get(key) {
-        let valid = value
-            .as_u64()
-            .and_then(|value| u32::try_from(value).ok())
-            .map(|value| value >= min && value <= max)
-            .unwrap_or(false);
-        if !valid {
-            diagnostics.push(invalid_config(
-                document_id,
-                node_id,
-                processor,
-                key,
-                min,
-                max,
-            ));
-        }
-    }
+struct ConfigValidator<'a> {
+    document_id: &'a str,
+    node_id: &'a str,
+    processor: &'a str,
+    config: &'a BTreeMap<String, Value>,
+    diagnostics: &'a mut Vec<WorkflowDiagnostic>,
 }
 
-fn validate_optional_u32_config(
-    document_id: &str,
-    node_id: &str,
-    processor: &str,
-    config: &BTreeMap<String, Value>,
-    key: &str,
-    min: u32,
-    max: u32,
-    diagnostics: &mut Vec<WorkflowDiagnostic>,
-) {
-    if config.get(key).is_some_and(Value::is_null) {
-        return;
-    }
-    validate_u32_config(
-        document_id,
-        node_id,
-        processor,
-        config,
-        key,
-        min,
-        max,
-        diagnostics,
-    );
-}
-
-fn validate_usize_config(
-    document_id: &str,
-    node_id: &str,
-    processor: &str,
-    config: &BTreeMap<String, Value>,
-    key: &str,
-    min: usize,
-    max: usize,
-    diagnostics: &mut Vec<WorkflowDiagnostic>,
-) {
-    if let Some(value) = config.get(key) {
-        let valid = value
-            .as_u64()
-            .and_then(|value| usize::try_from(value).ok())
-            .map(|value| value >= min && value <= max)
-            .unwrap_or(false);
-        if !valid {
-            diagnostics.push(invalid_config(
-                document_id,
-                node_id,
-                processor,
-                key,
-                min,
-                max,
-            ));
+impl ConfigValidator<'_> {
+    fn validate_u32_config(&mut self, key: &str, min: u32, max: u32) {
+        if let Some(value) = self.config.get(key) {
+            let valid = value
+                .as_u64()
+                .and_then(|value| u32::try_from(value).ok())
+                .map(|value| value >= min && value <= max)
+                .unwrap_or(false);
+            if !valid {
+                self.push_invalid_config(key, min, max);
+            }
         }
     }
-}
 
-fn validate_f32_config(
-    document_id: &str,
-    node_id: &str,
-    processor: &str,
-    config: &BTreeMap<String, Value>,
-    key: &str,
-    min: f32,
-    max: f32,
-    diagnostics: &mut Vec<WorkflowDiagnostic>,
-) {
-    if let Some(value) = config.get(key) {
-        let valid = value
-            .as_f64()
-            .map(|value| {
-                let value = value as f32;
-                value.is_finite() && value >= min && value <= max
-            })
-            .unwrap_or(false);
-        if !valid {
-            diagnostics.push(invalid_config(
-                document_id,
-                node_id,
-                processor,
-                key,
-                min,
-                max,
-            ));
+    fn validate_optional_u32_config(&mut self, key: &str, min: u32, max: u32) {
+        if self.config.get(key).is_some_and(Value::is_null) {
+            return;
         }
+        self.validate_u32_config(key, min, max);
+    }
+
+    fn validate_usize_config(&mut self, key: &str, min: usize, max: usize) {
+        if let Some(value) = self.config.get(key) {
+            let valid = value
+                .as_u64()
+                .and_then(|value| usize::try_from(value).ok())
+                .map(|value| value >= min && value <= max)
+                .unwrap_or(false);
+            if !valid {
+                self.push_invalid_config(key, min, max);
+            }
+        }
+    }
+
+    fn validate_f32_config(&mut self, key: &str, min: f32, max: f32) {
+        if let Some(value) = self.config.get(key) {
+            let valid = value
+                .as_f64()
+                .map(|value| {
+                    let value = value as f32;
+                    value.is_finite() && value >= min && value <= max
+                })
+                .unwrap_or(false);
+            if !valid {
+                self.push_invalid_config(key, min, max);
+            }
+        }
+    }
+
+    fn push_invalid_config(
+        &mut self,
+        key: &str,
+        min: impl std::fmt::Display,
+        max: impl std::fmt::Display,
+    ) {
+        self.diagnostics.push(invalid_config(
+            self.document_id,
+            self.node_id,
+            self.processor,
+            key,
+            min,
+            max,
+        ));
     }
 }
 
