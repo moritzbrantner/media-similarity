@@ -71,7 +71,11 @@ impl QdrantImageStore {
                 },
             },
         };
-        let path = format!("/collections/{}", self.collection);
+        let path = format!(
+            "/collections/{}?timeout={}",
+            self.collection,
+            self.operation_timeout_seconds()
+        );
         match self
             .send_qdrant("create_collection", &path, |base_url| {
                 self.client.put(format!("{base_url}{path}")).json(&request)
@@ -80,7 +84,18 @@ impl QdrantImageStore {
         {
             Ok(_) => Ok(()),
             Err(error) if error.status == Some(StatusCode::CONFLICT) => Ok(()),
-            Err(error) => Err(error.to_string()),
+            Err(error) => match self.fetch_collection_info().await {
+                Ok(response) => {
+                    validate_collection_vectors(
+                        &self.collection,
+                        self.visual_vector_size,
+                        self.face_vector_size,
+                        &response.result.config.params.vectors,
+                    )?;
+                    Ok(())
+                }
+                Err(_) => Err(error.to_string()),
+            },
         }
     }
 
@@ -133,13 +148,39 @@ impl QdrantImageStore {
             field_name: spec.field_name,
             field_schema: spec.field_schema,
         };
-        let path = format!("/collections/{}/index?wait=true", self.collection);
-        self.send_qdrant("create_payload_index", &path, |base_url| {
-            self.client.put(format!("{base_url}{path}")).json(&request)
-        })
-        .await
-        .map(|_| ())
-        .map_err(|error| error.to_string())
+        let path = format!(
+            "/collections/{}/index?wait=true&timeout={}",
+            self.collection,
+            self.operation_timeout_seconds()
+        );
+        match self
+            .send_qdrant("create_payload_index", &path, |base_url| {
+                self.client.put(format!("{base_url}{path}")).json(&request)
+            })
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(error) => match self.fetch_collection_info().await {
+                Ok(response) => match payload_index_type(
+                    response.result.payload_schema.as_ref(),
+                    spec.field_name,
+                ) {
+                    Some(actual) if payload_index_type_matches(actual, spec.field_schema) => Ok(()),
+                    Some(actual) => Err(payload_index_schema_error(
+                        &self.collection,
+                        spec.field_name,
+                        spec.field_schema,
+                        actual,
+                    )),
+                    None => Err(error.to_string()),
+                },
+                Err(_) => Err(error.to_string()),
+            },
+        }
+    }
+
+    fn operation_timeout_seconds(&self) -> u64 {
+        self.http_options.request_timeout_ms.div_ceil(1_000).max(1)
     }
 
     pub async fn upsert_media(
