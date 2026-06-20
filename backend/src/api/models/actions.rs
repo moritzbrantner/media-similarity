@@ -5,80 +5,20 @@ use std::sync::Arc;
 use axum::extract::{Path as AxumPath, State};
 use axum::Json;
 use jobs_core::{JobArtifact, JobContext, JobError, JobProgress, JobSpec};
-use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use text_transcripts::{WhisperCppModel, WhisperCppModelStore};
 use uuid::Uuid;
 
-use super::jobs::ApiJobSnapshot;
-use super::{ApiError, AppState};
+use crate::api::jobs::ApiJobSnapshot;
 use crate::config::Settings;
 use crate::workers::media::audio::whisper_model_is_cached;
 use crate::workers::media::models::{
-    audio_transcription_model_store, download_role_bundle, model_statuses, parse_whisper_cpp_model,
-    ModelRole, ModelRuntimeStatus,
+    audio_transcription_model_store, download_role_bundle, parse_whisper_cpp_model, ModelRole,
 };
 
-#[derive(Debug, Serialize)]
-pub struct AudioTranscriptionModelsResponse {
-    pub enabled: bool,
-    pub configured_model: String,
-    pub auto_download: bool,
-    pub cache_dir: Option<String>,
-    pub models: Vec<AudioTranscriptionModelResponse>,
-}
+use crate::api::{ApiError, AppState};
 
-#[derive(Debug, Serialize)]
-pub struct AudioTranscriptionModelResponse {
-    pub id: String,
-    pub cached: bool,
-    pub configured: bool,
-}
-
-#[derive(Debug, Serialize)]
-pub struct ModelsResponse {
-    pub models: Vec<ModelRuntimeStatus>,
-}
-
-pub async fn get_models(State(state): State<Arc<AppState>>) -> Json<ModelsResponse> {
-    Json(ModelsResponse {
-        models: model_statuses(&state.indexing_settings()),
-    })
-}
-
-pub async fn audio_transcription_models(
-    State(state): State<Arc<AppState>>,
-) -> Json<AudioTranscriptionModelsResponse> {
-    let store = audio_transcription_model_store(&state.settings);
-    let configured_model = state.settings.audio_transcription_model.clone();
-    let models = store
-        .catalog()
-        .models
-        .into_iter()
-        .map(|status| {
-            let id = status.model.id().to_string();
-            AudioTranscriptionModelResponse {
-                cached: status.cached,
-                configured: id.eq_ignore_ascii_case(&configured_model),
-                id,
-            }
-        })
-        .collect();
-
-    Json(AudioTranscriptionModelsResponse {
-        enabled: state.settings.audio_transcription_enabled,
-        configured_model,
-        auto_download: state.settings.audio_transcription_auto_download,
-        cache_dir: state
-            .settings
-            .audio_transcription_cache_dir
-            .as_ref()
-            .map(|path| path.to_string_lossy().to_string()),
-        models,
-    })
-}
-
-#[derive(Debug, Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 pub struct AudioTranscriptionModelJobRequest {
     pub model: Option<String>,
 }
@@ -87,7 +27,7 @@ pub async fn download_model(
     State(state): State<Arc<AppState>>,
     AxumPath(role): AxumPath<String>,
     Json(request): Json<AudioTranscriptionModelJobRequest>,
-) -> Result<Json<ApiJobSnapshot>, ApiError> {
+) -> Result<Json<crate::api::jobs::ApiJobSnapshot>, ApiError> {
     let role = role.parse::<ModelRole>().map_err(ApiError::bad_request)?;
     if role == ModelRole::AudioTranscription {
         return spawn_audio_transcription_download(state, request.model).map(Json);
@@ -282,7 +222,7 @@ pub async fn enable_audio_transcription_model(
     spawn_audio_transcription_enable(state, request.model).map(Json)
 }
 
-fn spawn_audio_transcription_download(
+pub(crate) fn spawn_audio_transcription_download(
     state: Arc<AppState>,
     requested: Option<String>,
 ) -> Result<ApiJobSnapshot, ApiError> {
@@ -299,7 +239,7 @@ fn spawn_audio_transcription_download(
         .map_err(ApiError::from_job)
 }
 
-fn spawn_audio_transcription_enable(
+pub(crate) fn spawn_audio_transcription_enable(
     state: Arc<AppState>,
     requested: Option<String>,
 ) -> Result<ApiJobSnapshot, ApiError> {
@@ -319,7 +259,10 @@ fn spawn_audio_transcription_enable(
     .map_err(ApiError::from_job)
 }
 
-fn spawn_disable_model(state: Arc<AppState>, role: ModelRole) -> Result<ApiJobSnapshot, ApiError> {
+pub(crate) fn spawn_disable_model(
+    state: Arc<AppState>,
+    role: ModelRole,
+) -> Result<ApiJobSnapshot, ApiError> {
     let status = crate::workers::media::models::model_status(role, &state.indexing_settings());
     let spec = JobSpec::new(
         format!("model.disable.{}.{}", role.as_str(), Uuid::new_v4()),

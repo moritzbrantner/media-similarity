@@ -1,6 +1,16 @@
-use crate::config::Settings;
-use crate::domain::models::ImagePayload;
 use crate::workers::sources::SourceImage;
+
+#[path = "plan_builders.rs"]
+mod plan_builders;
+#[path = "record_match.rs"]
+mod record_match;
+#[path = "results.rs"]
+mod results;
+
+pub use plan_builders::{committed_records_are_current, source_is_current};
+pub use record_match::{record_is_current, source_signature_matches};
+pub use results::legacy_source_item_uri;
+pub use results::payload_analysis_complete;
 
 pub struct SourceIndexPlan {
     pub source_uris: Vec<String>,
@@ -23,89 +33,6 @@ pub struct IndexedSourceRecord {
     pub modified_at: f64,
     pub indexing_profile: Option<String>,
     pub analysis_complete: bool,
-}
-
-pub fn source_is_current(
-    indexed_records: &[IndexedSourceRecord],
-    source_image: &SourceImage,
-    indexing_profile: &str,
-) -> bool {
-    indexed_records
-        .iter()
-        .any(|record| record_is_current(record, source_image, indexing_profile))
-}
-
-pub fn source_signature_matches(
-    source_item_uri: &str,
-    size_bytes: u64,
-    modified_at: f64,
-    indexing_profile: &str,
-    source_image: &SourceImage,
-    expected_indexing_profile: &str,
-) -> bool {
-    source_item_uri == source_image.item_uri
-        && size_bytes == source_image.size_bytes
-        && (modified_at - source_image.modified_at).abs() <= 0.001
-        && indexing_profile == expected_indexing_profile
-}
-
-pub fn committed_records_are_current(
-    indexed_records: &[IndexedSourceRecord],
-    committed_point_ids: &[String],
-    source_image: &SourceImage,
-    indexing_profile: &str,
-) -> bool {
-    !committed_point_ids.is_empty()
-        && committed_point_ids.iter().all(|point_id| {
-            indexed_records.iter().any(|record| {
-                record.point_id == *point_id
-                    && record_is_current(record, source_image, indexing_profile)
-            })
-        })
-}
-
-pub fn record_is_current(
-    record: &IndexedSourceRecord,
-    source_image: &SourceImage,
-    indexing_profile: &str,
-) -> bool {
-    record.size_bytes == source_image.size_bytes
-        && (record.modified_at - source_image.modified_at).abs() <= 0.001
-        && record.indexing_profile.as_deref() == Some(indexing_profile)
-        && record.analysis_complete
-}
-
-pub fn payload_analysis_complete(payload: &ImagePayload, settings: &Settings) -> bool {
-    if payload.media_kind == "video_scene"
-        && (payload.scene_index.is_none()
-            || payload.scene_start_seconds.is_none()
-            || payload.scene_end_seconds.is_none())
-    {
-        return false;
-    }
-
-    if settings.audio_transcription_enabled && payload.media_kind == "audio" {
-        let Some(analysis) = &payload.audio_analysis else {
-            return false;
-        };
-        if analysis.speech_detected && analysis.transcript_text.trim().is_empty() {
-            return false;
-        }
-    }
-
-    true
-}
-
-pub fn legacy_source_item_uri(payload: &ImagePayload) -> Option<String> {
-    let source_path = payload
-        .path
-        .split_once('#')
-        .map_or(payload.path.as_str(), |(path, _)| path);
-    if source_path.is_empty() {
-        None
-    } else {
-        Some(source_path.to_string())
-    }
 }
 
 #[cfg(test)]

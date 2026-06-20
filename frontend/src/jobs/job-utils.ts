@@ -1,5 +1,7 @@
 import type { JobEvent, JobSnapshot } from "../types";
 
+type JobStatus = JobSnapshot["status"];
+
 export function formatHistoryTime(value: string) {
   return new Intl.DateTimeFormat(undefined, {
     hour: "2-digit",
@@ -14,8 +16,9 @@ export function sortJobs(jobs: JobSnapshot[]) {
   );
 }
 
-export function jobIsActive(job: JobSnapshot) {
-  return job.status === "Queued" || job.status === "Running" || job.status === "Cancelling";
+export function jobIsActive(jobOrStatus: JobSnapshot | JobStatus) {
+  const status = typeof jobOrStatus === "string" ? jobOrStatus : jobOrStatus.status;
+  return status === "Queued" || status === "Running" || status === "Cancelling";
 }
 
 export function jobIsTerminal(status: JobSnapshot["status"]) {
