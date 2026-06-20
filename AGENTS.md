@@ -97,3 +97,16 @@ Codex/T3 rules:
 - Before finalizing Docker-sensitive work, run `services:ps` or `docker compose ps` and report remaining containers.
 - Use `services:down` after dev sessions. Use `services:clean` only when deleting disposable test data is acceptable.
 - Format touched files only unless the task explicitly asks for a repo-wide format.
+
+## Agent skills
+
+This repo is configured for the Matt Pocock workflow skills and the agent-loop control plane.
+
+- Issue tracker: `docs/agents/issue-tracker.md`
+- Triage labels: `docs/agents/triage-labels.md`
+- Domain context: `docs/agents/domain.md`
+- Planning workflow: `docs/agents/planning-workflow.md`
+
+### Planning workflow
+
+Substantial new work should be planned into GitHub PRD issues instead of implemented directly. See `docs/agents/planning-workflow.md`.
