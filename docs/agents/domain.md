@@ -2,7 +2,7 @@
 
 This is a single-context repository.
 
-Agents should use the root `AGENTS.md` as the primary domain and workflow context. There is currently no root `CONTEXT.md`, `CONTEXT-MAP.md`, or `docs/adr/` directory to read.
+Agents should use the root `AGENTS.md` as the primary workflow context and the root `CONTEXT.md` as the project glossary. This is a single-context repository; there is no `CONTEXT-MAP.md`.
 
 Important domain summary:
 

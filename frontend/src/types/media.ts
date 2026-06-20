@@ -151,6 +151,7 @@ export type ImagePayload = {
 export type SearchResult = {
   image: ImagePayload;
   vector_score: number;
+  relevance_score: number | null;
   hash_distance: number | null;
   ocr_score: number | null;
   near_duplicate: boolean;
@@ -184,16 +185,45 @@ export type SearchResponse = {
   query_phash: string;
   count: number;
   results: SearchResult[];
-  query_media_kind:
-    | "static_image"
-    | "animated_gif"
-    | "video"
-    | "audio"
-    | "pdf"
-    | "text";
+  query_media_kind: "static_image" | "animated_gif" | "video" | "audio" | "pdf" | "text";
   scenes: SearchSceneResponse[];
   query_audio_analysis: AudioAnalysis | null;
   query_ocr_text: string;
+  query_visual_embedding_model: string | null;
+  query_visual_embedding_degraded: boolean;
+};
+
+export type FaceSearchModelStatus = {
+  face_detection_active: boolean;
+  face_embedding_active: boolean;
+  degraded: boolean;
+  detail: string | null;
+};
+
+export type FaceSearchResponse = {
+  query: {
+    detected_faces: FaceDetectionPayload[];
+    selected_face: FaceDetectionPayload | null;
+    model_status: FaceSearchModelStatus;
+  };
+  people: FacePersonMatch[];
+  results: FaceMediaMatch[];
+};
+
+export type FacePersonMatch = {
+  person_id: string;
+  label: string | null;
+  score: number;
+  face_count: number;
+  media_count: number;
+  matched_face_ids: string[];
+};
+
+export type FaceMediaMatch = {
+  result: SearchResult;
+  face_score: number;
+  matched_person_id: string;
+  matched_face_ids: string[];
 };
 
 export type AlbumSortMode =

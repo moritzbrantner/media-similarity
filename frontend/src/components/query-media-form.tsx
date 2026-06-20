@@ -4,6 +4,7 @@ import { Label } from "@moritzbrantner/ui";
 import { FileText, Loader2, Search, Upload, X } from "lucide-react";
 import type { FormEvent } from "react";
 
+import type { SearchMode } from "../search/types";
 import type { IndexResponse } from "../types";
 import { StatusMessage } from "./status-message";
 
@@ -16,8 +17,10 @@ type QueryMediaFormProps = {
   onFileChange: (file: File | null) => void;
   onLimitChange: (value: string) => void;
   onOcrTextQueryChange: (value: string) => void;
+  onSearchModeChange: (mode: SearchMode) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   searchError: Error | null;
+  searchMode: SearchMode;
   searchPending: boolean;
 };
 
@@ -30,11 +33,13 @@ export function QueryMediaForm({
   onFileChange,
   onLimitChange,
   onOcrTextQueryChange,
+  onSearchModeChange,
   onSubmit,
   searchError,
+  searchMode,
   searchPending,
 }: QueryMediaFormProps) {
-  const canSearch = Boolean(file || ocrTextQuery.trim());
+  const canSearch = searchMode === "face" ? Boolean(file) : Boolean(file || ocrTextQuery.trim());
 
   return (
     <form
@@ -42,10 +47,27 @@ export function QueryMediaForm({
       onSubmit={onSubmit}
     >
       <div>
-        <Label
-          className="text-sm font-semibold text-neutral-900"
-          htmlFor="query-image"
-        >
+        <Label className="text-sm font-semibold text-neutral-900">Search mode</Label>
+        <div className="mt-2 grid grid-cols-2 rounded-md border border-neutral-300 bg-neutral-50 p-1">
+          {(["media", "face"] as const).map((mode) => (
+            <button
+              className={`h-9 rounded px-3 text-sm font-semibold transition ${
+                searchMode === mode
+                  ? "bg-white text-emerald-800 shadow-sm"
+                  : "text-neutral-600 hover:text-neutral-950"
+              }`}
+              key={mode}
+              onClick={() => onSearchModeChange(mode)}
+              type="button"
+            >
+              {mode === "media" ? "Media" : "Face"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <Label className="text-sm font-semibold text-neutral-900" htmlFor="query-image">
           Query media
         </Label>
         <Label
@@ -57,8 +79,8 @@ export function QueryMediaForm({
             {file?.name ?? "Choose an image, video, audio, or PDF"}
           </span>
           <span className="text-xs text-neutral-500">
-            PNG, JPEG, GIF, WebP, BMP, TIFF, MP4, MOV, WebM, MKV, AVI, MP3, WAV,
-            FLAC, M4A, AAC, OGG, Opus, or PDF
+            PNG, JPEG, GIF, WebP, BMP, TIFF, MP4, MOV, WebM, MKV, AVI, MP3, WAV, FLAC, M4A, AAC,
+            OGG, Opus, or PDF
           </span>
         </Label>
         <Input
@@ -71,10 +93,7 @@ export function QueryMediaForm({
       </div>
 
       <div>
-        <Label
-          className="text-sm font-semibold text-neutral-900"
-          htmlFor="limit"
-        >
+        <Label className="text-sm font-semibold text-neutral-900" htmlFor="limit">
           Result limit
         </Label>
         <Input
@@ -89,19 +108,14 @@ export function QueryMediaForm({
       </div>
 
       <div>
-        <Label
-          className="text-sm font-semibold text-neutral-900"
-          htmlFor="ocr-text-query"
-        >
+        <Label className="text-sm font-semibold text-neutral-900" htmlFor="ocr-text-query">
           Text query
         </Label>
         <div className="mt-2 flex h-10 items-center gap-2 rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-950 transition focus-within:border-emerald-700 focus-within:ring-2 focus-within:ring-emerald-200">
-          <FileText
-            className="size-4 shrink-0 text-neutral-500"
-            aria-hidden="true"
-          />
+          <FileText className="size-4 shrink-0 text-neutral-500" aria-hidden="true" />
           <Input
             className="min-w-0 flex-1 bg-transparent outline-none"
+            disabled={searchMode === "face"}
             id="ocr-text-query"
             onChange={(event) => onOcrTextQueryChange(event.target.value)}
             placeholder="Invoice, title, spoken phrase"

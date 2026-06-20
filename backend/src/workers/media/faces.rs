@@ -415,7 +415,7 @@ impl From<FaceBox> for FaceBoxPayload {
 }
 
 impl FaceBox {
-    fn from_shared(value: &SharedFaceBox) -> Self {
+    pub fn from_shared(value: &SharedFaceBox) -> Self {
         Self {
             x: value.x,
             y: value.y,

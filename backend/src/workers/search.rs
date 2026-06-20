@@ -135,6 +135,11 @@ impl ImageSearchService {
                 }
             };
             let distance = hash_distance(&query_phash, &image.phash)?;
+            let relevance_score = relevance_score(
+                point.score,
+                Some(distance),
+                self.settings.duplicate_hash_distance,
+            );
             if !filters.matches_after_hash(&image, distance, self.settings.duplicate_hash_distance)
             {
                 continue;
@@ -142,6 +147,7 @@ impl ImageSearchService {
             results.push(SearchResult {
                 image,
                 vector_score: point.score,
+                relevance_score: Some(relevance_score),
                 hash_distance: Some(distance),
                 ocr_score,
                 near_duplicate: distance <= self.settings.duplicate_hash_distance,
@@ -168,6 +174,8 @@ impl ImageSearchService {
             scenes: Vec::new(),
             query_audio_analysis: media.audio_analysis.clone(),
             query_ocr_text: normalized_ocr_query,
+            query_visual_embedding_model: Some(self.embedder.model_name().to_string()),
+            query_visual_embedding_degraded: self.embedder.is_degraded(),
         })
     }
 
@@ -202,6 +210,7 @@ impl ImageSearchService {
             results.push(SearchResult {
                 image,
                 vector_score: ocr_score,
+                relevance_score: Some(ocr_score),
                 hash_distance: None,
                 ocr_score: Some(ocr_score),
                 near_duplicate: false,
@@ -226,12 +235,31 @@ impl ImageSearchService {
             scenes: Vec::new(),
             query_audio_analysis: None,
             query_ocr_text: normalized_text_query,
+            query_visual_embedding_model: None,
+            query_visual_embedding_degraded: false,
         })
     }
 }
 
+pub fn relevance_score(
+    vector_score: f32,
+    hash_distance: Option<u32>,
+    duplicate_threshold: u32,
+) -> f32 {
+    let Some(hash_distance) = hash_distance else {
+        return vector_score;
+    };
+    if hash_distance > duplicate_threshold {
+        return vector_score;
+    }
+    let duplicate_window = duplicate_threshold.saturating_add(1) as f32;
+    let duplicate_bonus =
+        (duplicate_threshold.saturating_sub(hash_distance) as f32 + 1.0) / duplicate_window;
+    2.0 + duplicate_bonus + vector_score.clamp(0.0, 1.0) * 0.01
+}
+
 impl SearchFilters {
-    fn qdrant_filter(&self) -> MediaSearchFilter {
+    pub fn qdrant_filter(&self) -> MediaSearchFilter {
         MediaSearchFilter {
             source_type: self.source_type.clone(),
             media_kind: self.media_kind.clone(),
@@ -258,7 +286,7 @@ impl SearchFilters {
             || self.person_id.is_some()
     }
 
-    fn matches_after_hash(
+    pub fn matches_after_hash(
         &self,
         image: &ImagePayload,
         hash_distance: u32,
@@ -325,7 +353,7 @@ impl SearchFilters {
         true
     }
 
-    fn matches_without_hash(&self, image: &ImagePayload) -> bool {
+    pub fn matches_without_hash(&self, image: &ImagePayload) -> bool {
         if matches!(self.near_duplicate, Some(NearDuplicateFilter::Only)) {
             return false;
         }
@@ -451,7 +479,10 @@ fn image_orientation(width: u32, height: u32) -> OrientationFilter {
 
 #[cfg(test)]
 mod tests {
-    use super::{media_text_match_score, NearDuplicateFilter, OrientationFilter, SearchFilters};
+    use super::{
+        media_text_match_score, relevance_score, NearDuplicateFilter, OrientationFilter,
+        SearchFilters,
+    };
     use crate::domain::models::{AudioAnalysis, AudioTranscriptSegment, ImagePayload};
 
     #[test]
@@ -499,6 +530,15 @@ mod tests {
             ..SearchFilters::default()
         };
         assert!(!near_duplicate_only.matches_without_hash(&image));
+    }
+
+    #[test]
+    fn relevance_promotes_near_duplicates_over_visual_score() {
+        let near_duplicate = relevance_score(0.2, Some(1), 8);
+        let semantic_match = relevance_score(0.99, Some(32), 8);
+
+        assert!(near_duplicate > semantic_match);
+        assert_eq!(relevance_score(0.75, None, 8), 0.75);
     }
 
     fn test_payload(filename: &str) -> ImagePayload {

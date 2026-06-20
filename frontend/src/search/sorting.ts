@@ -22,6 +22,13 @@ function compareResults(left: SearchResult, right: SearchResult, sortMode: Resul
       return compareDescending(left.image.modified_at, right.image.modified_at, left, right);
     case "size_largest":
       return compareDescending(left.image.size_bytes, right.image.size_bytes, left, right);
+    case "relevance":
+      return compareDescending(
+        left.relevance_score ?? left.vector_score,
+        right.relevance_score ?? right.vector_score,
+        left,
+        right,
+      );
     case "vector_score":
       return compareDescending(left.vector_score, right.vector_score, left, right);
     case "phash_distance":

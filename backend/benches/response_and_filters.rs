@@ -61,6 +61,7 @@ fn response_and_filters(c: &mut Criterion) {
                 .map(|image| SearchResult {
                     image,
                     vector_score: 0.95,
+                    relevance_score: Some(2.95),
                     hash_distance: Some(0),
                     ocr_score: None,
                     near_duplicate: true,
@@ -71,6 +72,8 @@ fn response_and_filters(c: &mut Criterion) {
             scenes: Vec::new(),
             query_audio_analysis: None,
             query_ocr_text: String::new(),
+            query_visual_embedding_model: Some("bench".to_string()),
+            query_visual_embedding_degraded: false,
         };
         b.iter(|| serde_json::to_vec(std::hint::black_box(&response)).unwrap())
     });

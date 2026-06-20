@@ -6,6 +6,7 @@ import type {
   SearchVariables,
   MetadataFilters,
   ResultSortMode,
+  SearchMode,
 } from "../../search/types";
 import { createQueryPreview } from "../../search/preview";
 import {
@@ -25,6 +26,7 @@ import {
 import { sortResults } from "../../search/sorting";
 import {
   searchMedia,
+  searchFaceMedia,
   deleteIndexedMedia,
   updateIndexedMediaTags,
 } from "../../api";
@@ -36,17 +38,13 @@ export function useSearchController() {
 
   const [file, setFile] = useState<File | null>(null);
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
-  const [metadataFilters, setMetadataFilters] = useState<MetadataFilters>(
-    DEFAULT_METADATA_FILTERS,
-  );
+  const [metadataFilters, setMetadataFilters] = useState<MetadataFilters>(DEFAULT_METADATA_FILTERS);
   const [ocrTextQuery, setOcrTextQuery] = useState("");
+  const [searchMode, setSearchMode] = useState<SearchMode>("media");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [resultSortMode, setResultSortMode] =
-    useState<ResultSortMode>(DEFAULT_RESULT_SORT);
+  const [resultSortMode, setResultSortMode] = useState<ResultSortMode>(DEFAULT_RESULT_SORT);
   const [activeSearchId, setActiveSearchId] = useState<string | null>(null);
-  const [selectedQuerySceneIndex, setSelectedQuerySceneIndex] = useState<
-    number | null
-  >(null);
+  const [selectedQuerySceneIndex, setSelectedQuerySceneIndex] = useState<number | null>(null);
 
   const searchHistoryQuery = useQuery({
     queryKey: SEARCH_HISTORY_QUERY_KEY,
@@ -58,18 +56,12 @@ export function useSearchController() {
   const searchHistory = searchHistoryQuery.data;
 
   const searchMutation = useMutation({
-    mutationFn: ({
-      filters,
-      ocrTextQuery,
-      queryFile,
-      resultLimit,
-    }: SearchVariables) =>
+    mutationFn: ({ filters, ocrTextQuery, queryFile, resultLimit }: SearchVariables) =>
       searchMedia(queryFile, resultLimit, ocrTextQuery, filters),
     onSuccess: (response, variables) => {
       const nextItem: SearchHistoryItem = {
         id: createHistoryId(),
-        fileName:
-          variables.queryFile?.name ?? `Text: ${variables.ocrTextQuery.trim()}`,
+        fileName: variables.queryFile?.name ?? `Text: ${variables.ocrTextQuery.trim()}`,
         filters: variables.filters,
         limit: variables.resultLimit,
         ocrTextQuery: variables.ocrTextQuery,
@@ -80,12 +72,22 @@ export function useSearchController() {
         response,
       };
 
-      updateSearchHistory((history) =>
-        [nextItem, ...history].slice(0, MAX_SEARCH_HISTORY),
-      );
+      updateSearchHistory((history) => [nextItem, ...history].slice(0, MAX_SEARCH_HISTORY));
       setActiveSearchId(nextItem.id);
       setSelectedQuerySceneIndex(response.scenes[0]?.scene_index ?? null);
     },
+  });
+
+  const faceSearchMutation = useMutation({
+    mutationFn: ({
+      filters,
+      queryFile,
+      resultLimit,
+    }: {
+      filters: MetadataFilters;
+      queryFile: File;
+      resultLimit: number;
+    }) => searchFaceMedia(queryFile, resultLimit, filters),
   });
 
   const deleteMediaMutation = useMutation({
@@ -120,15 +122,11 @@ export function useSearchController() {
     saveSearchHistory(searchHistory);
   }, [searchHistory]);
 
-  const activeSearch =
-    searchHistory.find((item) => item.id === activeSearchId) ?? null;
+  const activeSearch = searchHistory.find((item) => item.id === activeSearchId) ?? null;
   const activeResponse = activeSearch?.response ?? null;
-  const displayedPreviewUrl = activeSearch
-    ? activeSearch.queryImageUrl
-    : previewUrl;
+  const displayedPreviewUrl = activeSearch ? activeSearch.queryImageUrl : previewUrl;
   const previewIsText =
-    activeSearch?.queryMediaKind === "text" ||
-    (!file && ocrTextQuery.trim().length > 0);
+    activeSearch?.queryMediaKind === "text" || (!file && ocrTextQuery.trim().length > 0);
   const previewIsVideo = activeSearch
     ? activeSearch.queryMediaKind === "video"
     : Boolean(file?.type.startsWith("video/"));
@@ -138,9 +136,7 @@ export function useSearchController() {
   const previewIsPdf = activeSearch
     ? activeSearch.queryMediaKind === "pdf"
     : Boolean(file && isPdfFile(file));
-  const showMetadataFilters = Boolean(
-    file || activeSearch || ocrTextQuery.trim(),
-  );
+  const showMetadataFilters = Boolean(file || activeSearch || ocrTextQuery.trim());
   const sourceTypeOptions = sourceTypesFor(
     activeResponse?.results ?? [],
     metadataFilters.sourceType,
@@ -154,11 +150,26 @@ export function useSearchController() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    if (searchMode === "face") {
+      if (!file) {
+        return;
+      }
+      setActiveSearchId(null);
+      searchMutation.reset();
+      faceSearchMutation.mutate({
+        filters: metadataFilters,
+        queryFile: file,
+        resultLimit: limit,
+      });
+      return;
+    }
+
     if (!file && !ocrTextQuery.trim()) {
       return;
     }
 
     setActiveSearchId(null);
+    faceSearchMutation.reset();
     const queryImageUrl = file
       ? file.type.startsWith("video/") || isAudioFile(file) || isPdfFile(file)
         ? previewUrl
@@ -180,6 +191,7 @@ export function useSearchController() {
     setActiveSearchId(null);
     setSelectedQuerySceneIndex(null);
     searchMutation.reset();
+    faceSearchMutation.reset();
   }
 
   function handleLimitChange(value: string) {
@@ -206,11 +218,10 @@ export function useSearchController() {
     setResultSortMode(item.sortMode);
     setSelectedQuerySceneIndex(item.response.scenes[0]?.scene_index ?? null);
     searchMutation.reset();
+    faceSearchMutation.reset();
   }
 
-  function applyIdentityMutationToSearchHistory(
-    mutation: IdentityMutationResponse,
-  ) {
+  function applyIdentityMutationToSearchHistory(mutation: IdentityMutationResponse) {
     updateSearchHistory((history) =>
       history.map((item) => ({
         ...item,
@@ -228,26 +239,19 @@ export function useSearchController() {
     );
   }
 
-  function updateSearchHistory(
-    updater: (history: SearchHistoryItem[]) => SearchHistoryItem[],
-  ) {
-    queryClient.setQueryData<SearchHistoryItem[]>(
-      SEARCH_HISTORY_QUERY_KEY,
-      (history = []) => updater(history),
+  function updateSearchHistory(updater: (history: SearchHistoryItem[]) => SearchHistoryItem[]) {
+    queryClient.setQueryData<SearchHistoryItem[]>(SEARCH_HISTORY_QUERY_KEY, (history = []) =>
+      updater(history),
     );
   }
 
-  function updateActiveSearch(
-    updater: (item: SearchHistoryItem) => SearchHistoryItem,
-  ) {
+  function updateActiveSearch(updater: (item: SearchHistoryItem) => SearchHistoryItem) {
     if (!activeSearchId) {
       return;
     }
 
     updateSearchHistory((history) =>
-      history.map((item) =>
-        item.id === activeSearchId ? updater(item) : item,
-      ),
+      history.map((item) => (item.id === activeSearchId ? updater(item) : item)),
     );
   }
 
@@ -292,15 +296,18 @@ export function useSearchController() {
     queryClient,
     resultSortMode,
     results,
-    searchError: searchMutation.error,
+    faceResponse: faceSearchMutation.data ?? null,
+    searchError: faceSearchMutation.error ?? searchMutation.error,
     searchHistory,
     searchHistoryQuery,
     searchMutation,
-    searchPending: searchMutation.isPending,
+    searchMode,
+    searchPending: searchMutation.isPending || faceSearchMutation.isPending,
     selectedQuerySceneIndex,
     setSelectedQuerySceneIndex,
     setOcrTextQuery,
     setResultSortMode,
+    setSearchMode,
     setLimit,
     setMetadataFilters,
     setActiveSearchId,
@@ -341,9 +348,7 @@ function applyPersonMutation(
 
   const people = new Map<string, SearchResult["image"]["people"][number]>();
   for (const person of image.people) {
-    const nextId = sourceIds.has(person.person_id)
-      ? mutation.target_id
-      : person.person_id;
+    const nextId = sourceIds.has(person.person_id) ? mutation.target_id : person.person_id;
     const nextPerson = {
       ...person,
       label: nextId === mutation.target_id ? targetLabel : person.label,
@@ -382,9 +387,7 @@ function applySpeakerMutation(
   const voiceWeights = new Map<string, number>();
   const recognizedVoices = new Map<
     string,
-    NonNullable<
-      SearchResult["image"]["audio_analysis"]
-    >["recognized_voices"][number]
+    NonNullable<SearchResult["image"]["audio_analysis"]>["recognized_voices"][number]
   >();
 
   for (const voice of image.audio_analysis.recognized_voices) {

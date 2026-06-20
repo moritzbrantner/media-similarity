@@ -219,6 +219,6 @@ test("loads legacy search history with default sorting", async ({ page }) => {
     .click();
 
   await expect(page.getByLabel("Name or path")).toHaveValue("clip");
-  await expect(page.getByLabel("Sort")).toHaveValue("phash_distance");
+  await expect(page.getByLabel("Sort")).toHaveValue("relevance");
   await expectResultOrder(page, ["clip.mp4"]);
 });

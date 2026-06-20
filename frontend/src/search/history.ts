@@ -5,11 +5,7 @@ import {
   MAX_SEARCH_HISTORY,
   SEARCH_HISTORY_STORAGE_KEY,
 } from "./defaults";
-import type {
-  MetadataFilters,
-  ResultSortMode,
-  SearchHistoryItem,
-} from "./types";
+import type { MetadataFilters, ResultSortMode, SearchHistoryItem } from "./types";
 
 export function loadSearchHistory() {
   if (typeof localStorage === "undefined") {
@@ -31,10 +27,7 @@ export function loadSearchHistory() {
         filters: normalizeMetadataFilters(item.filters),
         ocrTextQuery: stringFilter(item.ocrTextQuery),
         queryImageUrl: normalizeStoredPreviewUrl(item.queryImageUrl),
-        queryMediaKind:
-          item.queryMediaKind ??
-          item.response.query_media_kind ??
-          "static_image",
+        queryMediaKind: item.queryMediaKind ?? item.response.query_media_kind ?? "static_image",
         response: normalizeSearchResponse(item.response),
         sortMode: normalizeResultSortMode(item.sortMode),
       }))
@@ -68,8 +61,7 @@ function isSearchHistoryItem(value: unknown): value is SearchHistoryItem {
     typeof item.fileName === "string" &&
     (item.filters === undefined || isFilterObject(item.filters)) &&
     typeof item.limit === "number" &&
-    (item.ocrTextQuery === undefined ||
-      typeof item.ocrTextQuery === "string") &&
+    (item.ocrTextQuery === undefined || typeof item.ocrTextQuery === "string") &&
     (typeof item.queryImageUrl === "string" ||
       item.queryImageUrl === null ||
       item.queryImageUrl === undefined) &&
@@ -106,9 +98,7 @@ function normalizeMetadataFilters(filters: unknown): MetadataFilters {
     captureDateTo: stringFilter(partial.captureDateTo),
     dateFrom: stringFilter(partial.dateFrom),
     dateTo: stringFilter(partial.dateTo),
-    hasGps: isHasGpsFilter(partial.hasGps)
-      ? partial.hasGps
-      : DEFAULT_METADATA_FILTERS.hasGps,
+    hasGps: isHasGpsFilter(partial.hasGps) ? partial.hasGps : DEFAULT_METADATA_FILTERS.hasGps,
     keywordQuery: stringFilter(partial.keywordQuery),
     maxHeight: stringFilter(partial.maxHeight),
     maxSizeMb: stringFilter(partial.maxSizeMb),
@@ -127,8 +117,7 @@ function normalizeMetadataFilters(filters: unknown): MetadataFilters {
       ? partial.orientation
       : DEFAULT_METADATA_FILTERS.orientation,
     personId: stringFilter(partial.personId),
-    sourceType:
-      stringFilter(partial.sourceType) || DEFAULT_METADATA_FILTERS.sourceType,
+    sourceType: stringFilter(partial.sourceType) || DEFAULT_METADATA_FILTERS.sourceType,
   };
 }
 
@@ -144,9 +133,7 @@ function normalizeStoredPreviewUrl(value: unknown) {
   return value;
 }
 
-function isMediaKindFilter(
-  value: unknown,
-): value is MetadataFilters["mediaKind"] {
+function isMediaKindFilter(value: unknown): value is MetadataFilters["mediaKind"] {
   return (
     value === "all" ||
     value === "static_image" ||
@@ -158,35 +145,22 @@ function isMediaKindFilter(
   );
 }
 
-function isNearDuplicateFilter(
-  value: unknown,
-): value is MetadataFilters["nearDuplicate"] {
+function isNearDuplicateFilter(value: unknown): value is MetadataFilters["nearDuplicate"] {
   return value === "all" || value === "exclude" || value === "only";
 }
 
-function isOrientationFilter(
-  value: unknown,
-): value is MetadataFilters["orientation"] {
-  return (
-    value === "all" ||
-    value === "landscape" ||
-    value === "portrait" ||
-    value === "square"
-  );
+function isOrientationFilter(value: unknown): value is MetadataFilters["orientation"] {
+  return value === "all" || value === "landscape" || value === "portrait" || value === "square";
 }
 
 function isHasGpsFilter(value: unknown): value is MetadataFilters["hasGps"] {
   return value === "all" || value === "yes" || value === "no";
 }
 
-function normalizeSearchResponse(
-  response: SearchHistoryItem["response"],
-): SearchResponse {
+function normalizeSearchResponse(response: SearchHistoryItem["response"]): SearchResponse {
   return {
     ...response,
-    results: Array.isArray(response.results)
-      ? response.results.map(normalizeSearchResult)
-      : [],
+    results: Array.isArray(response.results) ? response.results.map(normalizeSearchResult) : [],
     query_audio_analysis: response.query_audio_analysis ?? null,
     query_ocr_text: response.query_ocr_text ?? "",
     query_media_kind: response.query_media_kind ?? "static_image",
@@ -196,27 +170,20 @@ function normalizeSearchResponse(
           page_index: scene.page_index ?? null,
           page_number: scene.page_number ?? null,
           page_label: scene.page_label ?? null,
-          results: Array.isArray(scene.results)
-            ? scene.results.map(normalizeSearchResult)
-            : [],
+          results: Array.isArray(scene.results) ? scene.results.map(normalizeSearchResult) : [],
         }))
       : [],
   };
 }
 
-export function removeResultFromResponse(
-  response: SearchResponse,
-  id: string,
-): SearchResponse {
+export function removeResultFromResponse(response: SearchResponse, id: string): SearchResponse {
   const results = response.results.filter((result) => result.image.id !== id);
   return {
     ...response,
     count: results.length,
     results,
     scenes: response.scenes.map((scene) => {
-      const sceneResults = scene.results.filter(
-        (result) => result.image.id !== id,
-      );
+      const sceneResults = scene.results.filter((result) => result.image.id !== id);
       return {
         ...scene,
         count: sceneResults.length,
@@ -257,18 +224,14 @@ function normalizeSearchResult(result: SearchResult): SearchResult {
       pdf_page_number: result.image.pdf_page_number ?? null,
       pdf_page_count: result.image.pdf_page_count ?? null,
       visual_embedding_model: result.image.visual_embedding_model ?? null,
-      artifacts: Array.isArray(result.image.artifacts)
-        ? result.image.artifacts
-        : [],
+      artifacts: Array.isArray(result.image.artifacts) ? result.image.artifacts : [],
       tags: Array.isArray(result.image.tags) ? result.image.tags : [],
       photo_metadata: normalizePhotoMetadata(result.image.photo_metadata),
     },
   };
 }
 
-function normalizePhotoMetadata(
-  metadata: SearchResult["image"]["photo_metadata"],
-) {
+function normalizePhotoMetadata(metadata: SearchResult["image"]["photo_metadata"]) {
   if (!metadata || typeof metadata !== "object") {
     return null;
   }
@@ -296,6 +259,7 @@ function isResultSortMode(value: unknown): value is ResultSortMode {
     value === "filename" ||
     value === "modified_newest" ||
     value === "phash_distance" ||
+    value === "relevance" ||
     value === "size_largest" ||
     value === "vector_score"
   );

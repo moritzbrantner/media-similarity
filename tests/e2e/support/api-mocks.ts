@@ -2,6 +2,7 @@ import type { Page, Route } from "@playwright/test";
 import {
   completedIndexEvents,
   completedIndexJob,
+  faceSearchResponse,
   healthResponse,
   indexResponse,
   inverseIndexResponse,
@@ -22,6 +23,7 @@ export type ApiMockOptions = {
   jobs?: unknown[];
   jobEvents?: unknown[];
   searchResponse?: unknown;
+  faceSearchResponse?: unknown;
   inverseIndex?: unknown;
   smartAlbums?: unknown[];
   smartAlbumResults?: unknown;
@@ -286,6 +288,10 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
     }
 
     await route.fulfill({ json: currentWorkflows });
+  });
+
+  await page.route("**/api/search/face?**", async (route) => {
+    await route.fulfill({ json: options.faceSearchResponse ?? faceSearchResponse });
   });
 
   await page.route("**/api/search?**", async (route) => {

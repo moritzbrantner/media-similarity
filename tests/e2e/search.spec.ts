@@ -73,6 +73,34 @@ test("uploads query media and renders search results", async ({ page }) => {
   ).toBeVisible();
 });
 
+test("uploads a face query and renders people plus media matches", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Face" }).click();
+  await page.locator("#query-image").setInputFiles(imageUpload);
+  await page.getByRole("button", { name: "Search" }).click();
+
+  await expect(page.getByText("1 people, 1 media match(es)")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Ada" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "portrait.png" })).toBeVisible();
+});
+
+test("renders face search model failures", async ({ page }) => {
+  await mockEndpointFailure(
+    page,
+    "**/api/search/face?**",
+    503,
+    "Face detection model is not active",
+  );
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "Face" }).click();
+  await page.locator("#query-image").setInputFiles(imageUpload);
+  await page.getByRole("button", { name: "Search" }).click();
+
+  await expect(page.getByText("Face detection model is not active")).toBeVisible();
+});
+
 test("omits empty numeric search filters from search requests", async ({ page }) => {
   let searchUrl: string | null = null;
   await page.unroute("**/api/search?**");

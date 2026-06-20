@@ -250,7 +250,7 @@ test("metadata-filtered searches keep requested server-side limit", async ({ pag
   await expect(page.locator("article h3")).toHaveCount(1);
 });
 
-test("sorts results by pHash distance by default and supports changing sort", async ({ page }) => {
+test("sorts results by relevance by default and supports changing sort", async ({ page }) => {
   await page.goto("/");
 
   await page.locator("#query-image").setInputFiles({
@@ -260,6 +260,7 @@ test("sorts results by pHash distance by default and supports changing sort", as
   });
   await page.getByRole("button", { name: "Search" }).click();
 
+  await expect(page.getByLabel("Sort")).toHaveValue("relevance");
   await expect(page.locator("article h3")).toHaveText(["sunrise.jpg", "portrait.png"]);
 
   await page.getByLabel("Sort").selectOption("vector_score");
@@ -273,6 +274,7 @@ test("sorts rendered results with every supported sort mode", async ({ page }) =
 
   await uploadAndSearch(page);
 
+  await expect(page.getByLabel("Sort")).toHaveValue("relevance");
   await expectResultOrder(page, ["logo.png", "sunrise.jpg", "portrait.png", "clip.mp4"]);
 
   await page.getByLabel("Sort").selectOption("vector_score");
