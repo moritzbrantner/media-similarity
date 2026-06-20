@@ -9,7 +9,7 @@ use model_runtime::{ModelBundle, ModelBundleFile, ModelBundleManifest, ModelTask
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::config::Settings;
 use crate::domain::models::{FaceBoxPayload, FaceDetectionPayload, PersonSummary};
@@ -17,6 +17,9 @@ use crate::storage::MediaVectorStore;
 use crate::workers::media::media::DecodedMedia;
 use crate::workers::media::models::{load_role_bundle, ModelRole};
 use crate::workers::media::persons::{assign_person, face_point_payload, summarize_people};
+
+const FACE_ANALYSIS_TIMEOUT: Duration = Duration::from_secs(30);
+const FACE_ANALYSIS_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct FaceAnalysis {
@@ -95,20 +98,28 @@ pub async fn analyze_faces_for_media_cancellable(
         let _ = sender.send(result);
     });
 
-    let detected = loop {
-        if is_cancelled() {
-            return Err("job cancelled".to_string());
+    let detected = match receive_face_analysis_result(
+        receiver,
+        FACE_ANALYSIS_TIMEOUT,
+        &mut is_cancelled,
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(FaceAnalysisWorkerError::Cancelled) => return Err("job cancelled".to_string()),
+        Err(FaceAnalysisWorkerError::TimedOut(timeout)) => {
+            tracing::warn!(
+                %media_id,
+                timeout_seconds = timeout.as_secs(),
+                "face analysis timed out; skipping faces for media item"
+            );
+            return Ok(FaceAnalysis::default());
         }
-        match receiver.try_recv() {
-            Ok(result) => break result,
-            Err(mpsc::TryRecvError::Empty) => {
-                tokio::time::sleep(Duration::from_millis(50)).await;
-            }
-            Err(mpsc::TryRecvError::Disconnected) => {
-                return Err("face analysis worker stopped before returning a result".to_string());
-            }
+        Err(FaceAnalysisWorkerError::Disconnected) => {
+            return Err("face analysis worker stopped before returning a result".to_string());
         }
     };
+
     let mut detected = match detected {
         Ok(faces) => faces,
         Err(error) => {
@@ -156,6 +167,38 @@ pub async fn analyze_faces_for_media_cancellable(
         faces: payload_faces,
         person_clusters,
     })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FaceAnalysisWorkerError {
+    Cancelled,
+    TimedOut(Duration),
+    Disconnected,
+}
+
+async fn receive_face_analysis_result(
+    receiver: mpsc::Receiver<Result<Vec<DetectedFace>, String>>,
+    timeout: Duration,
+    mut is_cancelled: impl FnMut() -> bool,
+) -> Result<Result<Vec<DetectedFace>, String>, FaceAnalysisWorkerError> {
+    let started_at = Instant::now();
+    loop {
+        if is_cancelled() {
+            return Err(FaceAnalysisWorkerError::Cancelled);
+        }
+        match receiver.try_recv() {
+            Ok(result) => return Ok(result),
+            Err(mpsc::TryRecvError::Empty) if started_at.elapsed() >= timeout => {
+                return Err(FaceAnalysisWorkerError::TimedOut(timeout));
+            }
+            Err(mpsc::TryRecvError::Empty) => {
+                tokio::time::sleep(FACE_ANALYSIS_POLL_INTERVAL).await;
+            }
+            Err(mpsc::TryRecvError::Disconnected) => {
+                return Err(FaceAnalysisWorkerError::Disconnected);
+            }
+        }
+    }
 }
 
 pub struct FaceAnalyzer {
@@ -450,9 +493,14 @@ fn bundle_file(remote_path: &str, local_path: &Path) -> ModelBundleFile {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
     use image::{ImageBuffer, Rgb};
 
-    use super::{FaceBox, FaceDetector, SharedFaceBox};
+    use super::{
+        receive_face_analysis_result, FaceAnalysisWorkerError, FaceBox, FaceDetector, SharedFaceBox,
+    };
     use crate::config::Settings;
 
     #[test]
@@ -479,5 +527,40 @@ mod tests {
         assert_eq!(service.y, 0.2);
         assert_eq!(service.width, 0.3);
         assert_eq!(service.height, 0.4);
+    }
+
+    #[tokio::test]
+    async fn face_analysis_wait_returns_worker_result() {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        sender.send(Ok(Vec::new())).unwrap();
+
+        let faces = receive_face_analysis_result(receiver, Duration::ZERO, || false)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(faces.is_empty());
+    }
+
+    #[tokio::test]
+    async fn face_analysis_wait_honors_cancellation() {
+        let (_sender, receiver) = mpsc::sync_channel(1);
+
+        let error = receive_face_analysis_result(receiver, Duration::ZERO, || true)
+            .await
+            .unwrap_err();
+
+        assert_eq!(error, FaceAnalysisWorkerError::Cancelled);
+    }
+
+    #[tokio::test]
+    async fn face_analysis_wait_times_out() {
+        let (_sender, receiver) = mpsc::sync_channel(1);
+
+        let error = receive_face_analysis_result(receiver, Duration::ZERO, || false)
+            .await
+            .unwrap_err();
+
+        assert_eq!(error, FaceAnalysisWorkerError::TimedOut(Duration::ZERO));
     }
 }
