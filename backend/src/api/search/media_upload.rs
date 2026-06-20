@@ -47,6 +47,29 @@ pub async fn search_local_image(
         .map_err(search_error)
 }
 
+pub async fn search_text_query(
+    state: Arc<AppState>,
+    limit: Option<u32>,
+    ocr_text: Option<&str>,
+    filters: SearchFilters,
+) -> Result<SearchResponse, ApiError> {
+    let text = ocr_text
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            ApiError::bad_request("Search requires either a media upload or text query")
+        })?;
+    let service = ImageSearchService::new(
+        state.indexing_settings(),
+        state.store.clone(),
+        state.embedder.clone(),
+    );
+    service
+        .search_text_filtered(limit, text, filters)
+        .await
+        .map_err(search_error)
+}
+
 pub async fn search_pdf_upload(
     state: Arc<AppState>,
     limit: Option<u32>,

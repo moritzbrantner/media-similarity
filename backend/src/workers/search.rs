@@ -1,6 +1,6 @@
 use crate::config::Settings;
-use crate::domain::models::{ImagePayload, SearchResponse, SearchResult};
-use crate::storage::{MediaSearchFilter, MediaVectorStore};
+use crate::domain::models::{AudioAnalysis, ImagePayload, SearchResponse, SearchResult};
+use crate::storage::{MediaSearchFilter, MediaVectorStore, StoredPoint};
 use crate::workers::media::hashing::{hash_distance, phash_image};
 use crate::workers::media::media::DecodedMedia;
 use crate::workers::media::ocr::{normalize_ocr_query, ocr_match_score};
@@ -170,6 +170,64 @@ impl ImageSearchService {
             query_ocr_text: normalized_ocr_query,
         })
     }
+
+    pub async fn search_text_filtered(
+        &self,
+        limit: Option<u32>,
+        text: &str,
+        filters: SearchFilters,
+    ) -> Result<SearchResponse, String> {
+        self.store.ensure_collection().await?;
+        let requested_limit = limit.unwrap_or(self.settings.default_search_limit);
+        let normalized_text_query = normalize_ocr_query(Some(text));
+        if normalized_text_query.is_empty() {
+            return Err("text query is required".to_string());
+        }
+
+        let points = self
+            .store
+            .scroll_media_points_filtered(Some(filters.qdrant_filter()))
+            .await?;
+        let mut results = Vec::new();
+        for point in points {
+            let Some(image) = payload_from_stored_point(point)? else {
+                continue;
+            };
+            if !filters.matches_without_hash(&image) {
+                continue;
+            }
+            let Some(ocr_score) = media_text_match_score(&image, &normalized_text_query) else {
+                continue;
+            };
+            results.push(SearchResult {
+                image,
+                vector_score: ocr_score,
+                hash_distance: None,
+                ocr_score: Some(ocr_score),
+                near_duplicate: false,
+                query_scene_index: None,
+            });
+        }
+
+        results.sort_by(|left, right| {
+            right
+                .ocr_score
+                .unwrap_or_default()
+                .total_cmp(&left.ocr_score.unwrap_or_default())
+                .then_with(|| left.image.filename.cmp(&right.image.filename))
+        });
+        results.truncate(requested_limit as usize);
+
+        Ok(SearchResponse {
+            query_phash: String::new(),
+            count: results.len(),
+            results,
+            query_media_kind: "text".to_string(),
+            scenes: Vec::new(),
+            query_audio_analysis: None,
+            query_ocr_text: normalized_text_query,
+        })
+    }
 }
 
 impl SearchFilters {
@@ -266,6 +324,111 @@ impl SearchFilters {
         }
         true
     }
+
+    fn matches_without_hash(&self, image: &ImagePayload) -> bool {
+        if matches!(self.near_duplicate, Some(NearDuplicateFilter::Only)) {
+            return false;
+        }
+        if let Some(orientation) = self.orientation {
+            let image_orientation = image_orientation(image.width, image.height);
+            if image_orientation != orientation {
+                return false;
+            }
+        }
+        if let Some(person_id) = self.person_id.as_deref() {
+            if !image
+                .people
+                .iter()
+                .any(|person| person.person_id == person_id)
+            {
+                return false;
+            }
+        }
+        if let Some(query) = self.name_query.as_deref() {
+            if !matches_any_text(
+                query,
+                [
+                    image.filename.as_str(),
+                    image.relative_path.as_str(),
+                    image.path.as_str(),
+                    image.source_uri.as_deref().unwrap_or_default(),
+                ],
+            ) {
+                return false;
+            }
+        }
+        if let Some(query) = self.camera_query.as_deref() {
+            let Some(metadata) = &image.photo_metadata else {
+                return false;
+            };
+            if !matches_any_text(
+                query,
+                [
+                    metadata.camera_make.as_deref().unwrap_or_default(),
+                    metadata.camera_model.as_deref().unwrap_or_default(),
+                    metadata.lens_model.as_deref().unwrap_or_default(),
+                ],
+            ) {
+                return false;
+            }
+        }
+        if let Some(query) = self.keyword_query.as_deref() {
+            let metadata_matches = image
+                .photo_metadata
+                .as_ref()
+                .map(|metadata| {
+                    metadata
+                        .keywords
+                        .iter()
+                        .any(|keyword| text_matches(keyword, query))
+                })
+                .unwrap_or(false);
+            let tag_matches = image.tags.iter().any(|tag| text_matches(tag, query));
+            if !metadata_matches && !tag_matches {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+fn payload_from_stored_point(point: StoredPoint) -> Result<Option<ImagePayload>, String> {
+    let Some(payload) = point.payload else {
+        return Ok(None);
+    };
+    serde_json::from_value(payload)
+        .map(Some)
+        .map_err(|error| error.to_string())
+}
+
+fn media_text_match_score(image: &ImagePayload, normalized_query: &str) -> Option<f32> {
+    [
+        ocr_match_score(&image.ocr_text, normalized_query),
+        image
+            .ocr_frames
+            .iter()
+            .filter_map(|frame| ocr_match_score(&frame.text, normalized_query))
+            .max_by(f32::total_cmp),
+        image
+            .audio_analysis
+            .as_ref()
+            .and_then(|analysis| audio_text_match_score(analysis, normalized_query)),
+    ]
+    .into_iter()
+    .flatten()
+    .max_by(f32::total_cmp)
+}
+
+fn audio_text_match_score(analysis: &AudioAnalysis, normalized_query: &str) -> Option<f32> {
+    std::iter::once(ocr_match_score(&analysis.transcript_text, normalized_query))
+        .chain(
+            analysis
+                .transcript_segments
+                .iter()
+                .map(|segment| ocr_match_score(&segment.text, normalized_query)),
+        )
+        .flatten()
+        .max_by(f32::total_cmp)
 }
 
 fn matches_any_text<'a>(query: &str, values: impl IntoIterator<Item = &'a str>) -> bool {
@@ -283,5 +446,104 @@ fn image_orientation(width: u32, height: u32) -> OrientationFilter {
         OrientationFilter::Landscape
     } else {
         OrientationFilter::Portrait
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{media_text_match_score, NearDuplicateFilter, OrientationFilter, SearchFilters};
+    use crate::domain::models::{AudioAnalysis, AudioTranscriptSegment, ImagePayload};
+
+    #[test]
+    fn media_text_score_covers_ocr_frames_and_transcripts() {
+        let mut image = test_payload("clip.mp4");
+        image.ocr_text = "Opening title".to_string();
+        image.audio_analysis = Some(AudioAnalysis {
+            speech_detected: true,
+            speech_ratio: 1.0,
+            speech_segments: Vec::new(),
+            audio_segments: Vec::new(),
+            recognized_voices: Vec::new(),
+            transcript_text: String::new(),
+            transcript_language: Some("en".to_string()),
+            transcript_segments: vec![AudioTranscriptSegment {
+                segment_index: 0,
+                start_seconds: Some(0.0),
+                end_seconds: Some(1.0),
+                text: "Quarterly budget review".to_string(),
+                confidence: Some(0.9),
+            }],
+            tempo_bpm: None,
+            tempo_confidence: 0.0,
+            tempo_onset_count: 0,
+        });
+
+        assert!(media_text_match_score(&image, "budget review").is_some());
+        assert!(media_text_match_score(&image, "missing phrase").is_none());
+    }
+
+    #[test]
+    fn text_only_filters_apply_metadata_without_hash_distance() {
+        let image = test_payload("portrait.jpg");
+        let filters = SearchFilters {
+            orientation: Some(OrientationFilter::Portrait),
+            near_duplicate: Some(NearDuplicateFilter::Exclude),
+            name_query: Some("portrait".to_string()),
+            ..SearchFilters::default()
+        };
+
+        assert!(filters.matches_without_hash(&image));
+
+        let near_duplicate_only = SearchFilters {
+            near_duplicate: Some(NearDuplicateFilter::Only),
+            ..SearchFilters::default()
+        };
+        assert!(!near_duplicate_only.matches_without_hash(&image));
+    }
+
+    fn test_payload(filename: &str) -> ImagePayload {
+        ImagePayload {
+            id: filename.to_string(),
+            path: format!("/media/{filename}"),
+            relative_path: filename.to_string(),
+            filename: filename.to_string(),
+            width: 800,
+            height: 1200,
+            size_bytes: 1_024,
+            modified_at: 1_700_000_000.0,
+            phash: "0000000000000000".to_string(),
+            thumbnail_url: None,
+            animated_thumbnail_url: None,
+            media_kind: "static_image".to_string(),
+            frame_count: None,
+            duration_ms: None,
+            full_video_url: None,
+            full_audio_url: None,
+            full_pdf_url: None,
+            pdf_page_url: None,
+            pdf_document_id: None,
+            pdf_page_index: None,
+            pdf_page_number: None,
+            pdf_page_count: None,
+            audio_analysis: None,
+            ocr_text: String::new(),
+            ocr_frames: Vec::new(),
+            visual_embedding_model: None,
+            faces: Vec::new(),
+            people: Vec::new(),
+            artifacts: Vec::new(),
+            tags: Vec::new(),
+            photo_metadata: None,
+            scene_clip_url: None,
+            scene_index: None,
+            scene_start_frame: None,
+            scene_end_frame: None,
+            scene_start_seconds: None,
+            scene_end_seconds: None,
+            source_type: "local".to_string(),
+            source_item_uri: None,
+            indexing_profile: None,
+            source_uri: Some("/media".to_string()),
+        }
     }
 }

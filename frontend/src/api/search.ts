@@ -24,13 +24,15 @@ export type SearchMediaFilters = {
 };
 
 export async function searchMedia(
-  file: File,
+  file: File | null,
   limit: number,
   ocrText: string,
   filters: SearchMediaFilters,
 ): Promise<SearchResponse> {
   const formData = new FormData();
-  formData.append("file", file);
+  if (file) {
+    formData.append("file", file);
+  }
   const params = new URLSearchParams({ limit: String(limit) });
   const normalizedOcrText = ocrText.trim();
   if (normalizedOcrText) {
@@ -45,7 +47,10 @@ export async function searchMedia(
   return parseResponse<SearchResponse>(response);
 }
 
-function appendSearchFilterParams(params: URLSearchParams, filters: SearchMediaFilters) {
+function appendSearchFilterParams(
+  params: URLSearchParams,
+  filters: SearchMediaFilters,
+) {
   appendStringParam(params, "source_type", filters.sourceType, "all");
   appendStringParam(params, "media_kind", filters.mediaKind, "all");
   appendStringParam(params, "name_query", filters.nameQuery);
@@ -79,7 +84,11 @@ function appendStringParam(
   }
 }
 
-function appendNumberParam(params: URLSearchParams, name: string, value: string) {
+function appendNumberParam(
+  params: URLSearchParams,
+  name: string,
+  value: string,
+) {
   const normalized = value.trim();
   if (!normalized) {
     return;

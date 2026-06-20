@@ -1,13 +1,25 @@
 import type { FormEvent } from "react";
 
-import { MetadataFiltersPanel, ResultSortSelect } from "../components/filter-fields";
+import {
+  MetadataFiltersPanel,
+  ResultSortSelect,
+} from "../components/filter-fields";
 import { QueryMediaForm } from "../components/query-media-form";
 import { QueryPreviewPanel } from "../components/query-preview-panel";
 import { ResultsGrid } from "../components/results-grid";
 import { SceneResultsList } from "../components/scene-results-list";
 import { SearchHistoryList } from "../components/search-history-list";
-import type { MetadataFilters, ResultSortMode, SearchHistoryItem } from "../search/types";
-import type { HealthResponse, IndexResponse, SearchResponse, SearchResult } from "../types";
+import type {
+  MetadataFilters,
+  ResultSortMode,
+  SearchHistoryItem,
+} from "../search/types";
+import type {
+  HealthResponse,
+  IndexResponse,
+  SearchResponse,
+  SearchResult,
+} from "../types";
 
 type SearchPageProps = {
   activeResponse: SearchResponse | null;
@@ -35,6 +47,7 @@ type SearchPageProps = {
   onUpdateTags: (id: string, tags: string[]) => void;
   previewIsAudio: boolean;
   previewIsPdf: boolean;
+  previewIsText: boolean;
   previewIsVideo: boolean;
   resultSortMode: ResultSortMode;
   results: SearchResult[];
@@ -73,6 +86,7 @@ export function SearchPage({
   onUpdateTags,
   previewIsAudio,
   previewIsPdf,
+  previewIsText,
   previewIsVideo,
   resultSortMode,
   results,
@@ -104,6 +118,7 @@ export function SearchPage({
         <QueryPreviewPanel
           previewIsAudio={previewIsAudio}
           previewIsPdf={previewIsPdf}
+          previewIsText={previewIsText}
           previewIsVideo={previewIsVideo}
           previewUrl={displayedPreviewUrl}
         />
@@ -129,23 +144,33 @@ export function SearchPage({
         <div className="flex min-w-0 flex-col gap-3">
           <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-neutral-950">Results</h2>
+              <h2 className="text-lg font-semibold text-neutral-950">
+                Results
+              </h2>
               <p className="text-sm text-neutral-600">
                 {activeResponse?.scenes.length
                   ? `${activeResponse.scenes.length} scene(s), ${results.length} unique result(s)`
                   : activeResponse
-                    ? `${results.length} of ${activeResponse.count} result(s), query pHash ${activeResponse.query_phash}`
+                    ? activeResponse.query_media_kind === "text"
+                      ? `${results.length} of ${activeResponse.count} text result(s)`
+                      : `${results.length} of ${activeResponse.count} result(s), query pHash ${activeResponse.query_phash}`
                     : searchPending
                       ? "Searching indexed media."
                       : "Search results will appear here."}
               </p>
             </div>
             {health ? (
-              <span className="truncate text-sm text-neutral-600" title={health.collection}>
+              <span
+                className="truncate text-sm text-neutral-600"
+                title={health.collection}
+              >
                 Collection: {health.collection}
               </span>
             ) : null}
-            <ResultSortSelect onChange={onResultSortModeChange} value={resultSortMode} />
+            <ResultSortSelect
+              onChange={onResultSortModeChange}
+              value={resultSortMode}
+            />
           </div>
 
           {activeResponse?.scenes.length ? (

@@ -184,7 +184,13 @@ export type SearchResponse = {
   query_phash: string;
   count: number;
   results: SearchResult[];
-  query_media_kind: "static_image" | "animated_gif" | "video" | "audio" | "pdf";
+  query_media_kind:
+    | "static_image"
+    | "animated_gif"
+    | "video"
+    | "audio"
+    | "pdf"
+    | "text";
   scenes: SearchSceneResponse[];
   query_audio_analysis: AudioAnalysis | null;
   query_ocr_text: string;

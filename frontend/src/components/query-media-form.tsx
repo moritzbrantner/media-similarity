@@ -34,13 +34,18 @@ export function QueryMediaForm({
   searchError,
   searchPending,
 }: QueryMediaFormProps) {
+  const canSearch = Boolean(file || ocrTextQuery.trim());
+
   return (
     <form
       className="flex flex-col gap-4 rounded-lg border border-neutral-300 bg-white p-4 shadow-sm"
       onSubmit={onSubmit}
     >
       <div>
-        <Label className="text-sm font-semibold text-neutral-900" htmlFor="query-image">
+        <Label
+          className="text-sm font-semibold text-neutral-900"
+          htmlFor="query-image"
+        >
           Query media
         </Label>
         <Label
@@ -52,8 +57,8 @@ export function QueryMediaForm({
             {file?.name ?? "Choose an image, video, audio, or PDF"}
           </span>
           <span className="text-xs text-neutral-500">
-            PNG, JPEG, GIF, WebP, BMP, TIFF, MP4, MOV, WebM, MKV, AVI, MP3, WAV, FLAC, M4A, AAC,
-            OGG, Opus, or PDF
+            PNG, JPEG, GIF, WebP, BMP, TIFF, MP4, MOV, WebM, MKV, AVI, MP3, WAV,
+            FLAC, M4A, AAC, OGG, Opus, or PDF
           </span>
         </Label>
         <Input
@@ -66,7 +71,10 @@ export function QueryMediaForm({
       </div>
 
       <div>
-        <Label className="text-sm font-semibold text-neutral-900" htmlFor="limit">
+        <Label
+          className="text-sm font-semibold text-neutral-900"
+          htmlFor="limit"
+        >
           Result limit
         </Label>
         <Input
@@ -81,16 +89,22 @@ export function QueryMediaForm({
       </div>
 
       <div>
-        <Label className="text-sm font-semibold text-neutral-900" htmlFor="ocr-text-query">
-          Text in media
+        <Label
+          className="text-sm font-semibold text-neutral-900"
+          htmlFor="ocr-text-query"
+        >
+          Text query
         </Label>
         <div className="mt-2 flex h-10 items-center gap-2 rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-950 transition focus-within:border-emerald-700 focus-within:ring-2 focus-within:ring-emerald-200">
-          <FileText className="size-4 shrink-0 text-neutral-500" aria-hidden="true" />
+          <FileText
+            className="size-4 shrink-0 text-neutral-500"
+            aria-hidden="true"
+          />
           <Input
             className="min-w-0 flex-1 bg-transparent outline-none"
             id="ocr-text-query"
             onChange={(event) => onOcrTextQueryChange(event.target.value)}
-            placeholder="Invoice, title, sign"
+            placeholder="Invoice, title, spoken phrase"
             type="search"
             value={ocrTextQuery}
           />
@@ -100,7 +114,7 @@ export function QueryMediaForm({
       <div className="flex gap-2">
         <Button
           className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
-          disabled={!file || searchPending}
+          disabled={!canSearch || searchPending}
           type="submit"
         >
           {searchPending ? (

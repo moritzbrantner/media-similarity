@@ -4,7 +4,8 @@ use axum::extract::{Multipart, Query, State};
 use axum::Json;
 
 use super::media_upload::{
-    search_audio_upload, search_local_image, search_pdf_upload, search_video_upload,
+    search_audio_upload, search_local_image, search_pdf_upload, search_text_query,
+    search_video_upload,
 };
 use super::query::SearchQuery;
 use crate::api::ApiError;
@@ -70,9 +71,16 @@ pub async fn search_upload(
         break;
     }
 
-    let raw = uploaded.ok_or_else(|| {
-        ApiError::bad_request("Upload must be an image, video, audio, or PDF file")
-    })?;
+    let Some(raw) = uploaded else {
+        return search_text_query(
+            Arc::clone(&state),
+            query.limit,
+            query.ocr_text.as_deref(),
+            filters,
+        )
+        .await
+        .map(Json);
+    };
     let upload_kind = upload_kind.ok_or_else(|| {
         ApiError::bad_request("Upload must be an image, video, audio, or PDF file")
     })?;

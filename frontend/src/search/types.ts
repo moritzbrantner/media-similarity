@@ -53,10 +53,15 @@ export type SearchHistoryItem = {
 export type SearchVariables = {
   filters: MetadataFilters;
   ocrTextQuery: string;
-  queryFile: File;
+  queryFile: File | null;
   queryImageUrl: string | null;
   resultLimit: number;
   sortMode: ResultSortMode;
 };
 
-export type AppView = "albums" | "configure" | "inverse-index" | "search" | "workflows";
+export type AppView =
+  | "albums"
+  | "configure"
+  | "inverse-index"
+  | "search"
+  | "workflows";
