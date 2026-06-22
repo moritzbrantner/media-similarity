@@ -5,6 +5,7 @@ import { sortResults } from "../search/sorting";
 import type { MetadataFilters, ResultSortMode } from "../search/types";
 import type { SearchSceneResponse } from "../types";
 import { ResultsGrid } from "./results-grid";
+import { formatSeconds } from "./results/result-formatting";
 
 export function SceneResultsList({
   deletingId,
@@ -119,8 +120,4 @@ export function SceneResultsList({
       ) : null}
     </div>
   );
-}
-
-function formatSeconds(seconds: number) {
-  return `${seconds.toFixed(1)}s`;
 }

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="7fd43a4b-17f4-4952-9aaa-0b1a678c8d15" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/bun.lock" beforeDir="false" afterPath="$PROJECT_DIR$/bun.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/inverse-index-page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/inverse-index-page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/results/media-links.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/results/media-links.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/results/result-card.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/results/result-card.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/scene-results-list.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/scene-results-list.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/frontend/src/components/smart-albums-page.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/frontend/src/components/smart-albums-page.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectColorInfo"><![CDATA[{
+  "associatedIndex": 2,
+  "fromUser": false
+}]]></component>
+  <component name="ProjectId" id="3FScPk1OW2U8AV68Aj1OYJV3bG1" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "codeWithMe.voiceChat.enabledByDefault": "false",
+    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
+    "git-widget-placeholder": "main",
+    "junie.onboarding.icon.badge.shown": "true",
+    "last_opened_file_path": "/home/moenarch/moritzbrantner/media-similarity",
+    "nodejs_package_manager_path": "bun",
+    "to.speed.mode.migration.done": "true",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-js-predefined-d6986cc7102b-31caf2ab9e3c-JavaScript-WS-261.25134.101" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="7fd43a4b-17f4-4952-9aaa-0b1a678c8d15" name="Changes" comment="" />
+      <created>1782071891282</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1782071891282</updated>
+      <workItem from="1782071892602" duration="38000" />
+    </task>
+    <servers />
+  </component>
+</project>
