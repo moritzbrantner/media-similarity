@@ -18,6 +18,9 @@ const ONNX_EMBEDDING_TIMEOUT: Duration = Duration::from_secs(30);
 pub trait VisualEmbeddingBackend: Send + Sync {
     fn model_name(&self) -> &str;
     fn vector_size(&self) -> usize;
+    fn is_degraded(&self) -> bool {
+        false
+    }
     fn embed_image(&self, image: &RgbImage) -> Result<Vec<f32>, String>;
 
     fn embed_media(&self, frames: &[MediaFrame], motion_weight: f32) -> Result<Vec<f32>, String> {
@@ -81,6 +84,10 @@ impl VisualEmbeddingBackend for LegacyColorEmbedder {
 
     fn vector_size(&self) -> usize {
         self.vector_size
+    }
+
+    fn is_degraded(&self) -> bool {
+        true
     }
 
     fn embed_image(&self, image: &RgbImage) -> Result<Vec<f32>, String> {
@@ -259,7 +266,7 @@ impl FallbackVisualEmbedder {
 
 impl VisualEmbeddingBackend for FallbackVisualEmbedder {
     fn model_name(&self) -> &str {
-        if self.primary_disabled.load(Ordering::Relaxed) {
+        if self.is_degraded() {
             self.fallback.model_name()
         } else {
             self.primary.model_name()
@@ -270,10 +277,15 @@ impl VisualEmbeddingBackend for FallbackVisualEmbedder {
         self.primary.vector_size()
     }
 
+    fn is_degraded(&self) -> bool {
+        self.primary_disabled.load(Ordering::Relaxed) || !self.primary.is_available()
+    }
+
     fn embed_image(&self, image: &RgbImage) -> Result<Vec<f32>, String> {
         match self.primary_embed_image(image) {
             Ok(vector) => Ok(vector),
             Err(error) => {
+                self.primary_disabled.store(true, Ordering::Relaxed);
                 tracing::warn!(%error, "falling back to legacy visual embedding");
                 self.fallback.embed_image(image)
             }
@@ -290,6 +302,7 @@ impl VisualEmbeddingBackend for FallbackVisualEmbedder {
 
         self.primary_embed_media(frames, motion_weight)
             .or_else(|error| {
+                self.primary_disabled.store(true, Ordering::Relaxed);
                 tracing::warn!(%error, "falling back to legacy visual media embedding");
                 self.fallback.embed_media(frames, motion_weight)
             })

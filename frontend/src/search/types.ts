@@ -34,6 +34,7 @@ export type ResultSortMode =
   | "filename"
   | "modified_newest"
   | "phash_distance"
+  | "relevance"
   | "size_largest"
   | "vector_score";
 
@@ -59,9 +60,6 @@ export type SearchVariables = {
   sortMode: ResultSortMode;
 };
 
-export type AppView =
-  | "albums"
-  | "configure"
-  | "inverse-index"
-  | "search"
-  | "workflows";
+export type SearchMode = "face" | "media";
+
+export type AppView = "albums" | "configure" | "inverse-index" | "search" | "workflows";

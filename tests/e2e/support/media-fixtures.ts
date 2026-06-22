@@ -1,5 +1,6 @@
 import type {
   HealthResponse,
+  FaceSearchResponse,
   IndexResponse,
   InverseIndexResponse,
   JobSnapshot,
@@ -528,6 +529,7 @@ const defaultResult = {
   near_duplicate: true,
   ocr_score: null as number | null,
   query_scene_index: null as number | null,
+  relevance_score: 2.88 as number | null,
   vector_score: 0.7123,
 };
 
@@ -555,6 +557,8 @@ const defaultSearchResponse = {
   query_media_kind: "static_image",
   query_ocr_text: "",
   query_phash: "0123456789abcdef",
+  query_visual_embedding_degraded: false,
+  query_visual_embedding_model: "xenova-clip-vit-base-patch32-onnx" as string | null,
   results: [
     makeResult({
       hash_distance: 16,
@@ -587,6 +591,82 @@ export const completedIndexEvents = makeJobEvents(completedIndexJob);
 export const sourceConfigResponse: SourceConfigResponse = makeSourceConfigResponse();
 export const workflowConfigResponse: WorkflowConfigResponse = makeWorkflowConfigResponse();
 export const searchResponse: SearchResponse = makeSearchResponse();
+export const faceSearchResponse: FaceSearchResponse = {
+  people: [
+    {
+      face_count: 2,
+      label: "Ada",
+      matched_face_ids: ["face-1", "face-2"],
+      media_count: 2,
+      person_id: "person-ada",
+      score: 0.9876,
+    },
+  ],
+  query: {
+    detected_faces: [
+      {
+        bbox: { height: 0.5, width: 0.5, x: 0.25, y: 0.2 },
+        confidence: 0.98,
+        face_id: "query#face=0-0",
+        frame_index: 0,
+        media_id: "query",
+        person_id: null,
+        person_label: null,
+      },
+    ],
+    model_status: {
+      degraded: false,
+      detail: null,
+      face_detection_active: true,
+      face_embedding_active: true,
+    },
+    selected_face: {
+      bbox: { height: 0.5, width: 0.5, x: 0.25, y: 0.2 },
+      confidence: 0.98,
+      face_id: "query#face=0-0",
+      frame_index: 0,
+      media_id: "query",
+      person_id: null,
+      person_label: null,
+    },
+  },
+  results: [
+    {
+      face_score: 0.9876,
+      matched_face_ids: ["face-1"],
+      matched_person_id: "person-ada",
+      result: makeResult({
+        image: {
+          faces: [
+            {
+              bbox: { height: 0.4, width: 0.4, x: 0.2, y: 0.1 },
+              confidence: 0.92,
+              face_id: "face-1",
+              frame_index: 0,
+              media_id: "import-portrait",
+              person_id: "person-ada",
+              person_label: "Ada",
+            },
+          ],
+          filename: "portrait.png",
+          id: "import-portrait",
+          people: [
+            {
+              confidence: 0.92,
+              face_count: 1,
+              label: "Ada",
+              media_count: 1,
+              person_id: "person-ada",
+            },
+          ],
+          relative_path: "portraits/portrait.png",
+        },
+        relevance_score: 0.9876,
+        vector_score: 0.9876,
+      }),
+    },
+  ],
+};
 
 export const smartAlbum: SmartAlbum = {
   created_at: "2026-05-22T10:00:00Z",

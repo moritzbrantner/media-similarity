@@ -1,7 +1,7 @@
 import type { MetadataFilters, ResultSortMode } from "./types";
 
 export const DEFAULT_LIMIT = 12;
-export const DEFAULT_RESULT_SORT: ResultSortMode = "phash_distance";
+export const DEFAULT_RESULT_SORT: ResultSortMode = "relevance";
 export const MAX_SEARCH_HISTORY = 8;
 export const SEARCH_HISTORY_STORAGE_KEY = "image-similarity-search-history";
 export const SEARCH_HISTORY_QUERY_KEY = ["search-history"] as const;

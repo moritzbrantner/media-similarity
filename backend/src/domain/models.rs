@@ -251,6 +251,8 @@ pub struct ImagePayload {
 pub struct SearchResult {
     pub image: ImagePayload,
     pub vector_score: f32,
+    #[serde(default)]
+    pub relevance_score: Option<f32>,
     pub hash_distance: Option<u32>,
     #[serde(default)]
     pub ocr_score: Option<f32>,
@@ -273,6 +275,50 @@ pub struct SearchResponse {
     pub query_audio_analysis: Option<AudioAnalysis>,
     #[serde(default)]
     pub query_ocr_text: String,
+    #[serde(default)]
+    pub query_visual_embedding_model: Option<String>,
+    #[serde(default)]
+    pub query_visual_embedding_degraded: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct FaceSearchModelStatus {
+    pub face_detection_active: bool,
+    pub face_embedding_active: bool,
+    pub degraded: bool,
+    pub detail: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct FaceSearchQueryPayload {
+    pub detected_faces: Vec<FaceDetectionPayload>,
+    pub selected_face: Option<FaceDetectionPayload>,
+    pub model_status: FaceSearchModelStatus,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct FacePersonMatch {
+    pub person_id: String,
+    pub label: Option<String>,
+    pub score: f32,
+    pub face_count: u32,
+    pub media_count: u32,
+    pub matched_face_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct FaceMediaMatch {
+    pub result: SearchResult,
+    pub face_score: f32,
+    pub matched_person_id: String,
+    pub matched_face_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct FaceSearchResponse {
+    pub query: FaceSearchQueryPayload,
+    pub people: Vec<FacePersonMatch>,
+    pub results: Vec<FaceMediaMatch>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

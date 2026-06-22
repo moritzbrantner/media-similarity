@@ -17,12 +17,13 @@ import { ResultTags } from "./result-tags";
 
 type ResultCardData = Omit<
   SearchResult,
-  "hash_distance" | "near_duplicate" | "ocr_score" | "vector_score"
+  "hash_distance" | "near_duplicate" | "ocr_score" | "relevance_score" | "vector_score"
 > & {
   duplicate_group_size?: number;
   hash_distance?: number | null;
   near_duplicate?: boolean;
   ocr_score?: number | null;
+  relevance_score?: number | null;
   vector_score?: number | null;
 };
 
@@ -89,6 +90,9 @@ export function ResultCard({
         </div>
 
         <dl className="grid gap-2 text-sm">
+          {typeof result.relevance_score === "number" && Number.isFinite(result.relevance_score) ? (
+            <Metric label="Relevance" value={result.relevance_score.toFixed(4)} />
+          ) : null}
           {typeof result.vector_score === "number" && Number.isFinite(result.vector_score) ? (
             <Metric label="Visual score" value={result.vector_score.toFixed(4)} />
           ) : null}
@@ -195,6 +199,7 @@ export function ResultCard({
             near_duplicate: result.near_duplicate ?? false,
             ocr_score: result.ocr_score ?? null,
             query_scene_index: result.query_scene_index,
+            relevance_score: result.relevance_score ?? null,
             vector_score: result.vector_score ?? 0,
           }}
         />

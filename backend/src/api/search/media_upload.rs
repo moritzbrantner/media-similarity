@@ -135,6 +135,8 @@ pub async fn search_pdf_upload(
         scenes: scene_responses,
         query_audio_analysis: None,
         query_ocr_text: normalize_ocr_query(ocr_text),
+        query_visual_embedding_model: Some(state.embedder.model_name().to_string()),
+        query_visual_embedding_degraded: state.embedder.is_degraded(),
     })
 }
 
@@ -205,6 +207,8 @@ pub async fn search_audio_upload(
             .first()
             .and_then(|segment| segment.media.audio_analysis.clone()),
         query_ocr_text: normalize_ocr_query(ocr_text),
+        query_visual_embedding_model: Some(state.embedder.model_name().to_string()),
+        query_visual_embedding_degraded: state.embedder.is_degraded(),
     })
 }
 
@@ -273,6 +277,8 @@ pub async fn search_video_upload(
         scenes: scene_responses,
         query_audio_analysis: None,
         query_ocr_text: normalize_ocr_query(ocr_text),
+        query_visual_embedding_model: Some(state.embedder.model_name().to_string()),
+        query_visual_embedding_degraded: state.embedder.is_degraded(),
     })
 }
 
@@ -294,14 +300,21 @@ fn deduplicate_flat_results(results: Vec<SearchResult>) -> Vec<SearchResult> {
         by_image_id
             .entry(result.image.id.clone())
             .and_modify(|existing| {
-                if result.vector_score > existing.vector_score {
+                if result.relevance_score.unwrap_or(result.vector_score)
+                    > existing.relevance_score.unwrap_or(existing.vector_score)
+                {
                     *existing = result.clone();
                 }
             })
             .or_insert(result);
     }
     let mut deduped = by_image_id.into_values().collect::<Vec<_>>();
-    deduped.sort_by(|left, right| right.vector_score.total_cmp(&left.vector_score));
+    deduped.sort_by(|left, right| {
+        right
+            .relevance_score
+            .unwrap_or(right.vector_score)
+            .total_cmp(&left.relevance_score.unwrap_or(left.vector_score))
+    });
     deduped
 }
 

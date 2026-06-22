@@ -170,6 +170,7 @@ export function App() {
             deletingId={deletePendingId}
             displayedPreviewUrl={searchController.displayedPreviewUrl}
             file={searchController.file}
+            faceResponse={searchController.faceResponse}
             health={healthQuery.data}
             indexError={indexError}
             lastIndex={lastIndex}
@@ -185,6 +186,7 @@ export function App() {
             }
             onOcrTextQueryChange={searchController.setOcrTextQuery}
             onResultSortModeChange={searchController.handleResultSortModeChange}
+            onSearchModeChange={searchController.setSearchMode}
             onSaveAsAlbum={() => {
               albumController.beginAlbumFromSearch({
                 filters: searchController.metadataFilters,
@@ -210,6 +212,7 @@ export function App() {
             results={results}
             searchError={searchController.searchError}
             searchHistory={searchHistory}
+            searchMode={searchController.searchMode}
             searchPending={searchController.searchPending}
             selectedQuerySceneIndex={searchController.selectedQuerySceneIndex}
             showMetadataFilters={searchController.showMetadataFilters}

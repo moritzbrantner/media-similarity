@@ -29,7 +29,7 @@ pub use models::{
     enable_model, get_models,
 };
 pub use readiness::ready;
-pub use search::search_upload;
+pub use search::{search_face_upload, search_upload};
 pub use smart_albums::{
     album_results, create_album, delete_album, list_albums, preview_album, update_album,
 };

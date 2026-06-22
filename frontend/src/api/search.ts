@@ -1,4 +1,4 @@
-import type { SearchResponse } from "../types";
+import type { FaceSearchResponse, SearchResponse } from "../types";
 import { parseResponse } from "./client";
 
 export type SearchMediaFilters = {
@@ -47,10 +47,24 @@ export async function searchMedia(
   return parseResponse<SearchResponse>(response);
 }
 
-function appendSearchFilterParams(
-  params: URLSearchParams,
+export async function searchFaceMedia(
+  file: File,
+  limit: number,
   filters: SearchMediaFilters,
-) {
+): Promise<FaceSearchResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const params = new URLSearchParams({ limit: String(limit) });
+  appendSearchFilterParams(params, filters);
+
+  const response = await fetch(`/api/search/face?${params.toString()}`, {
+    body: formData,
+    method: "POST",
+  });
+  return parseResponse<FaceSearchResponse>(response);
+}
+
+function appendSearchFilterParams(params: URLSearchParams, filters: SearchMediaFilters) {
   appendStringParam(params, "source_type", filters.sourceType, "all");
   appendStringParam(params, "media_kind", filters.mediaKind, "all");
   appendStringParam(params, "name_query", filters.nameQuery);
@@ -84,11 +98,7 @@ function appendStringParam(
   }
 }
 
-function appendNumberParam(
-  params: URLSearchParams,
-  name: string,
-  value: string,
-) {
+function appendNumberParam(params: URLSearchParams, name: string, value: string) {
   const normalized = value.trim();
   if (!normalized) {
     return;

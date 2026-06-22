@@ -356,6 +356,7 @@ export function ResultSortSelect({
         onChange={(event) => onChange(event.target.value as ResultSortMode)}
         value={value}
       >
+        <option value="relevance">Relevance</option>
         <option value="phash_distance">pHash distance</option>
         <option value="vector_score">Visual score</option>
         <option value="captured_newest">Newest captured</option>

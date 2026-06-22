@@ -1,0 +1,142 @@
+{
+  "version": 1,
+  "name": "public-face-quality-corpus",
+  "description": "Publicly available portrait images used to evaluate visual ranking and face/person recognition quality.",
+  "default_output_dir": "sample-images/quality",
+  "assets": [
+    {
+      "id": "barack-obama-president",
+      "kind": "static_image",
+      "role": "source",
+      "filename": "sources/barack-obama-president.jpg",
+      "title": "President Barack Obama.jpg",
+      "identity": "barack-obama",
+      "download_url": "https://commons.wikimedia.org/wiki/Special:FilePath/President_Barack_Obama.jpg",
+      "page_url": "https://commons.wikimedia.org/wiki/File:President_Barack_Obama.jpg",
+      "license": "Public domain; see page_url",
+      "attribution": "Official White House Photo by Pete Souza"
+    },
+    {
+      "id": "barack-obama-smile",
+      "kind": "static_image",
+      "role": "source",
+      "filename": "sources/barack-obama-smile.jpg",
+      "title": "Barack Obama Smile.jpg",
+      "identity": "barack-obama",
+      "download_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Barack_Obama_Smile.jpg",
+      "page_url": "https://commons.wikimedia.org/wiki/File:Barack_Obama_Smile.jpg",
+      "license": "Wikimedia Commons file license; see page_url",
+      "attribution": "Wikimedia Commons contributors"
+    },
+    {
+      "id": "barack-obama-query",
+      "kind": "static_image",
+      "role": "query",
+      "filename": "queries/barack-obama-query.jpg",
+      "title": "Face query for Barack Obama",
+      "identity": "barack-obama",
+      "copy_of": "barack-obama-president",
+      "expected_top_k": ["barack-obama-president", "barack-obama-smile"],
+      "expected_non_matches": ["grace-hopper-navy", "marie-curie-1900"],
+      "capability": "face person search"
+    },
+    {
+      "id": "grace-hopper-navy",
+      "kind": "static_image",
+      "role": "source",
+      "filename": "sources/grace-hopper-navy.jpg",
+      "title": "Grace Hopper.jpg",
+      "identity": "grace-hopper",
+      "download_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Grace_Hopper.jpg",
+      "page_url": "https://commons.wikimedia.org/wiki/File:Grace_Hopper.jpg",
+      "license": "Public domain; see page_url",
+      "attribution": "United States Navy"
+    },
+    {
+      "id": "grace-hopper-covered",
+      "kind": "static_image",
+      "role": "source",
+      "filename": "sources/grace-hopper-covered.jpg",
+      "title": "Commodore Grace M. Hopper, USN (covered).jpg",
+      "identity": "grace-hopper",
+      "download_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Commodore_Grace_M._Hopper,_USN_(covered).jpg",
+      "page_url": "https://commons.wikimedia.org/wiki/File:Commodore_Grace_M._Hopper,_USN_(covered).jpg",
+      "license": "Public domain; see page_url",
+      "attribution": "United States Navy"
+    },
+    {
+      "id": "grace-hopper-query",
+      "kind": "static_image",
+      "role": "query",
+      "filename": "queries/grace-hopper-query.jpg",
+      "title": "Face query for Grace Hopper",
+      "identity": "grace-hopper",
+      "copy_of": "grace-hopper-navy",
+      "expected_top_k": ["grace-hopper-navy", "grace-hopper-covered"],
+      "expected_non_matches": ["barack-obama-president", "marie-curie-1900"],
+      "capability": "face person search"
+    },
+    {
+      "id": "marie-curie-1900",
+      "kind": "static_image",
+      "role": "source",
+      "filename": "sources/marie-curie-1900.jpg",
+      "title": "Marie Curie, portrait, 1900.jpg",
+      "identity": "marie-curie",
+      "download_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Marie_Curie,_portrait,_1900.jpg",
+      "page_url": "https://commons.wikimedia.org/wiki/File:Marie_Curie,_portrait,_1900.jpg",
+      "license": "Public domain; see page_url",
+      "attribution": "Wikimedia Commons contributors"
+    },
+    {
+      "id": "marie-curie-1903",
+      "kind": "static_image",
+      "role": "source",
+      "filename": "sources/marie-curie-1903.jpg",
+      "title": "Marie Curie 1903.jpg",
+      "identity": "marie-curie",
+      "download_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Marie_Curie_1903.jpg",
+      "page_url": "https://commons.wikimedia.org/wiki/File:Marie_Curie_1903.jpg",
+      "license": "Public domain; see page_url",
+      "attribution": "Wikimedia Commons contributors"
+    },
+    {
+      "id": "marie-curie-query",
+      "kind": "static_image",
+      "role": "query",
+      "filename": "queries/marie-curie-query.jpg",
+      "title": "Face query for Marie Curie",
+      "identity": "marie-curie",
+      "copy_of": "marie-curie-1900",
+      "expected_top_k": ["marie-curie-1900", "marie-curie-1903"],
+      "expected_non_matches": ["barack-obama-president", "grace-hopper-navy"],
+      "capability": "face person search"
+    }
+  ],
+  "searches": [
+    {
+      "id": "barack-obama-face",
+      "query_asset": "barack-obama-query",
+      "expected_identity": "barack-obama",
+      "expected_top_k": ["barack-obama-president", "barack-obama-smile"],
+      "expected_non_matches": ["grace-hopper-navy", "marie-curie-1900"],
+      "capability": "face person search"
+    },
+    {
+      "id": "grace-hopper-face",
+      "query_asset": "grace-hopper-query",
+      "expected_identity": "grace-hopper",
+      "expected_top_k": ["grace-hopper-navy", "grace-hopper-covered"],
+      "expected_non_matches": ["barack-obama-president", "marie-curie-1900"],
+      "capability": "face person search"
+    },
+    {
+      "id": "marie-curie-face",
+      "query_asset": "marie-curie-query",
+      "expected_identity": "marie-curie",
+      "expected_top_k": ["marie-curie-1900", "marie-curie-1903"],
+      "expected_non_matches": ["barack-obama-president", "grace-hopper-navy"],
+      "capability": "face person search"
+    }
+  ]
+}
