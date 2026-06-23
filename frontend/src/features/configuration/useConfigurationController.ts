@@ -11,7 +11,11 @@ import {
   updateSourceConfig,
 } from "../../api";
 
-export function useConfigurationController({ sourceConfigEnabled }: { sourceConfigEnabled: boolean }) {
+export function useConfigurationController({
+  sourceConfigEnabled,
+}: {
+  sourceConfigEnabled: boolean;
+}) {
   const queryClient = useQueryClient();
 
   const sourceConfigQuery = useQuery({

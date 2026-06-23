@@ -13,12 +13,7 @@ import { SmartAlbumsPage } from "./features/albums/pages/smart-albums-page";
 import { SourceConfigurationPage } from "./features/configuration/pages/source-configuration-page";
 import { WorkflowConfigurationPage } from "./features/workflows/pages/workflow-configuration-page";
 import type { IndexResponse } from "./types";
-import {
-  fetchHealth,
-  fetchInverseIndex,
-  mergeIdentities,
-  renameIdentity,
-} from "./api";
+import { fetchHealth, fetchInverseIndex, mergeIdentities, renameIdentity } from "./api";
 import type { IdentityKind } from "./api";
 import type { AppView } from "./search/types";
 
@@ -78,9 +73,7 @@ export function App() {
 
   const sourceList = useMemo(() => {
     if (!healthQuery.data) {
-      return healthQuery.isError
-        ? "Service is not responding"
-        : "Checking service status";
+      return healthQuery.isError ? "Service is not responding" : "Checking service status";
     }
 
     const sources =
@@ -93,15 +86,8 @@ export function App() {
   const indexPending = indexMutation.isPending;
 
   const sourceKindMutation = useMutation({
-    mutationFn: ({
-      id,
-      kind,
-      label,
-    }: {
-      id: string;
-      kind: IdentityKind;
-      label: string;
-    }) => renameIdentity(kind, id, label),
+    mutationFn: ({ id, kind, label }: { id: string; kind: IdentityKind; label: string }) =>
+      renameIdentity(kind, id, label),
     onSuccess: (response) => {
       searchController.applyIdentityMutationToSearchHistory(response);
       invalidateIdentityQueries(queryClient);
@@ -143,9 +129,7 @@ export function App() {
           health={healthQuery.data}
           healthError={healthQuery.isError}
           healthLoading={healthQuery.isLoading}
-          indexActive={Boolean(
-            jobs.latestIndexJob && jobs.latestIndexJob.status === "Running",
-          )}
+          indexActive={Boolean(jobs.latestIndexJob && jobs.latestIndexJob.status === "Running")}
           indexPending={indexMutation.isPending}
           onIndex={() => indexMutation.mutate()}
           onViewChange={setActiveView}
@@ -181,9 +165,7 @@ export function App() {
             onFileChange={searchController.handleFileChange}
             onHistorySelect={searchController.handleHistorySelect}
             onLimitChange={searchController.handleLimitChange}
-            onMetadataFiltersChange={
-              searchController.handleMetadataFiltersChange
-            }
+            onMetadataFiltersChange={searchController.handleMetadataFiltersChange}
             onOcrTextQueryChange={searchController.setOcrTextQuery}
             onResultSortModeChange={searchController.handleResultSortModeChange}
             onSearchModeChange={searchController.setSearchMode}
@@ -227,10 +209,7 @@ export function App() {
           <Suspense
             fallback={
               <section className="flex min-h-72 items-center justify-center rounded-lg border border-neutral-300 bg-white text-sm font-medium text-neutral-600 shadow-sm">
-                <Loader2
-                  className="mr-2 size-4 animate-spin"
-                  aria-hidden="true"
-                />
+                <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />
                 Loading view
               </section>
             }
@@ -247,8 +226,7 @@ export function App() {
                 loading={inverseIndexQuery.isLoading}
                 mergeError={mergeIdentitiesMutation.error}
                 mergeErrorIdentity={
-                  mergeIdentitiesMutation.isError &&
-                  mergeIdentitiesMutation.variables
+                  mergeIdentitiesMutation.isError && mergeIdentitiesMutation.variables
                     ? {
                         id: mergeIdentitiesMutation.variables.targetId,
                         kind: mergeIdentitiesMutation.variables.kind,
@@ -256,8 +234,7 @@ export function App() {
                     : null
                 }
                 mergingIdentity={
-                  mergeIdentitiesMutation.isPending &&
-                  mergeIdentitiesMutation.variables
+                  mergeIdentitiesMutation.isPending && mergeIdentitiesMutation.variables
                     ? {
                         id: mergeIdentitiesMutation.variables.targetId,
                         kind: mergeIdentitiesMutation.variables.kind,
@@ -309,15 +286,11 @@ export function App() {
                 models={modelsQuery.data ?? null}
                 modelsError={modelsQuery.error}
                 modelsLoading={modelsQuery.isLoading}
-                onDownloadAllModels={() =>
-                  configController.downloadAllModelsMutation.mutate()
-                }
+                onDownloadAllModels={() => configController.downloadAllModelsMutation.mutate()}
                 onDownloadModel={(role, model) =>
                   configController.downloadModelMutation.mutate({ role, model })
                 }
-                onDisableModel={(role) =>
-                  configController.disableModelMutation.mutate({ role })
-                }
+                onDisableModel={(role) => configController.disableModelMutation.mutate({ role })}
                 onEnableModel={(role, model) =>
                   configController.enableModelMutation.mutate({ role, model })
                 }
@@ -336,29 +309,19 @@ export function App() {
                 lastIndex={lastIndex}
                 loading={workflowController.workflowsQuery.isLoading}
                 onIndex={() => indexMutation.mutate()}
-                onReset={() =>
-                  workflowController.workflowResetMutation.mutate()
-                }
-                onSave={(library) =>
-                  workflowController.workflowMutation.mutate(library)
-                }
+                onReset={() => workflowController.workflowResetMutation.mutate()}
+                onSave={(library) => workflowController.workflowMutation.mutate(library)}
                 onValidate={(library) =>
                   workflowController.workflowValidateMutation
                     .mutateAsync(library)
                     .then((response) => response.diagnostics)
                 }
-                resetPending={
-                  workflowController.workflowResetMutation.isPending
-                }
+                resetPending={workflowController.workflowResetMutation.isPending}
                 saveError={workflowController.workflowMutation.error}
                 savePending={workflowController.workflowMutation.isPending}
                 saveSuccess={workflowController.workflowMutation.isSuccess}
-                validateError={
-                  workflowController.workflowValidateMutation.error
-                }
-                validatePending={
-                  workflowController.workflowValidateMutation.isPending
-                }
+                validateError={workflowController.workflowValidateMutation.error}
+                validatePending={workflowController.workflowValidateMutation.isPending}
               />
             ) : null}
           </Suspense>
@@ -368,8 +331,6 @@ export function App() {
   );
 }
 
-function invalidateIdentityQueries(
-  queryClient: ReturnType<typeof useQueryClient>,
-) {
+function invalidateIdentityQueries(queryClient: ReturnType<typeof useQueryClient>) {
   queryClient.invalidateQueries({ queryKey: ["inverse-index"] });
 }

@@ -3,7 +3,24 @@ import type { IdentityKind } from "../types";
 import { RegistryIdentity, RegistryEntry, RegistryEntryCard } from "./inverse-index-page";
 
 export function RegistrySection({
-  emptyText, editingIdentity, entries, icon, kind, mergeError, mergeErrorIdentity, mergingEntry, mergingIdentity, onMergeIdentity, onRenameIdentity, onSetEditingIdentity, onSetMergingEntry, onSetSuccessText, renameError, renameErrorIdentity, renamingIdentity, title,
+  emptyText,
+  editingIdentity,
+  entries,
+  icon,
+  kind,
+  mergeError,
+  mergeErrorIdentity,
+  mergingEntry,
+  mergingIdentity,
+  onMergeIdentity,
+  onRenameIdentity,
+  onSetEditingIdentity,
+  onSetMergingEntry,
+  onSetSuccessText,
+  renameError,
+  renameErrorIdentity,
+  renamingIdentity,
+  title,
 }: {
   emptyText: string;
   editingIdentity: RegistryIdentity | null;
@@ -55,7 +72,8 @@ export function RegistrySection({
               onSetSuccessText={onSetSuccessText}
               renameError={renameError}
               renameErrorIdentity={renameErrorIdentity}
-              renamingIdentity={renamingIdentity} />
+              renamingIdentity={renamingIdentity}
+            />
           ))}
         </div>
       )}

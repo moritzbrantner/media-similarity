@@ -4,11 +4,7 @@ import { cancelJob, fetchJobEvents, fetchJobs, startIndexJob } from "../../api";
 import { jobIsActive, jobIsTerminal, numberFromMetadata, sortJobs } from "../../jobs/job-utils";
 import type { HealthResponse, IndexResponse } from "../../types";
 
-export function useJobsController({
-  healthData,
-}: {
-  healthData?: HealthResponse;
-}) {
+export function useJobsController({ healthData }: { healthData?: HealthResponse }) {
   const queryClient = useQueryClient();
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [lastIndex, setLastIndex] = useState<IndexResponse | null>(null);

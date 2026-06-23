@@ -13,3 +13,4 @@ backend/target/
 playwright-report/
 test-results/
 .unlighthouse/
+.agent-loop/
