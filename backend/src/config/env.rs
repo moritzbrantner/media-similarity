@@ -273,6 +273,10 @@ impl Settings {
             ocr_language: optional_string_var("OCR_LANGUAGE").or(defaults.ocr_language),
             ocr_max_frames: bounded_usize_var("OCR_MAX_FRAMES", defaults.ocr_max_frames, 1, 64)?,
             bind_addr: string_var("BIND_ADDR", defaults.bind_addr),
+            frontend_serving_enabled: bool_var(
+                "FRONTEND_SERVING_ENABLED",
+                defaults.frontend_serving_enabled,
+            ),
         })
     }
 

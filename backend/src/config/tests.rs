@@ -74,6 +74,26 @@ mod tests {
     }
 
     #[test]
+    fn frontend_serving_is_enabled_by_default() {
+        assert!(Settings::default().frontend_serving_enabled);
+    }
+
+    #[test]
+    fn frontend_serving_can_be_disabled_from_env() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let _env = EnvGuard::set([
+            ("FRONTEND_SERVING_ENABLED", Some("false")),
+            ("IMAGE_SOURCES", Some("/images")),
+            ("MEDIA_SOURCES_FILE", None),
+            ("MEDIA_SOURCES_SEED_FILE", None),
+        ]);
+
+        let settings = Settings::from_env().unwrap();
+
+        assert!(!settings.frontend_serving_enabled);
+    }
+
+    #[test]
     fn startup_indexing_is_disabled_by_default() {
         assert!(!Settings::default().startup_indexing_enabled);
     }

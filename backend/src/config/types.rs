@@ -85,11 +85,13 @@ pub struct Settings {
     pub ocr_language: Option<String>,
     pub ocr_max_frames: usize,
     pub bind_addr: String,
+    pub frontend_serving_enabled: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ServerSettings {
     pub bind_addr: String,
+    pub frontend_serving_enabled: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
