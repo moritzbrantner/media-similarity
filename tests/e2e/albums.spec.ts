@@ -42,7 +42,7 @@ test("seeds an album draft from current search filters", async ({ page }) => {
   await page.goto("/");
   await uploadAndSearch(page);
   await page.getByLabel("Name or path").fill("sunrise");
-  await page.getByLabel("Text in media").fill("invoice");
+  await page.getByLabel("Text query").fill("invoice");
   await page.getByRole("button", { name: "Save as album" }).click();
 
   await expect(page.getByRole("button", { name: "Open smart albums" })).toHaveAttribute(

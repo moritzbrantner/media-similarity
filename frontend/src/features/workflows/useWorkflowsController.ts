@@ -1,10 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  fetchWorkflows,
-  resetWorkflows,
-  updateWorkflows,
-  validateWorkflows,
-} from "../../api";
+import { fetchWorkflows, resetWorkflows, updateWorkflows, validateWorkflows } from "../../api";
 import type { WorkflowEditorLibrary, MediaWorkflowNodeData } from "../../types";
 
 export function useWorkflowsController({ workflowsEnabled }: { workflowsEnabled: boolean }) {
@@ -35,7 +30,8 @@ export function useWorkflowsController({ workflowsEnabled }: { workflowsEnabled:
   });
 
   const workflowValidateMutation = useMutation({
-    mutationFn: (library: WorkflowEditorLibrary<MediaWorkflowNodeData>) => validateWorkflows(library),
+    mutationFn: (library: WorkflowEditorLibrary<MediaWorkflowNodeData>) =>
+      validateWorkflows(library),
   });
 
   return {

@@ -1,10 +1,4 @@
-export type JobStatus =
-  | "Queued"
-  | "Running"
-  | "Cancelling"
-  | "Succeeded"
-  | "Failed"
-  | "Cancelled";
+export type JobStatus = "Queued" | "Running" | "Cancelling" | "Succeeded" | "Failed" | "Cancelled";
 
 export type JobProgress = {
   completed: number;

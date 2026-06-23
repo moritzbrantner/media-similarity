@@ -36,9 +36,7 @@ export function errorDetail(payload: unknown): string | null {
   if (Array.isArray(detail)) {
     return detail
       .map((item) => {
-        if (
-          item && typeof item === "object" && "msg" in item && typeof item.msg === "string"
-        ) {
+        if (item && typeof item === "object" && "msg" in item && typeof item.msg === "string") {
           return item.msg;
         }
         return JSON.stringify(item);
