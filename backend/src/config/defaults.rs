@@ -2,6 +2,7 @@ impl Settings {
     pub fn server_settings(&self) -> ServerSettings {
         ServerSettings {
             bind_addr: self.bind_addr.clone(),
+            frontend_serving_enabled: self.frontend_serving_enabled,
         }
     }
 
@@ -201,6 +202,7 @@ impl Default for Settings {
             ocr_language: Some("eng".to_string()),
             ocr_max_frames: 4,
             bind_addr: "127.0.0.1:8000".to_string(),
+            frontend_serving_enabled: true,
         }
     }
 }
