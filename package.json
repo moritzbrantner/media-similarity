@@ -32,6 +32,7 @@
     "test:e2e": "bunx playwright test",
     "test:e2e:ui": "bunx playwright test --ui",
     "test:perf": "bun scripts/run-unlighthouse.mjs",
+    "test:service:smoke": "bash scripts/service-smoke.sh",
     "typecheck": "tsc --noEmit",
     "verify": "bun run check:hygiene && bun run format:check && bun run lint && bun run test && bun run test:e2e && bun run build && bun run test:perf",
     "services:up": "bash scripts/prepare-dev-data.sh && HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d qdrant",

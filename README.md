@@ -406,6 +406,18 @@ bun run service:clean
 
 `bun run service:clean` removes containers, orphans, and volumes, so use it only when disposable local data can be deleted.
 
+Run the service-mode smoke check when changing Docker Compose, web proxying, or service startup behavior:
+
+```bash
+bun run test:service:smoke
+```
+
+The smoke check validates `docker compose config`, starts `api`, `web`, and `qdrant` with trap-based cleanup for services it starts, then checks the web UI at `http://127.0.0.1:${WEB_PORT:-5173}`, proxied backend health at `http://127.0.0.1:${WEB_PORT:-5173}/api/health`, and direct backend health at `http://127.0.0.1:${API_PORT:-8000}/api/health`. It stops only containers it started and keeps persisted app and Qdrant data. Use disposable temporary data directories with:
+
+```bash
+bun run test:service:smoke -- --disposable
+```
+
 ### Project Commands
 
 | Command | Purpose |
@@ -413,6 +425,7 @@ bun run service:clean
 | `bun run test` | Fast meaningful test path: Rust test suite. |
 | `bun run test:e2e` | Playwright UI tests with mocked API responses. |
 | `bun run test:perf` | Unlighthouse performance audit against the built frontend bundle. |
+| `bun run test:service:smoke` | Docker Compose service-mode smoke check for the web UI, proxied API health, and direct API health. |
 | `bun run lint` | TypeScript check, Rust format check, and Clippy with warnings denied. |
 | `bun run format:check` | Frontend formatting check. |
 | `bun run format:check:rust` | Rust formatting check. |
