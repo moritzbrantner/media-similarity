@@ -1,11 +1,18 @@
 name: image-similarity-service
 
-x-app-build: &app-build
+x-api-build: &api-build
   context: .
   additional_contexts:
     rust-packages: ../rust-packages
+  target: api-runtime
 
-x-app-environment: &app-environment
+x-web-build: &web-build
+  context: .
+  additional_contexts:
+    rust-packages: ../rust-packages
+  target: web-runtime
+
+x-api-environment: &api-environment
   SOURCE_IMAGE_DIR: ${SOURCE_IMAGE_DIR:-/images}
   MEDIA_SOURCES_FILE: ${MEDIA_SOURCES_FILE:-/app/data/media-sources.txt}
   MEDIA_SOURCES_SEED_FILE: ${MEDIA_SOURCES_SEED_FILE:-/app/config/media-sources.txt}
@@ -45,14 +52,15 @@ x-app-environment: &app-environment
   OCR_LANGUAGE: ${OCR_LANGUAGE:-eng}
   OCR_MAX_FRAMES: ${OCR_MAX_FRAMES:-4}
   BIND_ADDR: ${CONTAINER_BIND_ADDR:-0.0.0.0:8000}
+  FRONTEND_SERVING_ENABLED: "false"
 
 services:
-  app:
-    build: *app-build
+  api:
+    build: *api-build
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
-    environment: *app-environment
+    environment: *api-environment
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${API_PORT:-8000}:8000"
     volumes:
       - ./config:/app/config:ro
       - ${HOST_PICTURES_DIR:-${HOME}/Pictures}:/media/pictures:ro
@@ -61,6 +69,16 @@ services:
       - ${APP_DATA_DIR:-./.dev-data/app}:/app/data
     depends_on:
       qdrant:
+        condition: service_started
+
+  web:
+    build: *web-build
+    environment:
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-20}
+    ports:
+      - "127.0.0.1:${WEB_PORT:-5173}:80"
+    depends_on:
+      api:
         condition: service_started
 
   test:
@@ -74,7 +92,7 @@ services:
 
   seed-data:
     profiles: ["seed"]
-    build: *app-build
+    build: *api-build
     environment:
       SAMPLE_FACE_DATA_DIR: ${SAMPLE_FACE_DATA_DIR:-/seed/local}
       SAMPLE_FACE_COUNT: ${SAMPLE_FACE_COUNT:-150}
