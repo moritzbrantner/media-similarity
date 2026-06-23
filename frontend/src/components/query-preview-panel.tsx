@@ -26,10 +26,7 @@ export function QueryPreviewPanel({
           />
         ) : previewIsAudio ? (
           <div className="flex h-full min-h-72 flex-col items-center justify-center gap-4 bg-neutral-50 p-8">
-            <FileAudio
-              className="size-12 text-neutral-500"
-              aria-hidden="true"
-            />
+            <FileAudio className="size-12 text-neutral-500" aria-hidden="true" />
             <audio className="w-full max-w-xl" controls src={previewUrl} />
           </div>
         ) : (

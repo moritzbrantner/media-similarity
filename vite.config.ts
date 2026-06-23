@@ -9,6 +9,13 @@ export default defineConfig(({ command }) => ({
   build: {
     emptyOutDir: true,
     outDir: "dist",
+    rolldownOptions: {
+      output: {
+        assetFileNames: "assets/[name][extname]",
+        chunkFileNames: "assets/[name].js",
+        entryFileNames: "assets/[name].js",
+      },
+    },
   },
   server: {
     proxy: {

@@ -2,6 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+@source not "../dist/**";
 @source "./**/*.{ts,tsx}";
 @source "../../node_modules/@moritzbrantner/ui/dist/**/*.js";
 @source "../../node_modules/@moritzbrantner/workflow-editor/dist/**/*.js";

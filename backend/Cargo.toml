@@ -12,18 +12,18 @@ name = "image-similarity-service"
 path = "src/main.rs"
 
 [dependencies]
-audio-analysis-core = { package = "moritzbrantner-audio-analysis-core", path = "../../rust-packages/crates/audio/audio-analysis-core" }
-audio-analysis-rhythm = { package = "moritzbrantner-audio-analysis-rhythm", path = "../../rust-packages/crates/audio/audio-analysis-rhythm" }
-audio-analysis-speakers = { package = "moritzbrantner-audio-analysis-speakers", path = "../../rust-packages/crates/audio/audio-analysis-speakers" }
-image-analysis-core = { package = "moritzbrantner-image-analysis-core", path = "../../rust-packages/crates/image/image-analysis-core" }
-image-analysis-io = { package = "moritzbrantner-image-analysis-io", path = "../../rust-packages/crates/image/image-analysis-io" }
-image-analysis-processing = { package = "moritzbrantner-image-analysis-processing", path = "../../rust-packages/crates/image/image-analysis-processing" }
-jobs-core = { package = "moritzbrantner-jobs-core", path = "../../rust-packages/crates/jobs/jobs-core" }
+audio-analysis-core = { package = "moenarch-audio-analysis-core", version = "0.1.0" }
+audio-analysis-rhythm = { package = "moenarch-audio-analysis-rhythm", version = "0.1.0" }
+audio-analysis-speakers = { package = "moenarch-audio-analysis-speakers", version = "0.1.3" }
+image-analysis-core = { package = "moenarch-image-analysis-core", version = "0.1.0" }
+image-analysis-io = { package = "moenarch-image-analysis-io", version = "0.1.0" }
+image-analysis-processing = { package = "moenarch-image-analysis-processing", version = "0.1.0" }
+jobs-core = { package = "moenarch-jobs-core", version = "0.1.1" }
 metastrip = "0.1"
-model-runtime = { package = "moritzbrantner-model-runtime", version = "0.1.0", path = "../../rust-packages/crates/runtime/model-runtime" }
-runtime-onnx = { package = "moritzbrantner-runtime-onnx", version = "0.1.0", path = "../../rust-packages/crates/runtime/runtime-onnx", features = ["onnxruntime"] }
+model-runtime = { package = "moenarch-model-runtime", version = "0.1.0" }
+runtime-onnx = { package = "moenarch-runtime-onnx", version = "0.1.0", features = ["onnxruntime"] }
 text-analysis-core = { path = "shims/text-analysis-core" }
-text-transcripts = { package = "moritzbrantner-text-transcripts", path = "../../rust-packages/crates/text/text-transcripts", features = ["native"] }
+text-transcripts = { package = "moenarch-text-transcripts", version = "0.1.2", features = ["native"] }
 async-trait = "0.1"
 axum = { version = "0.7", features = ["multipart"] }
 dotenvy = "0.15"
@@ -41,18 +41,18 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
-vector-analysis-core = { package = "moritzbrantner-vector-analysis-core", path = "../../rust-packages/crates/vector/vector-analysis-core" }
-video-analysis-core = { package = "moritzbrantner-video-analysis-core", path = "../../rust-packages/crates/video/video-analysis-core" }
-video-analysis-detectors = { package = "moritzbrantner-video-analysis-detectors", path = "../../rust-packages/crates/video/video-analysis-detectors" }
-video-analysis-ffmpeg = { package = "moritzbrantner-video-analysis-ffmpeg", path = "../../rust-packages/crates/video/video-analysis-ffmpeg" }
-video-analysis-split = { package = "moritzbrantner-video-analysis-split", path = "../../rust-packages/crates/video/video-analysis-split" }
+vector-analysis-core = { package = "moenarch-vector-analysis-core", version = "0.1.0" }
+video-analysis-core = { package = "moenarch-video-analysis-core", version = "0.1.3" }
+video-analysis-detectors = { package = "moenarch-video-analysis-detectors", version = "0.1.0" }
+video-analysis-ffmpeg = { package = "moenarch-video-analysis-ffmpeg", version = "0.1.0" }
+video-analysis-split = { package = "moenarch-video-analysis-split", version = "0.1.0" }
 walkdir = "2"
 object_store = { version = "0.13.2", features = ["aws"] }
 futures-util = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
 notify = "8.2.0"
-image-analysis-embeddings = { package = "moritzbrantner-image-analysis-embeddings", version = "0.1.0", path = "../../rust-packages/crates/image/image-analysis-embeddings", features = ["onnx"] }
-image-analysis-detection = { package = "moritzbrantner-image-analysis-detection", version = "0.1.0", path = "../../rust-packages/crates/image/image-analysis-detection", features = ["onnx"] }
+image-analysis-embeddings = { package = "moenarch-image-analysis-embeddings", version = "0.1.0", features = ["onnx"] }
+image-analysis-detection = { package = "moenarch-image-analysis-detection", version = "0.1.0", features = ["onnx"] }
 
 [dev-dependencies]
 criterion = "0.8.2"

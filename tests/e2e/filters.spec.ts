@@ -354,7 +354,7 @@ test("sends OCR and person search parameters and caps filtered candidate limit",
 
   await page.locator("#query-image").setInputFiles(imageUpload);
   await page.getByLabel("Result limit").fill("100");
-  await page.getByLabel("Text in media").fill("invoice");
+  await page.getByLabel("Text query").fill("invoice");
   await page.getByLabel("Person ID").fill("person-1");
   await page.getByLabel("Media type").selectOption("static_image");
   await page.getByLabel("Camera/lens").fill("Pocket");

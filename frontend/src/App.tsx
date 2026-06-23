@@ -1,5 +1,4 @@
-import { Suspense, lazy, useMemo, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AppHeader } from "./components/app-header";
 import { JobsPanel } from "./components/jobs-panel";
@@ -12,21 +11,12 @@ import { SearchPage } from "./features/search/pages/search-page";
 import { SmartAlbumsPage } from "./features/albums/pages/smart-albums-page";
 import { SourceConfigurationPage } from "./features/configuration/pages/source-configuration-page";
 import { WorkflowConfigurationPage } from "./features/workflows/pages/workflow-configuration-page";
+import { InverseIndexPage } from "./components/inverse-index-page";
 import type { IndexResponse } from "./types";
-import {
-  fetchHealth,
-  fetchInverseIndex,
-  mergeIdentities,
-  renameIdentity,
-} from "./api";
+import { fetchHealth, fetchInverseIndex, mergeIdentities, renameIdentity } from "./api";
 import type { IdentityKind } from "./api";
 import type { AppView } from "./search/types";
-
-const InverseIndexPage = lazy(() =>
-  import("./components/inverse-index-page").then((module) => ({
-    default: module.InverseIndexPage,
-  })),
-);
+import { jobIsActive } from "./jobs/job-utils";
 
 export function App() {
   const queryClient = useQueryClient();
@@ -78,9 +68,7 @@ export function App() {
 
   const sourceList = useMemo(() => {
     if (!healthQuery.data) {
-      return healthQuery.isError
-        ? "Service is not responding"
-        : "Checking service status";
+      return healthQuery.isError ? "Service is not responding" : "Checking service status";
     }
 
     const sources =
@@ -93,15 +81,8 @@ export function App() {
   const indexPending = indexMutation.isPending;
 
   const sourceKindMutation = useMutation({
-    mutationFn: ({
-      id,
-      kind,
-      label,
-    }: {
-      id: string;
-      kind: IdentityKind;
-      label: string;
-    }) => renameIdentity(kind, id, label),
+    mutationFn: ({ id, kind, label }: { id: string; kind: IdentityKind; label: string }) =>
+      renameIdentity(kind, id, label),
     onSuccess: (response) => {
       searchController.applyIdentityMutationToSearchHistory(response);
       invalidateIdentityQueries(queryClient);
@@ -124,7 +105,7 @@ export function App() {
     },
   });
 
-  const indexActive = Boolean(latestIndexJob && indexPending);
+  const indexActive = Boolean(latestIndexJob && jobIsActive(latestIndexJob));
 
   const activeSearch = searchController.activeSearch;
   const activeResponse = searchController.activeResponse;
@@ -143,10 +124,8 @@ export function App() {
           health={healthQuery.data}
           healthError={healthQuery.isError}
           healthLoading={healthQuery.isLoading}
-          indexActive={Boolean(
-            jobs.latestIndexJob && jobs.latestIndexJob.status === "Running",
-          )}
-          indexPending={indexMutation.isPending}
+          indexActive={indexActive}
+          indexPending={indexPending}
           onIndex={() => indexMutation.mutate()}
           onViewChange={setActiveView}
           sourcesLabel={sourceList}
@@ -181,9 +160,7 @@ export function App() {
             onFileChange={searchController.handleFileChange}
             onHistorySelect={searchController.handleHistorySelect}
             onLimitChange={searchController.handleLimitChange}
-            onMetadataFiltersChange={
-              searchController.handleMetadataFiltersChange
-            }
+            onMetadataFiltersChange={searchController.handleMetadataFiltersChange}
             onOcrTextQueryChange={searchController.setOcrTextQuery}
             onResultSortModeChange={searchController.handleResultSortModeChange}
             onSearchModeChange={searchController.setSearchMode}
@@ -223,153 +200,121 @@ export function App() {
                 : undefined
             }
           />
-        ) : (
-          <Suspense
-            fallback={
-              <section className="flex min-h-72 items-center justify-center rounded-lg border border-neutral-300 bg-white text-sm font-medium text-neutral-600 shadow-sm">
-                <Loader2
-                  className="mr-2 size-4 animate-spin"
-                  aria-hidden="true"
-                />
-                Loading view
-              </section>
+        ) : activeView === "albums" ? (
+          <SmartAlbumsPage
+            initialDraft={albumController.albumDraft}
+            onDraftConsumed={() => albumController.consumeAlbumDraft()}
+          />
+        ) : activeView === "inverse-index" ? (
+          <InverseIndexPage
+            data={inverseIndexQuery.data ?? null}
+            error={inverseIndexQuery.error}
+            loading={inverseIndexQuery.isLoading}
+            mergeError={mergeIdentitiesMutation.error}
+            mergeErrorIdentity={
+              mergeIdentitiesMutation.isError && mergeIdentitiesMutation.variables
+                ? {
+                    id: mergeIdentitiesMutation.variables.targetId,
+                    kind: mergeIdentitiesMutation.variables.kind,
+                  }
+                : null
             }
-          >
-            {activeView === "albums" ? (
-              <SmartAlbumsPage
-                initialDraft={albumController.albumDraft}
-                onDraftConsumed={() => albumController.consumeAlbumDraft()}
-              />
-            ) : activeView === "inverse-index" ? (
-              <InverseIndexPage
-                data={inverseIndexQuery.data ?? null}
-                error={inverseIndexQuery.error}
-                loading={inverseIndexQuery.isLoading}
-                mergeError={mergeIdentitiesMutation.error}
-                mergeErrorIdentity={
-                  mergeIdentitiesMutation.isError &&
-                  mergeIdentitiesMutation.variables
-                    ? {
-                        id: mergeIdentitiesMutation.variables.targetId,
-                        kind: mergeIdentitiesMutation.variables.kind,
-                      }
-                    : null
-                }
-                mergingIdentity={
-                  mergeIdentitiesMutation.isPending &&
-                  mergeIdentitiesMutation.variables
-                    ? {
-                        id: mergeIdentitiesMutation.variables.targetId,
-                        kind: mergeIdentitiesMutation.variables.kind,
-                      }
-                    : null
-                }
-                onMergeIdentity={(kind, targetId, sourceIds) =>
-                  mergeIdentitiesMutation.mutateAsync({
-                    kind,
-                    sourceIds,
-                    targetId,
-                  })
-                }
-                onRefresh={() => {
-                  inverseIndexQuery.refetch();
-                }}
-                onRenameIdentity={(kind, id, label) =>
-                  sourceKindMutation.mutateAsync({ id, kind, label })
-                }
-                refreshing={inverseIndexQuery.isFetching}
-                renameError={sourceKindMutation.error}
-                renameErrorIdentity={
-                  sourceKindMutation.isError && sourceKindMutation.variables
-                    ? {
-                        id: sourceKindMutation.variables.id,
-                        kind: sourceKindMutation.variables.kind,
-                      }
-                    : null
-                }
-                renamingIdentity={
-                  sourceKindMutation.isPending && sourceKindMutation.variables
-                    ? {
-                        id: sourceKindMutation.variables.id,
-                        kind: sourceKindMutation.variables.kind,
-                      }
-                    : null
-                }
-              />
-            ) : activeView === "configure" ? (
-              <SourceConfigurationPage
-                config={sourceConfigQuery.data ?? null}
-                error={sourceConfigQuery.error}
-                indexError={jobs.indexError}
-                indexPending={indexMutation.isPending || indexActive}
-                lastIndex={lastIndex}
-                loading={sourceConfigQuery.isLoading}
-                modelActionPending={configurationModelActionPending}
-                modelError={(modelsError as Error | null) ?? null}
-                models={modelsQuery.data ?? null}
-                modelsError={modelsQuery.error}
-                modelsLoading={modelsQuery.isLoading}
-                onDownloadAllModels={() =>
-                  configController.downloadAllModelsMutation.mutate()
-                }
-                onDownloadModel={(role, model) =>
-                  configController.downloadModelMutation.mutate({ role, model })
-                }
-                onDisableModel={(role) =>
-                  configController.disableModelMutation.mutate({ role })
-                }
-                onEnableModel={(role, model) =>
-                  configController.enableModelMutation.mutate({ role, model })
-                }
-                onIndex={() => indexMutation.mutate()}
-                onSave={(sources) => sourceConfigMutation.mutate(sources)}
-                saveError={sourceConfigMutation.error}
-                savePending={sourceConfigMutation.isPending}
-                saveSuccess={sourceConfigMutation.isSuccess}
-              />
-            ) : activeView === "workflows" ? (
-              <WorkflowConfigurationPage
-                config={workflowController.workflowsQuery.data ?? null}
-                error={workflowController.workflowsQuery.error}
-                indexError={jobs.indexError}
-                indexPending={indexMutation.isPending || indexActive}
-                lastIndex={lastIndex}
-                loading={workflowController.workflowsQuery.isLoading}
-                onIndex={() => indexMutation.mutate()}
-                onReset={() =>
-                  workflowController.workflowResetMutation.mutate()
-                }
-                onSave={(library) =>
-                  workflowController.workflowMutation.mutate(library)
-                }
-                onValidate={(library) =>
-                  workflowController.workflowValidateMutation
-                    .mutateAsync(library)
-                    .then((response) => response.diagnostics)
-                }
-                resetPending={
-                  workflowController.workflowResetMutation.isPending
-                }
-                saveError={workflowController.workflowMutation.error}
-                savePending={workflowController.workflowMutation.isPending}
-                saveSuccess={workflowController.workflowMutation.isSuccess}
-                validateError={
-                  workflowController.workflowValidateMutation.error
-                }
-                validatePending={
-                  workflowController.workflowValidateMutation.isPending
-                }
-              />
-            ) : null}
-          </Suspense>
-        )}
+            mergingIdentity={
+              mergeIdentitiesMutation.isPending && mergeIdentitiesMutation.variables
+                ? {
+                    id: mergeIdentitiesMutation.variables.targetId,
+                    kind: mergeIdentitiesMutation.variables.kind,
+                  }
+                : null
+            }
+            onMergeIdentity={(kind, targetId, sourceIds) =>
+              mergeIdentitiesMutation.mutateAsync({
+                kind,
+                sourceIds,
+                targetId,
+              })
+            }
+            onRefresh={() => {
+              inverseIndexQuery.refetch();
+            }}
+            onRenameIdentity={(kind, id, label) =>
+              sourceKindMutation.mutateAsync({ id, kind, label })
+            }
+            refreshing={inverseIndexQuery.isFetching}
+            renameError={sourceKindMutation.error}
+            renameErrorIdentity={
+              sourceKindMutation.isError && sourceKindMutation.variables
+                ? {
+                    id: sourceKindMutation.variables.id,
+                    kind: sourceKindMutation.variables.kind,
+                  }
+                : null
+            }
+            renamingIdentity={
+              sourceKindMutation.isPending && sourceKindMutation.variables
+                ? {
+                    id: sourceKindMutation.variables.id,
+                    kind: sourceKindMutation.variables.kind,
+                  }
+                : null
+            }
+          />
+        ) : activeView === "configure" ? (
+          <SourceConfigurationPage
+            config={sourceConfigQuery.data ?? null}
+            error={sourceConfigQuery.error}
+            indexError={jobs.indexError}
+            indexPending={indexPending || indexActive}
+            lastIndex={lastIndex}
+            loading={sourceConfigQuery.isLoading}
+            modelActionPending={configurationModelActionPending}
+            modelError={(modelsError as Error | null) ?? null}
+            models={modelsQuery.data ?? null}
+            modelsError={modelsQuery.error}
+            modelsLoading={modelsQuery.isLoading}
+            onDownloadAllModels={() => configController.downloadAllModelsMutation.mutate()}
+            onDownloadModel={(role, model) =>
+              configController.downloadModelMutation.mutate({ role, model })
+            }
+            onDisableModel={(role) => configController.disableModelMutation.mutate({ role })}
+            onEnableModel={(role, model) =>
+              configController.enableModelMutation.mutate({ role, model })
+            }
+            onIndex={() => indexMutation.mutate()}
+            onSave={(sources) => sourceConfigMutation.mutate(sources)}
+            saveError={sourceConfigMutation.error}
+            savePending={sourceConfigMutation.isPending}
+            saveSuccess={sourceConfigMutation.isSuccess}
+          />
+        ) : activeView === "workflows" ? (
+          <WorkflowConfigurationPage
+            config={workflowController.workflowsQuery.data ?? null}
+            error={workflowController.workflowsQuery.error}
+            indexError={jobs.indexError}
+            indexPending={indexPending || indexActive}
+            lastIndex={lastIndex}
+            loading={workflowController.workflowsQuery.isLoading}
+            onIndex={() => indexMutation.mutate()}
+            onReset={() => workflowController.workflowResetMutation.mutate()}
+            onSave={(library) => workflowController.workflowMutation.mutate(library)}
+            onValidate={(library) =>
+              workflowController.workflowValidateMutation
+                .mutateAsync(library)
+                .then((response) => response.diagnostics)
+            }
+            resetPending={workflowController.workflowResetMutation.isPending}
+            saveError={workflowController.workflowMutation.error}
+            savePending={workflowController.workflowMutation.isPending}
+            saveSuccess={workflowController.workflowMutation.isSuccess}
+            validateError={workflowController.workflowValidateMutation.error}
+            validatePending={workflowController.workflowValidateMutation.isPending}
+          />
+        ) : null}
       </div>
     </main>
   );
 }
 
-function invalidateIdentityQueries(
-  queryClient: ReturnType<typeof useQueryClient>,
-) {
+function invalidateIdentityQueries(queryClient: ReturnType<typeof useQueryClient>) {
   queryClient.invalidateQueries({ queryKey: ["inverse-index"] });
 }

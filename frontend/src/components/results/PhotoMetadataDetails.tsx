@@ -1,7 +1,6 @@
 import type { PhotoMetadata } from "./result-formatting";
 
-
-export function PhotoMetadataDetails({ metadata }: { metadata: PhotoMetadata; }) {
+export function PhotoMetadataDetails({ metadata }: { metadata: PhotoMetadata }) {
   return (
     <details className="rounded-md border border-neutral-200 bg-neutral-50 p-3 text-sm">
       <summary className="cursor-pointer font-semibold text-neutral-800">Photo metadata</summary>

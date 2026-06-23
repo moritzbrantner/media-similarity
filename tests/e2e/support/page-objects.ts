@@ -56,6 +56,7 @@ export async function uploadAndSearch(page: Page, name = "query.png") {
     name,
   });
   await page.getByRole("button", { name: "Search" }).click();
+  await expect(page.locator("article h3").first()).toBeVisible();
 }
 
 export async function expectResultOrder(page: Page, filenames: string[]) {

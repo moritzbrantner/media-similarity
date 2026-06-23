@@ -1,1 +1,4 @@
-export { IndexingConfigurationPage, completeIndexingConfig } from "../../../components/indexing-configuration-page";
+export {
+  IndexingConfigurationPage,
+  completeIndexingConfig,
+} from "../../../components/indexing-configuration-page";
