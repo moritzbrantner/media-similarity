@@ -21,6 +21,7 @@ export default defineConfig(({ command }) => ({
     proxy: {
       "/api": "http://127.0.0.1:8000",
       "/thumbnails": "http://127.0.0.1:8000",
+      "/uploads": "http://127.0.0.1:8000",
     },
   },
 }));

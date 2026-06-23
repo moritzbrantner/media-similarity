@@ -27,8 +27,12 @@ Native Rust media similarity service with a React/Vite frontend. The backend ind
 ## Standard Commands
 
 - Install frontend dependencies: `bun install`
-- Start the development stack and Vite UI: `bun dev`
-- Start only Docker services used by the dev server: `bun run dev:containers`
+- Start the development stack and Vite UI with hot reload: `bun dev`
+- Start only Docker services used by the Vite dev server: `bun run dev:containers`
+- Start the background API, static web UI, and Qdrant service stack: `bun run service:up`
+- Stop the background service stack without deleting volumes: `bun run service:down`
+- Inspect the background service stack: `bun run service:ps`
+- Remove service containers, orphans, and disposable volumes: `bun run service:clean`
 - Fast meaningful test suite: `bun run test`
 - UI end-to-end tests: `bun run test:e2e`
 - Static checks: `bun run lint`
@@ -80,8 +84,12 @@ This project uses Docker services for local development or tests: `qdrant`.
 
 Standard commands:
 
-- `services:up`: start persistent local development services.
-- `services:down`: stop persistent local development services without deleting volumes.
+- `service:up`: start the persistent API, static web UI, and Qdrant service stack.
+- `service:down`: stop the persistent service stack without deleting volumes.
+- `service:clean`: remove compose services, orphans, and disposable volumes.
+- `service:ps`: show service stack state.
+- `services:up`: start Qdrant only for local development support.
+- `services:down`: stop Qdrant without deleting volumes.
 - `services:clean`: remove compose services, orphans, and disposable volumes.
 - `services:ps`: show compose service state.
 - `test:with-services`: run Docker-dependent tests through trap-based cleanup.
@@ -95,7 +103,7 @@ Codex/T3 rules:
 - Prefer `test:with-services` for tests that need Docker.
 - Do not run raw `docker compose up` for tests unless you also add trap-based cleanup.
 - Before finalizing Docker-sensitive work, run `services:ps` or `docker compose ps` and report remaining containers.
-- Use `services:down` after dev sessions. Use `services:clean` only when deleting disposable test data is acceptable.
+- Use `service:down` after background service sessions and `services:down` after Qdrant-only dev sessions. Use clean commands only when deleting disposable test data is acceptable.
 - Format touched files only unless the task explicitly asks for a repo-wide format.
 
 ## Agent skills

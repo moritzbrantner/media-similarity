@@ -6,7 +6,7 @@
   "scripts": {
     "check:hygiene": "bash scripts/check_repo_hygiene.sh",
     "dev": "bun run dev:containers && vite --host 127.0.0.1",
-    "dev:containers": "bash scripts/prepare-dev-data.sh && HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up --build -d",
+    "dev:containers": "bash scripts/prepare-dev-data.sh && HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up --build -d api qdrant",
     "build": "tsc --noEmit && vite build",
     "build:rust": "cargo build --manifest-path backend/Cargo.toml --bins",
     "bench": "bun run bench:rust",
@@ -38,6 +38,10 @@
     "services:down": "docker compose stop qdrant",
     "services:clean": "docker compose down -v --remove-orphans",
     "services:ps": "docker compose ps",
+    "service:up": "bash scripts/prepare-dev-data.sh && HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up --build -d api web qdrant",
+    "service:down": "docker compose stop api web qdrant",
+    "service:ps": "docker compose ps api web qdrant",
+    "service:clean": "docker compose down -v --remove-orphans",
     "test:with-services": "COMPOSE_SERVICES=\"qdrant\" bash scripts/run-with-compose-services.sh bun run test",
     "test:sample:with-services": "COMPOSE_SERVICES=\"qdrant\" bash scripts/run-with-compose-services.sh bun run test:sample"
   },

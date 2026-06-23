@@ -54,21 +54,29 @@ MinIO/S3 object-store sources are supported through `minio://bucket/prefix` and 
    bun install
    ```
 
-4. Start the service:
+4. Start the background service stack:
 
    ```bash
-   bun dev
+   bun run service:up
    ```
 
-5. Open the UI:
+5. Open the service-mode UI:
 
    ```txt
    http://localhost:5173
    ```
 
-   `bun dev` starts the Docker Compose app stack in the background, then starts the Vite dev server. The UI, backend, and Qdrant ports are published on localhost only by default. The backend container remains available at `http://localhost:8000`.
+   `bun run service:up` starts the Rust API, static web UI, and Qdrant in detached Docker Compose containers. The UI is available at `http://localhost:5173`, and the direct API is available at `http://localhost:8000`. The UI, backend, and Qdrant ports are published on localhost only by default.
 
 6. Click **Index configured sources**, then upload a query image, video, audio file, or PDF and search.
+
+For frontend development with Vite hot reload, run:
+
+```bash
+bun dev
+```
+
+This starts only the Docker containers needed by the dev server, then serves the React app through Vite at `http://localhost:5173`.
 
 ## Sample Corpus And Showcase Data
 
@@ -272,8 +280,11 @@ Set these values in `.env`:
 | `QDRANT_CONNECT_TIMEOUT_MS` | `2000` | Timeout for establishing a Qdrant HTTP connection. |
 | `QDRANT_RETRY_ATTEMPTS` | `2` | Additional retry attempts for transient Qdrant HTTP failures. |
 | `QDRANT_RETRY_BACKOFF_MS` | `100` | Initial retry backoff for transient Qdrant HTTP failures. |
+| `API_PORT` | `8000` | Host port for the Docker Compose Rust API service. |
+| `WEB_PORT` | `5173` | Host port for the Docker Compose static web UI service. Use a different value if Vite is already using 5173. |
 | `BIND_ADDR` | `127.0.0.1:8000` | Bind address for direct non-Docker backend runs. Keep the default for local-only use. |
 | `CONTAINER_BIND_ADDR` | `0.0.0.0:8000` | Bind address used inside Docker Compose so the localhost-only host port mapping can reach the app container. |
+| `FRONTEND_SERVING_ENABLED` | `true` | Enables the Rust backend's checked-in static frontend serving for direct backend runs. Docker Compose disables this for the split API/web service stack. |
 | `VECTOR_SIZE` | `512` | Qdrant vector size for the Rust embedder. |
 | `CLIP_MODEL_NAME` | `sentence-transformers/clip-ViT-B-32` | Kept for configuration compatibility; native Rust inference is not CLIP-equivalent yet. |
 | `THUMBNAIL_DIR` | `/app/data/thumbnails` | Generated thumbnail storage. |
@@ -368,11 +379,32 @@ Start the full local app stack and the Vite frontend:
 bun dev
 ```
 
-This runs Docker Compose for the Rust app and Qdrant, then starts Vite. Use this lighter command when only the containers need to be refreshed:
+This runs Docker Compose for the Rust API and Qdrant, then starts Vite with hot reload. Use this lighter command when only the containers need to be refreshed:
 
 ```bash
 bun run dev:containers
 ```
+
+Start the background service mode when you want the static web UI served by Docker Compose instead of Vite:
+
+```bash
+bun run service:up
+```
+
+Background service mode runs the Rust API, static web UI, and Qdrant in detached containers. Open `http://localhost:5173` for the UI or `http://localhost:8000` for the direct API. Stop it without deleting persistent data volumes:
+
+```bash
+bun run service:down
+```
+
+Inspect or fully clean the background service stack with:
+
+```bash
+bun run service:ps
+bun run service:clean
+```
+
+`bun run service:clean` removes containers, orphans, and volumes, so use it only when disposable local data can be deleted.
 
 ### Project Commands
 
@@ -389,6 +421,10 @@ bun run dev:containers
 | `bun run build` | Build the frontend into `frontend/dist`. |
 | `bun run build:rust` | Build Rust service binaries. |
 | `bun run check:hygiene` | Report dirty status, upstream state, and ignored/generated directory issues. |
+| `bun run service:up` | Start the background API, static web UI, and Qdrant service stack. |
+| `bun run service:down` | Stop background services without deleting persistent data volumes. |
+| `bun run service:ps` | Inspect background service state. |
+| `bun run service:clean` | Remove service containers, orphans, and disposable volumes. |
 | `bun run sample:check` | Validate the internet sample-corpus manifest. |
 | `bun run sample:download` | Download showcase sample media into `sample-images/showcase`. |
 | `bun run test:sample` | Run sample-corpus tests. |
@@ -481,7 +517,7 @@ Run the React dev server:
 bun run dev
 ```
 
-The dev script starts the Docker Compose app stack first, then starts Vite on `127.0.0.1`. The Vite dev server proxies `/api` and `/thumbnails` to `http://127.0.0.1:8000`.
+The dev script starts the Docker Compose API and Qdrant first, then starts Vite on `127.0.0.1`. The Vite dev server proxies `/api`, `/thumbnails`, and `/uploads` to `http://127.0.0.1:8000`, so browser-facing API and media URLs stay root-relative in development.
 
 The default Docker Compose port mappings bind the Rust app and Qdrant to `127.0.0.1` on the host. To expose them to other machines, opt in deliberately by changing the `ports` mappings or using an override compose file; this service does not include user authentication.
 
