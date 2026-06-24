@@ -21,7 +21,7 @@ use image_similarity_service::api::{
     enable_model, get_job, get_job_events, get_models, get_source_config, health, index_images,
     inverse_index, list_albums, list_jobs, merge_people, merge_speakers, preview_album, ready,
     rename_person, rename_speaker, search_upload, spawn_index_job, update_album,
-    update_source_config, AppState,
+    update_indexed_media_tags_route, update_source_config, AppState,
 };
 use image_similarity_service::app::upload_body_limit_bytes;
 use image_similarity_service::config::Settings;
@@ -122,6 +122,10 @@ impl TestApp {
                 post(enable_audio_transcription_model),
             )
             .route("/api/indexed-media/:id", delete(delete_indexed_media_route))
+            .route(
+                "/api/indexed-media/:id/tags",
+                put(update_indexed_media_tags_route),
+            )
             .route("/api/indexed-sources", delete(delete_indexed_sources_route))
             .route(
                 "/api/search",
@@ -168,6 +172,18 @@ impl TestApp {
 
     pub fn qdrant_operation_counts(&self) -> FakeQdrantOperationCounts {
         self.qdrant.operation_counts()
+    }
+
+    pub async fn seed_media_payload(&self, payload: ImagePayload) {
+        self.state.store.ensure_collection().await.unwrap();
+        self.state
+            .store
+            .upsert_media(
+                &payload,
+                vec![0.0; self.state.settings.visual_embedding_vector_size],
+            )
+            .await
+            .unwrap();
     }
 
     pub fn spawn_cancellable_job(&self) -> String {
@@ -306,6 +322,43 @@ impl TestApp {
             .unwrap()
     }
 
+    pub async fn search_text_with_params(&self, params: Vec<(&str, String)>) -> SearchResponse {
+        let response = self
+            .raw_search_text_with_params(
+                params
+                    .into_iter()
+                    .map(|(key, value)| (key.to_string(), value))
+                    .collect(),
+            )
+            .await;
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        response.json().await.unwrap()
+    }
+
+    pub async fn raw_search_text_with_params(
+        &self,
+        params: Vec<(String, String)>,
+    ) -> reqwest::Response {
+        let (request_content_type, body) = empty_multipart_body();
+        let mut url = format!("{}/api/search", self.base_url);
+        if !params.is_empty() {
+            let query = params
+                .into_iter()
+                .map(|(key, value)| format!("{key}={value}"))
+                .collect::<Vec<_>>()
+                .join("&");
+            url.push('?');
+            url.push_str(&query);
+        }
+        self.client
+            .post(url)
+            .header(CONTENT_TYPE, request_content_type)
+            .body(body)
+            .send()
+            .await
+            .unwrap()
+    }
+
     pub async fn get_json(&self, path: &str) -> Value {
         let response = self.raw_get(path).await;
         assert_eq!(response.status(), reqwest::StatusCode::OK);
@@ -409,5 +462,11 @@ fn multipart_body(filename: &str, content_type: &str, bytes: Vec<u8>) -> (String
     body.extend_from_slice(format!("Content-Type: {content_type}\r\n\r\n").as_bytes());
     body.extend_from_slice(&bytes);
     body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    (format!("multipart/form-data; boundary={boundary}"), body)
+}
+
+fn empty_multipart_body() -> (String, Vec<u8>) {
+    let boundary = format!("boundary-{}", Uuid::new_v4());
+    let body = format!("--{boundary}--\r\n").into_bytes();
     (format!("multipart/form-data; boundary={boundary}"), body)
 }
