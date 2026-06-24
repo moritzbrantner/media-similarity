@@ -70,14 +70,20 @@ pub fn decode_video_scenes(
     };
 
     let scene_media = sample_scene_media(path, &scenes, settings)?;
+    let source_audio_analysis = source_video_audio_analysis(path, settings)?;
     Ok(scene_media
         .into_iter()
-        .map(|(scene_index, scene, media)| DecodedVideoScene {
-            scene_index,
-            start: scene.start,
-            end: scene.end,
-            clip_url: None,
-            media,
+        .map(|(scene_index, scene, mut media)| {
+            if let Some(analysis) = &source_audio_analysis {
+                media.audio_analysis = slice_audio_analysis_for_scene(analysis, &scene);
+            }
+            DecodedVideoScene {
+                scene_index,
+                start: scene.start,
+                end: scene.end,
+                clip_url: None,
+                media,
+            }
         })
         .collect())
 }
@@ -348,6 +354,13 @@ fn source_video_audio_analysis_cancellable(
         Err(error) if audio_stream_not_found(&error) => Ok(None),
         Err(error) => Err(error),
     }
+}
+
+fn source_video_audio_analysis(
+    path: &Path,
+    settings: &Settings,
+) -> Result<Option<AudioAnalysis>, String> {
+    source_video_audio_analysis_cancellable(path, settings, &mut || false)
 }
 
 fn slice_audio_analysis_for_scene(
