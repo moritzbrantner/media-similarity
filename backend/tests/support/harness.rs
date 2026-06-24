@@ -8,9 +8,9 @@ use axum::extract::DefaultBodyLimit;
 use axum::routing::{delete, get, post, put};
 use axum::Router;
 use jobs_core::{JobProgress, JobSpec};
+use model_runtime::{ModelBundleFile, ModelBundleManifest, ModelTask};
 use reqwest::header::CONTENT_TYPE;
 use serde_json::Value;
-use text_transcripts::WhisperCppModel;
 use tokio::net::TcpListener;
 use uuid::Uuid;
 
@@ -57,6 +57,7 @@ impl TestApp {
             upload_dir: upload_dir.clone(),
             voice_registry_path: root.path().join("recognized-voices.json"),
             smart_albums_file: root.path().join("smart-albums.json"),
+            model_bundle_dir: root.path().join("model-bundles"),
             media_sources_file: root.path().join("config/media-sources.txt"),
             vector_size: 32,
             visual_embedding_backend: "legacy".to_string(),
@@ -221,16 +222,52 @@ impl TestApp {
         snapshot.spec.id.to_string()
     }
 
-    pub fn cache_whisper_model(&self, model: WhisperCppModel) {
-        let cache_dir = self
+    pub fn cache_audio_transcription_bundle(&self) -> PathBuf {
+        let model_id = &self.state.settings.audio_transcription_model;
+        let bundle_root = self
             .state
             .settings
-            .audio_transcription_cache_dir
-            .as_ref()
-            .unwrap()
-            .join("models");
-        fs::create_dir_all(&cache_dir).unwrap();
-        fs::write(cache_dir.join(model.file_name()), b"cached model").unwrap();
+            .model_bundle_dir
+            .join(model_id.replace(['/', '\\'], "_"))
+            .join("main");
+        let files_dir = bundle_root.join("files");
+        fs::create_dir_all(&files_dir).unwrap();
+
+        let required_files = [
+            "config.json",
+            "generation_config.json",
+            "tokenizer.json",
+            "preprocessor_config.json",
+            "model.safetensors",
+        ];
+        let mut files = std::collections::BTreeMap::new();
+        for file in required_files {
+            let path = files_dir.join(file);
+            fs::write(&path, b"cached model file").unwrap();
+            files.insert(
+                file.to_string(),
+                ModelBundleFile {
+                    remote_path: file.to_string(),
+                    local_path: format!("files/{file}"),
+                    size_bytes: fs::metadata(&path).unwrap().len(),
+                },
+            );
+        }
+
+        let manifest = ModelBundleManifest {
+            schema_version: 1,
+            name: model_id.clone(),
+            repo_id: model_id.clone(),
+            revision: "main".to_string(),
+            task: ModelTask::SpeechRecognition,
+            files,
+        };
+        fs::write(
+            bundle_root.join("manifest.json"),
+            serde_json::to_vec_pretty(&manifest).unwrap(),
+        )
+        .unwrap();
+        bundle_root
     }
 
     pub async fn index(&self) -> IndexResponse {
