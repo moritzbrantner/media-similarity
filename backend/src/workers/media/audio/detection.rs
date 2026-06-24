@@ -78,11 +78,8 @@ fn analyze_audio_cancellable(
     is_cancelled: &mut impl FnMut() -> bool,
 ) -> Result<AudioAnalysis, String> {
     check_cancelled(is_cancelled)?;
-    let samples = extract_mono_f32_samples_cancellable(
-        path,
-        AUDIO_ANALYSIS_SAMPLE_RATE,
-        is_cancelled,
-    )?;
+    let samples =
+        extract_mono_f32_samples_cancellable(path, AUDIO_ANALYSIS_SAMPLE_RATE, is_cancelled)?;
     check_cancelled(is_cancelled)?;
     let mut analysis = analyze_audio_samples(&samples, AUDIO_ANALYSIS_SAMPLE_RATE)
         .map_err(|error| error.to_string())?;
@@ -94,7 +91,7 @@ fn analyze_audio_cancellable(
         settings,
     )?;
     check_cancelled(is_cancelled)?;
-    attach_audio_transcription(&mut analysis, path, settings);
+    attach_audio_transcription(&mut analysis, path, settings)?;
     Ok(analysis)
 }
 
@@ -214,21 +211,19 @@ fn analyze_audio_samples(
     })
 }
 
-fn attach_audio_transcription(analysis: &mut AudioAnalysis, path: &Path, settings: &Settings) {
+fn attach_audio_transcription(
+    analysis: &mut AudioAnalysis,
+    path: &Path,
+    settings: &Settings,
+) -> Result<(), String> {
     if !settings.audio_transcription_enabled || !analysis.speech_detected {
-        return;
+        return Ok(());
     }
-    match transcribe_audio(path, settings) {
-        Ok(Some(transcript)) => {
-            analysis.transcript_text = transcript.text;
-            analysis.transcript_language = transcript.language;
-            analysis.transcript_segments = transcript.segments;
-        }
-        Ok(None) => {}
-        Err(error) => {
-            tracing::warn!(%error, path = %path.display(), "Audio transcription failed");
-        }
-    }
+    let transcript = transcribe_audio(path, settings)?;
+    analysis.transcript_text = transcript.text;
+    analysis.transcript_language = transcript.language;
+    analysis.transcript_segments = transcript.segments;
+    Ok(())
 }
 
 #[derive(Debug)]
