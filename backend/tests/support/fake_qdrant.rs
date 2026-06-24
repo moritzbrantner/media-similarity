@@ -21,6 +21,7 @@ pub struct FakeQdrant {
 struct FakeQdrantState {
     collections: BTreeMap<String, FakeCollection>,
     points: BTreeMap<(String, String), FakePoint>,
+    operation_counts: FakeQdrantOperationCounts,
 }
 
 struct FakeCollection {
@@ -32,6 +33,12 @@ struct FakeCollection {
 struct FakePoint {
     vector: Vec<f32>,
     payload: Value,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FakeQdrantOperationCounts {
+    pub upserted_points: usize,
+    pub deleted_points: usize,
 }
 
 #[derive(Deserialize)]
@@ -145,6 +152,10 @@ impl FakeQdrant {
         payloads.sort_by(|left, right| left.filename.cmp(&right.filename));
         payloads
     }
+
+    pub fn operation_counts(&self) -> FakeQdrantOperationCounts {
+        self.state.lock().unwrap().operation_counts
+    }
 }
 
 async fn fake_list_collections(State(state): State<Arc<Mutex<FakeQdrantState>>>) -> Json<Value> {
@@ -233,6 +244,7 @@ async fn fake_upsert_points(
     }
     for point in request.points {
         let vector = named_vector(&point.vector).ok_or(AxumStatusCode::UNPROCESSABLE_ENTITY)?;
+        state.operation_counts.upserted_points += 1;
         state.points.insert(
             (collection.clone(), point.id),
             FakePoint {
@@ -272,7 +284,9 @@ async fn fake_delete_points(
         return Err(AxumStatusCode::NOT_FOUND);
     }
     for id in request.points {
-        state.points.remove(&(collection.clone(), id));
+        if state.points.remove(&(collection.clone(), id)).is_some() {
+            state.operation_counts.deleted_points += 1;
+        }
     }
     Ok(Json(json!({ "result": { "status": "completed" } })))
 }
