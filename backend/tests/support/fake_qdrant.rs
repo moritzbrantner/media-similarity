@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use axum::extract::{Path as AxumPath, State};
 use axum::http::StatusCode as AxumStatusCode;
@@ -22,6 +23,7 @@ struct FakeQdrantState {
     collections: BTreeMap<String, FakeCollection>,
     points: BTreeMap<(String, String), FakePoint>,
     operation_counts: FakeQdrantOperationCounts,
+    upsert_delay_ms: u64,
 }
 
 struct FakeCollection {
@@ -156,6 +158,10 @@ impl FakeQdrant {
     pub fn operation_counts(&self) -> FakeQdrantOperationCounts {
         self.state.lock().unwrap().operation_counts
     }
+
+    pub fn delay_upserts(&self, delay: Duration) {
+        self.state.lock().unwrap().upsert_delay_ms = delay.as_millis() as u64;
+    }
 }
 
 async fn fake_list_collections(State(state): State<Arc<Mutex<FakeQdrantState>>>) -> Json<Value> {
@@ -238,6 +244,11 @@ async fn fake_upsert_points(
     State(state): State<Arc<Mutex<FakeQdrantState>>>,
     Json(request): Json<FakeUpsertRequest>,
 ) -> Result<Json<Value>, AxumStatusCode> {
+    let upsert_delay_ms = state.lock().unwrap().upsert_delay_ms;
+    if upsert_delay_ms > 0 {
+        tokio::time::sleep(Duration::from_millis(upsert_delay_ms)).await;
+    }
+
     let mut state = state.lock().unwrap();
     if !state.collections.contains_key(&collection) {
         return Err(AxumStatusCode::NOT_FOUND);
