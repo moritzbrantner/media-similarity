@@ -174,6 +174,10 @@ impl TestApp {
         self.qdrant.operation_counts()
     }
 
+    pub fn delay_qdrant_upserts(&self, delay: Duration) {
+        self.qdrant.delay_upserts(delay);
+    }
+
     pub async fn seed_media_payload(&self, payload: ImagePayload) {
         self.state.store.ensure_collection().await.unwrap();
         self.state
