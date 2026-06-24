@@ -143,6 +143,22 @@ mod tests {
         video.scene_start_seconds = Some(0.0);
         video.scene_end_seconds = Some(1.0);
         assert!(payload_analysis_complete(&video, &settings));
+        video.audio_analysis = Some(AudioAnalysis {
+            speech_detected: true,
+            speech_ratio: 1.0,
+            speech_segments: Vec::new(),
+            audio_segments: Vec::new(),
+            recognized_voices: Vec::new(),
+            transcript_text: String::new(),
+            transcript_language: None,
+            transcript_segments: Vec::new(),
+            tempo_bpm: None,
+            tempo_confidence: 0.0,
+            tempo_onset_count: 0,
+        });
+        assert!(!payload_analysis_complete(&video, &settings));
+        video.audio_analysis.as_mut().unwrap().transcript_text = "scene speech".to_string();
+        assert!(payload_analysis_complete(&video, &settings));
 
         let mut audio = media("audio");
         audio.audio_analysis = Some(AudioAnalysis {

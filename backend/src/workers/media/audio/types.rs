@@ -90,6 +90,14 @@ pub fn decode_audio(path: &Path, settings: &Settings) -> Result<DecodedMedia, St
     decode_audio_window(path, settings, None, duration_ms, audio_analysis)
 }
 
+pub fn analyze_audio_track_cancellable(
+    path: &Path,
+    settings: &Settings,
+    mut is_cancelled: impl FnMut() -> bool,
+) -> Result<AudioAnalysis, String> {
+    analyze_audio_cancellable(path, settings, &mut is_cancelled)
+}
+
 pub fn decode_audio_segments(
     path: &Path,
     settings: &Settings,
