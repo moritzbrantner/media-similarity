@@ -5,13 +5,12 @@ use image::{Rgb, RgbImage};
 use serde_json::json;
 
 use image_similarity_service::config::parse_extensions;
+use image_similarity_service::domain::models::ImagePayload;
 
 mod support;
 
 use support::harness::TestApp;
-use support::media_fixtures::{
-    inject_xmp_metadata, test_photo_xmp, write_pattern_image, write_test_pdf,
-};
+use support::media_fixtures::{inject_xmp_metadata, test_photo_xmp, write_pattern_image};
 
 #[tokio::test]
 async fn search_api_applies_metadata_filter_combinations() {
@@ -106,15 +105,18 @@ async fn text_only_search_matches_indexed_pdf_text_without_upload_media() {
     })
     .await;
 
-    let pdf = app.source_path("meeting-notes.pdf");
-    write_test_pdf(
-        &pdf,
-        &["Quarterly roadmap approval", "Receipt archive complete"],
-    );
-
-    let indexed = app.index().await;
-    assert_eq!(indexed.failed, 0, "{:?}", indexed.errors);
-    assert!(indexed.indexed >= 2);
+    app.seed_media_payload(pdf_page_payload(
+        "meeting-notes.pdf-page-001",
+        "meeting-notes.pdf page 001",
+        "Quarterly roadmap approval",
+    ))
+    .await;
+    app.seed_media_payload(pdf_page_payload(
+        "meeting-notes.pdf-page-002",
+        "meeting-notes.pdf page 002",
+        "Receipt archive complete",
+    ))
+    .await;
 
     let response = app
         .search_text_with_params(vec![
@@ -236,4 +238,50 @@ fn write_diagonal_image(path: &Path, width: u32, height: u32, inverted: bool) {
         }
     }
     image.save(path).unwrap();
+}
+
+fn pdf_page_payload(id: &str, filename: &str, ocr_text: &str) -> ImagePayload {
+    ImagePayload {
+        id: id.to_string(),
+        path: format!("/pdf-pages/{filename}.png"),
+        relative_path: filename.to_string(),
+        filename: filename.to_string(),
+        width: 612,
+        height: 792,
+        size_bytes: 16_384,
+        modified_at: 1_710_239_400.0,
+        phash: "0000000000000000".to_string(),
+        thumbnail_url: Some(format!("/thumbnails/{id}.jpg")),
+        animated_thumbnail_url: None,
+        media_kind: "pdf_page".to_string(),
+        frame_count: None,
+        duration_ms: None,
+        full_video_url: None,
+        full_audio_url: None,
+        full_pdf_url: Some("/media/meeting-notes.pdf".to_string()),
+        pdf_page_url: Some(format!("/media/{filename}.png")),
+        pdf_document_id: Some("meeting-notes.pdf".to_string()),
+        pdf_page_index: Some(if filename.ends_with("001") { 0 } else { 1 }),
+        pdf_page_number: Some(if filename.ends_with("001") { 1 } else { 2 }),
+        pdf_page_count: Some(2),
+        audio_analysis: None,
+        ocr_text: ocr_text.to_string(),
+        ocr_frames: Vec::new(),
+        visual_embedding_model: Some("test-seed".to_string()),
+        faces: Vec::new(),
+        people: Vec::new(),
+        artifacts: Vec::new(),
+        tags: Vec::new(),
+        photo_metadata: None,
+        scene_clip_url: None,
+        scene_index: None,
+        scene_start_frame: None,
+        scene_end_frame: None,
+        scene_start_seconds: None,
+        scene_end_seconds: None,
+        source_type: "local".to_string(),
+        source_item_uri: Some(format!("file:///fixtures/{filename}")),
+        indexing_profile: Some("test-seeded-pdf".to_string()),
+        source_uri: Some("file:///fixtures/meeting-notes.pdf".to_string()),
+    }
 }

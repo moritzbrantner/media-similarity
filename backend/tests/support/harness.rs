@@ -174,6 +174,18 @@ impl TestApp {
         self.qdrant.operation_counts()
     }
 
+    pub async fn seed_media_payload(&self, payload: ImagePayload) {
+        self.state.store.ensure_collection().await.unwrap();
+        self.state
+            .store
+            .upsert_media(
+                &payload,
+                vec![0.0; self.state.settings.visual_embedding_vector_size],
+            )
+            .await
+            .unwrap();
+    }
+
     pub fn spawn_cancellable_job(&self) -> String {
         self.spawn_cancellable_job_with_kind("test.cancel")
     }
