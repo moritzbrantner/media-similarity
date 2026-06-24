@@ -514,6 +514,34 @@ mod tests {
     }
 
     #[test]
+    fn video_scene_text_score_uses_only_scene_transcript_slice() {
+        let mut scene = test_payload("clip.mp4#scene=2");
+        scene.media_kind = "video_scene".to_string();
+        scene.audio_analysis = Some(AudioAnalysis {
+            speech_detected: true,
+            speech_ratio: 1.0,
+            speech_segments: Vec::new(),
+            audio_segments: Vec::new(),
+            recognized_voices: Vec::new(),
+            transcript_text: "budget scene".to_string(),
+            transcript_language: Some("en".to_string()),
+            transcript_segments: vec![AudioTranscriptSegment {
+                segment_index: 1,
+                start_seconds: Some(12.0),
+                end_seconds: Some(15.0),
+                text: "budget scene".to_string(),
+                confidence: Some(0.9),
+            }],
+            tempo_bpm: None,
+            tempo_confidence: 0.0,
+            tempo_onset_count: 0,
+        });
+
+        assert!(media_text_match_score(&scene, "budget").is_some());
+        assert!(media_text_match_score(&scene, "opening").is_none());
+    }
+
+    #[test]
     fn text_only_filters_apply_metadata_without_hash_distance() {
         let image = test_payload("portrait.jpg");
         let filters = SearchFilters {

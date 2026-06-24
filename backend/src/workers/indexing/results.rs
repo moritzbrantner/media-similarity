@@ -23,9 +23,11 @@ pub fn payload_analysis_complete(payload: &ImagePayload, settings: &Settings) ->
         return false;
     }
 
-    if settings.audio_transcription_enabled && payload.media_kind == "audio" {
+    if settings.audio_transcription_enabled
+        && (payload.media_kind == "audio" || payload.media_kind == "video_scene")
+    {
         let Some(analysis) = &payload.audio_analysis else {
-            return false;
+            return payload.media_kind == "video_scene";
         };
         if analysis.speech_detected && analysis.transcript_text.trim().is_empty() {
             return false;
