@@ -27,7 +27,7 @@ use image_similarity_service::app::upload_body_limit_bytes;
 use image_similarity_service::config::Settings;
 use image_similarity_service::domain::models::{ImagePayload, IndexResponse, SearchResponse};
 
-use super::fake_qdrant::FakeQdrant;
+use super::fake_qdrant::{FakeQdrant, FakeQdrantOperationCounts};
 
 pub struct TestApp {
     pub base_url: String,
@@ -164,6 +164,10 @@ impl TestApp {
     pub fn qdrant_payload_schema(&self) -> std::collections::BTreeMap<String, Value> {
         self.qdrant
             .payload_schema(&self.state.settings.qdrant_collection)
+    }
+
+    pub fn qdrant_operation_counts(&self) -> FakeQdrantOperationCounts {
+        self.qdrant.operation_counts()
     }
 
     pub fn spawn_cancellable_job(&self) -> String {
