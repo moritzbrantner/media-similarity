@@ -7,7 +7,9 @@ use crate::workers::media::audio::{audio_upload_path, decode_audio_segments, wri
 use crate::workers::media::image_io::load_media_bytes;
 use crate::workers::media::ocr::normalize_ocr_query;
 use crate::workers::media::pdf::{decode_pdf, pdf_upload_path, write_pdf_upload};
-use crate::workers::media::video::{decode_video_scenes, video_upload_path, write_video_upload};
+use crate::workers::media::video::{
+    decode_video_scenes, video_upload_path, write_video_upload, DecodedVideoScene,
+};
 use crate::workers::search::{ImageSearchService, SearchFilters};
 use crate::workers::workflows::{MediaFileKind, WorkflowMode};
 use bytes::Bytes;
@@ -275,11 +277,19 @@ pub async fn search_video_upload(
         results,
         query_media_kind: "video".to_string(),
         scenes: scene_responses,
-        query_audio_analysis: None,
+        query_audio_analysis: video_query_audio_analysis(&scenes),
         query_ocr_text: normalize_ocr_query(ocr_text),
         query_visual_embedding_model: Some(state.embedder.model_name().to_string()),
         query_visual_embedding_degraded: state.embedder.is_degraded(),
     })
+}
+
+fn video_query_audio_analysis(
+    scenes: &[DecodedVideoScene],
+) -> Option<crate::domain::models::AudioAnalysis> {
+    scenes
+        .iter()
+        .find_map(|scene| scene.media.audio_analysis.clone())
 }
 
 fn workflow_settings_for_upload(
@@ -323,5 +333,70 @@ fn search_error(error: String) -> ApiError {
         ApiError::service_unavailable(error)
     } else {
         ApiError::internal(error)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::video_query_audio_analysis;
+    use crate::domain::models::AudioAnalysis;
+    use crate::workers::media::media::{DecodedMedia, MediaFrame, MediaKind};
+    use crate::workers::media::video::DecodedVideoScene;
+    use image::RgbImage;
+    use num_rational::Rational64;
+    use video_analysis_core::FramePosition;
+
+    #[test]
+    fn video_query_audio_analysis_uses_first_scene_with_audio_analysis() {
+        let scene_without_audio = decoded_scene(0, None);
+        let scene_with_audio = decoded_scene(
+            1,
+            Some(AudioAnalysis {
+                speech_detected: true,
+                speech_ratio: 1.0,
+                speech_segments: Vec::new(),
+                audio_segments: Vec::new(),
+                recognized_voices: Vec::new(),
+                transcript_text: "budget scene".to_string(),
+                transcript_language: Some("en".to_string()),
+                transcript_segments: Vec::new(),
+                tempo_bpm: None,
+                tempo_confidence: 0.0,
+                tempo_onset_count: 0,
+            }),
+        );
+
+        let analysis =
+            video_query_audio_analysis(&[scene_without_audio, scene_with_audio]).unwrap();
+
+        assert_eq!(analysis.transcript_text, "budget scene");
+    }
+
+    fn decoded_scene(
+        scene_index: usize,
+        audio_analysis: Option<AudioAnalysis>,
+    ) -> DecodedVideoScene {
+        let image = RgbImage::new(1, 1);
+        let frame = MediaFrame {
+            image: image.clone(),
+            delay_ms: 1,
+        };
+        DecodedVideoScene {
+            scene_index,
+            start: FramePosition::from_frame_index(0, Rational64::new(24, 1)),
+            end: FramePosition::from_frame_index(1, Rational64::new(24, 1)),
+            clip_url: None,
+            media: DecodedMedia {
+                kind: MediaKind::VideoScene,
+                width: 1,
+                height: 1,
+                frame_count: Some(1),
+                duration_ms: Some(42),
+                poster: image,
+                sampled_frames: vec![frame.clone()],
+                preview_frames: vec![frame],
+                audio_analysis,
+            },
+        }
     }
 }
