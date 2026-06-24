@@ -51,6 +51,29 @@ _Avoid_: benchmark when referring to acceptance checks
 Results produced without the configured quality model active.
 _Avoid_: normal fallback
 
+**Native transcription pipeline**:
+The Rust audio/video speech indexing path that transcodes media, runs the
+app-managed ASR model bundle through the native Candle Whisper provider, and
+stores transcript text on the existing media analysis payload used by text
+search. Audio and video query uploads use the same pipeline semantics as
+indexed media.
+_Avoid_: Python WhisperX runtime, whisper.cpp path, transcript service
+
+**ASR model bundle**:
+The app-managed model files for the configured speech recognizer, defaulting to
+`openai/whisper-large-v3-turbo`, reported through the same model readiness
+language as other model roles. A missing or unusable bundle is a blocking setup
+condition for enabled speech-bearing transcription, not degraded mode.
+_Avoid_: Python model install, CPU fallback model, ad hoc model path
+
+**Video transcript slice**:
+The source-video-relative transcript segments attached to a video scene media
+point after the source video audio is transcribed once. A slice contains only
+segments that overlap the scene window, while segment times remain relative to
+the full source video for later playback and alignment work.
+_Avoid_: full-video transcript per scene, scene-relative transcript timestamps,
+first-class transcript record
+
 **Indexing plan**:
 The decision about which source items are pending, already current, skipped, or
 stale.
@@ -59,3 +82,11 @@ _Avoid_: scan result
 **Payload index**:
 A Qdrant field index used to make filtered media search efficient.
 _Avoid_: vector index
+
+## Native Transcription Scope
+
+The native transcription PRD keeps the existing query upload, media point,
+visual vector, degraded mode, and quality gate vocabulary. It does not introduce
+Python WhisperX execution, CPU-first transcription behavior, diarization,
+word-level alignment, transcript export, or separate first-class transcript
+records.
