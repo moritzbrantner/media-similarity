@@ -7,7 +7,6 @@ use jobs_core::JobSpec;
 use reqwest::header::CONTENT_TYPE;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use text_transcripts::WhisperCppModel;
 use uuid::Uuid;
 
 use image_similarity_service::config::parse_extensions;
@@ -1851,49 +1850,58 @@ async fn indexing_endpoints_reject_overlapping_index_jobs() {
 }
 
 #[tokio::test]
-async fn audio_transcription_model_endpoints_report_cache_and_spawn_cached_jobs() {
+async fn audio_transcription_model_endpoints_use_native_model_bundles() {
     let app = TestApp::new(|settings| {
         settings.audio_transcription_enabled = true;
-        settings.audio_transcription_model = "tiny.en".to_string();
-        settings.audio_transcription_cache_dir = Some(settings.source_image_dir.join("../whisper"));
     })
     .await;
-    app.cache_whisper_model(WhisperCppModel::TinyEn);
+    app.cache_audio_transcription_bundle();
 
     let catalog = app.get_json("/api/models/audio-transcription").await;
     assert_eq!(catalog["enabled"], true);
-    assert_eq!(catalog["configured_model"], "tiny.en");
-    let tiny = catalog["models"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|model| model["id"] == "tiny.en")
-        .unwrap();
-    assert_eq!(tiny["cached"], true);
-    assert_eq!(tiny["configured"], true);
+    assert_eq!(catalog["provider"], "candle-whisper");
+    assert_eq!(catalog["configured_model"], "openai/whisper-large-v3-turbo");
+    assert_eq!(catalog["device"], "auto");
+    assert_eq!(catalog["compute_type"], "automatic");
+    assert_eq!(catalog["batch_chunks"], true);
+    assert_eq!(catalog["max_batch_size"], 4);
+    let model = catalog["models"].as_array().unwrap().first().unwrap();
+    assert_eq!(model["id"], "openai/whisper-large-v3-turbo");
+    assert_eq!(model["cached"], true);
+    assert_eq!(model["configured"], true);
 
     let download = app
         .post_json(
             "/api/models/audio-transcription/download",
-            json!({ "model": "tiny.en" }),
+            json!({ "model": "openai/whisper-large-v3-turbo" }),
         )
         .await;
     let download_id = download["spec"]["id"].as_str().unwrap();
     let download_finished = app.wait_for_job_status(download_id, &["Succeeded"]).await;
     assert_eq!(download_finished["status"], "Succeeded");
-    assert_eq!(download_finished["spec"]["metadata"]["model"], "tiny.en");
+    assert_eq!(
+        download_finished["spec"]["metadata"]["model"],
+        "openai/whisper-large-v3-turbo"
+    );
+    assert_eq!(
+        download_finished["spec"]["metadata"]["provider"],
+        "candle-whisper"
+    );
 
     let enable = app
         .post_json(
             "/api/models/audio-transcription/enable",
-            json!({ "model": "tiny.en" }),
+            json!({ "model": "openai/whisper-large-v3-turbo" }),
         )
         .await;
     let enable_id = enable["spec"]["id"].as_str().unwrap();
     let enable_finished = app.wait_for_job_status(enable_id, &["Succeeded"]).await;
     assert_eq!(enable_finished["status"], "Succeeded");
     assert_eq!(enable_finished["metadata"]["enabled"], "true");
-    assert_eq!(enable_finished["metadata"]["configured_model"], "tiny.en");
+    assert_eq!(
+        enable_finished["metadata"]["configured_model"],
+        "openai/whisper-large-v3-turbo"
+    );
 
     let invalid = app
         .raw_post_json(
@@ -1903,7 +1911,30 @@ async fn audio_transcription_model_endpoints_report_cache_and_spawn_cached_jobs(
         .await;
     assert_eq!(invalid.status(), reqwest::StatusCode::BAD_REQUEST);
     let body: Value = invalid.json().await.unwrap();
-    assert_eq!(body["detail"], "Unknown whisper.cpp model `unknown-model`");
+    assert_eq!(
+        body["detail"],
+        "Audio transcription model `unknown-model` does not match configured native ASR model `openai/whisper-large-v3-turbo`"
+    );
+}
+
+#[tokio::test]
+async fn enabling_audio_transcription_without_bundle_reports_setup_error() {
+    let app = TestApp::new(|settings| {
+        settings.audio_transcription_enabled = false;
+    })
+    .await;
+
+    let enable = app
+        .post_json("/api/models/audio-transcription/enable", json!({}))
+        .await;
+    let enable_id = enable["spec"]["id"].as_str().unwrap();
+    let enable_finished = app.wait_for_job_status(enable_id, &["Failed"]).await;
+
+    assert_eq!(enable_finished["status"], "Failed");
+    assert!(enable_finished["failure"]["message"]
+        .as_str()
+        .unwrap()
+        .contains("native ASR model bundle"));
 }
 
 #[tokio::test]

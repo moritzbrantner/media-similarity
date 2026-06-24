@@ -131,6 +131,19 @@ pub fn face_embedding_spec() -> HuggingFaceModelSpec {
     FaceEmbeddingPreset::OpenCvSFace.model_spec()
 }
 
+pub fn audio_transcription_spec(settings: &Settings) -> HuggingFaceModelSpec {
+    audio_transcription_spec_for_model(&settings.audio_transcription_model)
+}
+
+pub fn audio_transcription_spec_for_model(model_id: &str) -> HuggingFaceModelSpec {
+    HuggingFaceModelSpec::new(model_id, ModelTask::SpeechRecognition)
+        .file("config.json")
+        .file("generation_config.json")
+        .file("tokenizer.json")
+        .file("preprocessor_config.json")
+        .file("model.safetensors")
+}
+
 pub fn bundle_store(settings: &Settings) -> ModelBundleStore {
     ModelBundleStore::new(settings.model_bundle_dir.clone()).downloader(model_downloader(settings))
 }
@@ -147,33 +160,41 @@ pub fn model_downloader(settings: &Settings) -> HuggingFaceDownloader {
 }
 
 pub fn load_role_bundle(role: ModelRole, settings: &Settings) -> Result<ModelBundle, String> {
-    let spec = role_spec(role)?;
+    let spec = role_spec_for_settings(role, settings)?;
     let revision = spec.revision_value().unwrap_or("main");
     bundle_store(settings)
         .load(&spec.name, revision)
         .and_then(|bundle| normalize_onnx_role_bundle(bundle, role))
-        .and_then(|bundle| validate_onnx_role_bundle(bundle, role))
+        .and_then(|bundle| validate_role_bundle(bundle, role))
         .map_err(|error| error.to_string())
 }
 
 pub fn download_role_bundle(role: ModelRole, settings: &Settings) -> Result<ModelBundle, String> {
-    let spec = role_spec(role)?;
+    let spec = role_spec_for_settings(role, settings)?;
+    if let Ok(bundle) = load_role_bundle(role, settings) {
+        return Ok(bundle);
+    }
     bundle_store(settings)
         .overwrite(true)
         .download(&spec)
         .and_then(|bundle| normalize_onnx_role_bundle(bundle, role))
-        .and_then(|bundle| validate_onnx_role_bundle(bundle, role))
+        .and_then(|bundle| validate_role_bundle(bundle, role))
         .map_err(|error| error.to_string())
 }
 
 pub fn role_spec(role: ModelRole) -> Result<HuggingFaceModelSpec, String> {
+    role_spec_for_settings(role, &Settings::default())
+}
+
+pub fn role_spec_for_settings(
+    role: ModelRole,
+    settings: &Settings,
+) -> Result<HuggingFaceModelSpec, String> {
     match role {
         ModelRole::VisualEmbedding => Ok(visual_embedding_spec()),
         ModelRole::FaceDetection => Ok(face_detection_spec()),
         ModelRole::FaceEmbedding => Ok(face_embedding_spec()),
-        ModelRole::AudioTranscription => {
-            Err("audio transcription models are managed by text-transcripts".to_string())
-        }
+        ModelRole::AudioTranscription => Ok(audio_transcription_spec(settings)),
     }
 }
 
@@ -262,44 +283,56 @@ fn bundle_model_status(
 }
 
 fn audio_model_status(settings: &Settings) -> ModelRuntimeStatus {
-    let store = audio_transcription_model_store(settings);
-    let configured = settings.audio_transcription_model.clone();
-    let models = store
-        .catalog()
-        .models
-        .into_iter()
-        .map(|status| {
-            let id = status.model.id().to_string();
-            ModelOption {
-                cached: status.cached,
-                configured: id.eq_ignore_ascii_case(&configured),
-                label: id.clone(),
-                id,
-            }
-        })
-        .collect::<Vec<_>>();
-    let cached = models.iter().any(|model| model.configured && model.cached);
+    let spec = audio_transcription_spec(settings);
+    let store = bundle_store(settings);
+    let revision = spec.revision_value().unwrap_or("main");
+    let bundle = store
+        .load(&spec.name, revision)
+        .and_then(|bundle| validate_role_bundle(bundle, ModelRole::AudioTranscription));
+    let bundle_error = match &bundle {
+        Err(ModelRuntimeError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => Some(error.to_string()),
+        Ok(_) => None,
+    };
+    let bundle = bundle.ok();
+    let cached = bundle.is_some();
     let missing_enabled_model = settings.audio_transcription_enabled && !cached;
     ModelRuntimeStatus {
         role: ModelRole::AudioTranscription.as_str().to_string(),
         label: ModelRole::AudioTranscription.label().to_string(),
-        configured,
+        configured: spec.name.clone(),
         cached,
         active: settings.audio_transcription_enabled && cached,
-        blocking: false,
+        blocking: missing_enabled_model,
         required_action: missing_enabled_model.then_some("download"),
-        bundle_path: settings
-            .audio_transcription_cache_dir
+        bundle_path: bundle
             .as_ref()
-            .map(|path| path.to_string_lossy().to_string()),
-        detail: if settings.audio_transcription_enabled && !cached {
-            Some("Configured transcription model is not cached; native transcription will download it only when auto-download is enabled".to_string())
+            .map(|bundle| bundle.root.to_string_lossy().to_string()),
+        detail: if cached {
+            Some(format!("Using native ASR model bundle `{}`", spec.name))
+        } else if let Some(error) = bundle_error {
+            Some(format!(
+                "Native ASR model bundle `{}` is malformed or incomplete in {}: {error}",
+                spec.name,
+                settings.model_bundle_dir.display()
+            ))
+        } else if settings.audio_transcription_enabled {
+            Some(format!(
+                "Native ASR model bundle `{}` is not cached in {}; download it before enabling transcription",
+                spec.name,
+                settings.model_bundle_dir.display()
+            ))
         } else if !settings.audio_transcription_enabled {
             Some("Role is disabled by configuration".to_string())
         } else {
-            Some("Configured transcription model is cached".to_string())
+            None
         },
-        options: models,
+        options: vec![ModelOption {
+            id: spec.name.clone(),
+            label: spec.repo_id_value().unwrap_or(&spec.name).to_string(),
+            cached,
+            configured: true,
+        }],
     }
 }
 
@@ -416,6 +449,51 @@ fn validate_onnx_role_bundle(
     Ok(bundle)
 }
 
+fn validate_role_bundle(
+    bundle: ModelBundle,
+    role: ModelRole,
+) -> model_runtime::Result<ModelBundle> {
+    if role == ModelRole::AudioTranscription {
+        return validate_audio_transcription_bundle(bundle);
+    }
+
+    validate_onnx_role_bundle(bundle, role)
+}
+
+fn validate_audio_transcription_bundle(bundle: ModelBundle) -> model_runtime::Result<ModelBundle> {
+    if bundle.manifest.task != ModelTask::SpeechRecognition {
+        return Err(ModelRuntimeError::Source(format!(
+            "native ASR model bundle `{}` must use speech_recognition task",
+            bundle.manifest.name
+        )));
+    }
+    for remote_path in [
+        "config.json",
+        "generation_config.json",
+        "tokenizer.json",
+        "preprocessor_config.json",
+        "model.safetensors",
+    ] {
+        match bundle.file_path(remote_path) {
+            Some(path) if path.is_file() => {}
+            Some(path) => {
+                return Err(ModelRuntimeError::Source(format!(
+                    "native ASR model bundle `{}` is missing cached file `{remote_path}` at {}",
+                    bundle.manifest.name,
+                    path.display()
+                )));
+            }
+            None => {
+                return Err(ModelRuntimeError::Source(format!(
+                    "native ASR model bundle `{}` is missing manifest entry `{remote_path}`",
+                    bundle.manifest.name
+                )));
+            }
+        }
+    }
+    Ok(bundle)
+}
+
 fn onnx_role_task(role: ModelRole) -> ModelTask {
     match role {
         ModelRole::VisualEmbedding => ModelTask::ImageEmbedding,
@@ -462,6 +540,30 @@ mod tests {
         assert!(!status.active);
         assert!(status.blocking);
         assert_eq!(status.required_action, Some("download"));
+    }
+
+    #[test]
+    fn missing_enabled_audio_transcription_bundle_is_blocking_and_downloadable() {
+        let root = std::env::temp_dir().join(format!(
+            "audio-transcription-model-status-{}",
+            std::process::id()
+        ));
+        let settings = Settings {
+            model_bundle_dir: root.join("bundles"),
+            audio_transcription_enabled: true,
+            ..Settings::default()
+        };
+
+        let status = model_status(ModelRole::AudioTranscription, &settings);
+
+        assert_eq!(status.role, "audio_transcription");
+        assert_eq!(status.configured, "openai/whisper-large-v3-turbo");
+        assert!(!status.cached);
+        assert!(!status.active);
+        assert!(status.blocking);
+        assert_eq!(status.required_action, Some("download"));
+        assert_eq!(status.options.len(), 1);
+        assert_eq!(status.options[0].id, "openai/whisper-large-v3-turbo");
     }
 
     #[test]

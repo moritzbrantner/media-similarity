@@ -101,6 +101,26 @@ export type ModelsResponse = {
   models: ModelRuntimeStatus[];
 };
 
+export type AudioTranscriptionModelResponse = {
+  id: string;
+  cached: boolean;
+  configured: boolean;
+};
+
+export type AudioTranscriptionModelsResponse = {
+  enabled: boolean;
+  provider: string;
+  configured_model: string;
+  device: string;
+  compute_type: string;
+  language: string | null;
+  batch_chunks: boolean;
+  max_batch_size: number | null;
+  auto_download: boolean;
+  cache_dir: string | null;
+  models: AudioTranscriptionModelResponse[];
+};
+
 export type IdentityKind = "person" | "speaker";
 
 export type IdentityMutationResponse = {

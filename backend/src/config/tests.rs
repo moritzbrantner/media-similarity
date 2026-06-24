@@ -64,6 +64,83 @@ mod tests {
     }
 
     #[test]
+    fn default_audio_transcription_uses_native_candle_whisper_bundle() {
+        let settings = Settings::default();
+
+        assert_eq!(settings.audio_transcription_provider, "candle-whisper");
+        assert_eq!(
+            settings.audio_transcription_model,
+            "openai/whisper-large-v3-turbo"
+        );
+        assert_eq!(settings.audio_transcription_device, "auto");
+        assert_eq!(settings.audio_transcription_compute_type, "automatic");
+        assert!(settings.audio_transcription_batch_chunks);
+        assert_eq!(settings.audio_transcription_max_batch_size, Some(4));
+    }
+
+    #[test]
+    fn audio_transcription_native_settings_are_loaded_from_env() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let _env = EnvGuard::set([
+            ("AUDIO_TRANSCRIPTION_PROVIDER", Some("candle-whisper")),
+            ("AUDIO_TRANSCRIPTION_MODEL_ID", Some("openai/whisper-tiny.en")),
+            ("AUDIO_TRANSCRIPTION_DEVICE", Some("cuda")),
+            ("AUDIO_TRANSCRIPTION_COMPUTE_TYPE", Some("fp16")),
+            ("AUDIO_TRANSCRIPTION_LANGUAGE", Some("de")),
+            ("AUDIO_TRANSCRIPTION_BATCH_CHUNKS", Some("false")),
+            ("AUDIO_TRANSCRIPTION_MAX_BATCH_SIZE", Some("2")),
+            ("IMAGE_SOURCES", Some("/images")),
+            ("MEDIA_SOURCES_FILE", None),
+            ("MEDIA_SOURCES_SEED_FILE", None),
+        ]);
+
+        let settings = Settings::from_env().unwrap();
+
+        assert_eq!(settings.audio_transcription_provider, "candle-whisper");
+        assert_eq!(settings.audio_transcription_model, "openai/whisper-tiny.en");
+        assert_eq!(settings.audio_transcription_device, "cuda");
+        assert_eq!(settings.audio_transcription_compute_type, "fp16");
+        assert_eq!(settings.audio_transcription_language.as_deref(), Some("de"));
+        assert!(!settings.audio_transcription_batch_chunks);
+        assert_eq!(settings.audio_transcription_max_batch_size, Some(2));
+    }
+
+    #[test]
+    fn legacy_audio_transcription_model_env_is_still_accepted() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let _env = EnvGuard::set([
+            ("AUDIO_TRANSCRIPTION_MODEL_ID", None),
+            ("AUDIO_TRANSCRIPTION_MODEL", Some("large-v3-turbo")),
+            ("IMAGE_SOURCES", Some("/images")),
+            ("MEDIA_SOURCES_FILE", None),
+            ("MEDIA_SOURCES_SEED_FILE", None),
+        ]);
+
+        let settings = Settings::from_env().unwrap();
+
+        assert_eq!(
+            settings.audio_transcription_model,
+            "openai/whisper-large-v3-turbo"
+        );
+    }
+
+    #[test]
+    fn invalid_audio_transcription_provider_is_rejected() {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let _env = EnvGuard::set([
+            ("AUDIO_TRANSCRIPTION_PROVIDER", Some("whisper.cpp")),
+            ("IMAGE_SOURCES", Some("/images")),
+            ("MEDIA_SOURCES_FILE", None),
+            ("MEDIA_SOURCES_SEED_FILE", None),
+        ]);
+
+        let error = Settings::from_env().unwrap_err();
+
+        assert!(error.contains("AUDIO_TRANSCRIPTION_PROVIDER"));
+        assert!(error.contains("candle-whisper"));
+    }
+
+    #[test]
     fn default_pdf_extensions_include_pdf() {
         assert!(Settings::default().pdf_extensions.contains(".pdf"));
     }

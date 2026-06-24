@@ -119,12 +119,20 @@ impl Settings {
                 "AUDIO_TRANSCRIPTION_ENABLED",
                 defaults.audio_transcription_enabled,
             ),
-            audio_transcription_model: string_var(
-                "AUDIO_TRANSCRIPTION_MODEL",
+            audio_transcription_provider: audio_transcription_provider_var(
+                defaults.audio_transcription_provider,
+            )?,
+            audio_transcription_model: audio_transcription_model_var(
                 defaults.audio_transcription_model,
             ),
             audio_transcription_language: optional_string_var("AUDIO_TRANSCRIPTION_LANGUAGE")
                 .or(defaults.audio_transcription_language),
+            audio_transcription_device: audio_transcription_device_var(
+                defaults.audio_transcription_device,
+            )?,
+            audio_transcription_compute_type: audio_transcription_compute_type_var(
+                defaults.audio_transcription_compute_type,
+            )?,
             audio_transcription_threads: optional_bounded_usize_var(
                 "AUDIO_TRANSCRIPTION_THREADS",
                 1,
@@ -137,6 +145,16 @@ impl Settings {
             audio_transcription_cache_dir: optional_string_var("AUDIO_TRANSCRIPTION_CACHE_DIR")
                 .map(PathBuf::from)
                 .or(defaults.audio_transcription_cache_dir),
+            audio_transcription_batch_chunks: bool_var(
+                "AUDIO_TRANSCRIPTION_BATCH_CHUNKS",
+                defaults.audio_transcription_batch_chunks,
+            ),
+            audio_transcription_max_batch_size: optional_bounded_usize_var(
+                "AUDIO_TRANSCRIPTION_MAX_BATCH_SIZE",
+                1,
+                usize::MAX,
+            )?
+            .or(defaults.audio_transcription_max_batch_size),
             media_sources_file,
             media_sources_seed_file,
             image_sources,

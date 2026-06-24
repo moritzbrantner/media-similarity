@@ -39,11 +39,16 @@ pub struct Settings {
     pub pdf_max_pages: u32,
     pub pdf_summary_pages: usize,
     pub audio_transcription_enabled: bool,
+    pub audio_transcription_provider: String,
     pub audio_transcription_model: String,
     pub audio_transcription_language: Option<String>,
+    pub audio_transcription_device: String,
+    pub audio_transcription_compute_type: String,
     pub audio_transcription_threads: Option<usize>,
     pub audio_transcription_auto_download: bool,
     pub audio_transcription_cache_dir: Option<PathBuf>,
+    pub audio_transcription_batch_chunks: bool,
+    pub audio_transcription_max_batch_size: Option<usize>,
     pub media_sources_file: PathBuf,
     pub media_sources_seed_file: Option<PathBuf>,
     pub image_sources: Vec<String>,
@@ -182,11 +187,16 @@ pub struct OcrSettings {
 pub struct AudioTranscriptionSettings {
     pub voice_registry_path: PathBuf,
     pub audio_transcription_enabled: bool,
+    pub audio_transcription_provider: String,
     pub audio_transcription_model: String,
     pub audio_transcription_language: Option<String>,
+    pub audio_transcription_device: String,
+    pub audio_transcription_compute_type: String,
     pub audio_transcription_threads: Option<usize>,
     pub audio_transcription_auto_download: bool,
     pub audio_transcription_cache_dir: Option<PathBuf>,
+    pub audio_transcription_batch_chunks: bool,
+    pub audio_transcription_max_batch_size: Option<usize>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
