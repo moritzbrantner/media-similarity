@@ -51,6 +51,21 @@ _Avoid_: benchmark when referring to acceptance checks
 Results produced without the configured quality model active.
 _Avoid_: normal fallback
 
+**Advertised capability**:
+A default-enabled local setup feature that the project claims as part of
+ready-for-use behavior.
+_Avoid_: optional feature, hidden capability
+
+**Operational smoke gate**:
+A service-mode check that proves startup, readiness, indexing, search,
+generated artifact serving, and shutdown against known media.
+_Avoid_: quality gate, benchmark
+
+**Rebuildable index**:
+Qdrant records and generated artifacts that can be recreated from source media
+and configuration.
+_Avoid_: durable source data, backup
+
 **Native transcription pipeline**:
 The Rust audio/video speech indexing path that transcodes media, runs the
 app-managed ASR model bundle through the native Candle Whisper provider, and

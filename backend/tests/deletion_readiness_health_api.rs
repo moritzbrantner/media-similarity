@@ -204,6 +204,8 @@ async fn focused_app(
 ) -> TestApp {
     TestApp::new(|settings| {
         settings.image_extensions = parse_extensions(".png").unwrap();
+        settings.audio_extensions = Default::default();
+        settings.pdf_extensions = Default::default();
         settings.default_search_limit = 10;
         settings.duplicate_hash_distance = 0;
         settings.visual_embedding_enabled = false;

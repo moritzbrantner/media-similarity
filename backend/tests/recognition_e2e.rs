@@ -1645,7 +1645,7 @@ async fn readiness_reports_not_ready_when_qdrant_is_unavailable() {
 }
 
 #[tokio::test]
-async fn readiness_keeps_optional_tool_failures_as_warnings() {
+async fn readiness_reports_not_ready_when_enabled_ocr_command_is_missing() {
     let app = TestApp::new(|settings| {
         settings.visual_embedding_enabled = false;
         settings.face_analysis_enabled = false;
@@ -1657,14 +1657,14 @@ async fn readiness_keeps_optional_tool_failures_as_warnings() {
 
     let response = app.raw_get("/api/ready").await;
 
-    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    assert_eq!(response.status(), reqwest::StatusCode::SERVICE_UNAVAILABLE);
     let body: Value = response.json().await.unwrap();
-    assert_eq!(body["status"], "ready");
+    assert_eq!(body["status"], "not_ready");
     assert!(body["checks"]
         .as_array()
         .unwrap()
         .iter()
-        .any(|check| { check["name"] == "ocr" && check["status"] == "warn" }));
+        .any(|check| { check["name"] == "ocr" && check["status"] == "error" }));
 }
 
 #[tokio::test]

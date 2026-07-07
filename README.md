@@ -234,6 +234,8 @@ curl -X POST http://localhost:8000/api/models/visual_embedding/download \
 
 Model roles are `visual_embedding`, `face_detection`, `face_embedding`, and `audio_transcription`. The service delegates model specs, bundle storage, and native runtime adapters to the sibling `../rust-packages` crates.
 
+Default-enabled model roles are advertised capabilities for local readiness. If `/api/ready` reports a required model as missing, download it from the Models panel or use the role-specific `/api/models/<role>/download` endpoint shown above. Audio transcription is disabled by default, so its missing ASR bundle does not block readiness until transcription is enabled.
+
 ### Delete From Index
 
 ```bash
@@ -242,6 +244,36 @@ curl -X DELETE 'http://localhost:8000/api/indexed-sources?source_uri=/media/pict
 ```
 
 Deletion removes Qdrant media/face points and generated files under `THUMBNAIL_DIR` and `UPLOAD_DIR`. It does not delete original source files.
+
+### Safe Reset And Reindex
+
+Docker Compose mounts the configured source media folders read-only. The app should treat your original media and user-authored configuration as protected data; index records and generated files are rebuildable.
+
+Generated local state lives in these places by default:
+
+- Qdrant vectors: `${QDRANT_DATA_DIR:-./.dev-data/qdrant}`
+- Qdrant snapshots: `${QDRANT_SNAPSHOTS_DIR:-./.dev-data/qdrant-snapshots}`
+- App data, including thumbnails, uploads, model bundles, smart albums, workflows, voice registry, source config, and indexing ledger: `${APP_DATA_DIR:-./.dev-data/app}`
+
+For a safe generated-state reset:
+
+```bash
+bun run service:down
+rm -rf ./.dev-data/qdrant ./.dev-data/qdrant-snapshots ./.dev-data/app
+bun run service:up
+curl -X POST http://localhost:8000/api/index
+```
+
+Use this only when it is acceptable to rebuild the index and generated artifacts from the configured sources. If you have edited smart albums, workflows, recognized voice labels, or source configuration in the UI, copy those JSON/config files out of `APP_DATA_DIR` before deleting it.
+
+For a disposable all-media readiness check against the showcase corpus:
+
+```bash
+bun run showcase:download
+bun run test:service:sample-smoke
+```
+
+The sample smoke starts a temporary Docker service stack, downloads any missing required model bundles through the API, indexes `sample-images/showcase/sources`, searches one query for each supported media kind, checks generated artifact URLs, and removes the temporary data when it exits.
 
 Video query search and source video indexing use the Rust scene detection crates with the content detector defaults from the `vanalyze` CLI. The service writes per-scene MP4 clips under `UPLOAD_DIR`, samples scene frames according to `VIDEO_FRAME_STRIDE` and `VIDEO_MAX_FRAMES`, and searches/indexes each scene independently. The Rust crates are sufficient for this workflow, but their command-backed FFmpeg runtime requires `ffmpeg` and `ffprobe` on `PATH`.
 
@@ -426,6 +458,7 @@ bun run test:service:smoke -- --disposable
 | `bun run test:e2e` | Playwright UI tests with mocked API responses. |
 | `bun run test:perf` | Unlighthouse performance audit against the built frontend bundle. |
 | `bun run test:service:smoke` | Docker Compose service-mode smoke check for the web UI, proxied API health, and direct API health. |
+| `bun run test:service:sample-smoke` | Disposable Docker service-mode smoke check that indexes and searches every sample-corpus media kind. |
 | `bun run lint` | TypeScript check, Rust format check, and Clippy with warnings denied. |
 | `bun run format:check` | Frontend formatting check. |
 | `bun run format:check:rust` | Rust formatting check. |

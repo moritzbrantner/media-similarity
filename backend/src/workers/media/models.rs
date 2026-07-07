@@ -263,13 +263,18 @@ fn bundle_model_status(
     };
     let missing_enabled_model = enabled && !cached;
 
+    let blocking = matches!(
+        role,
+        ModelRole::VisualEmbedding | ModelRole::FaceDetection | ModelRole::FaceEmbedding
+    ) && missing_enabled_model;
+
     ModelRuntimeStatus {
         role: role.as_str().to_string(),
         label: role.label().to_string(),
         configured: spec.name.clone(),
         cached,
         active: enabled && cached,
-        blocking: role == ModelRole::VisualEmbedding && missing_enabled_model,
+        blocking,
         required_action: missing_enabled_model.then_some("download"),
         bundle_path,
         detail,

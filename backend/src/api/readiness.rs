@@ -61,9 +61,7 @@ pub async fn ready(State(state): State<Arc<AppState>>) -> Response {
     checks.push(writable_dir_check("upload_dir", &settings.upload_dir));
     checks.push(media_sources_check(&state));
     checks.extend(model_checks(&settings));
-    checks.push(command_check("ffmpeg", "ffmpeg", &["-version"], false));
-    checks.push(command_check("ffprobe", "ffprobe", &["-version"], false));
-    checks.push(poppler_check());
+    checks.extend(media_tool_checks(&settings));
     checks.push(ocr_check(&settings));
 
     let response = readiness_response(checks);
@@ -205,6 +203,16 @@ fn missing_optional_model_detail(status: &ModelRuntimeStatus) -> String {
     format!("{base}; related analysis will be skipped or unavailable until the model is downloaded")
 }
 
+fn media_tool_checks(settings: &crate::config::Settings) -> Vec<ReadinessCheck> {
+    let ffmpeg_required = !settings.audio_extensions.is_empty();
+    let poppler_required = !settings.pdf_extensions.is_empty();
+    vec![
+        command_check("ffmpeg", "ffmpeg", &["-version"], ffmpeg_required),
+        command_check("ffprobe", "ffprobe", &["-version"], ffmpeg_required),
+        poppler_check(poppler_required),
+    ]
+}
+
 fn command_check(name: &str, command: &str, args: &[&str], required: bool) -> ReadinessCheck {
     match Command::new(command).args(args).output() {
         Ok(output) if output.status.success() => {
@@ -229,7 +237,7 @@ fn command_check(name: &str, command: &str, args: &[&str], required: bool) -> Re
     }
 }
 
-fn poppler_check() -> ReadinessCheck {
+fn poppler_check(required: bool) -> ReadinessCheck {
     let missing = ["pdfinfo", "pdftoppm", "pdftotext"]
         .into_iter()
         .filter_map(|command| match Command::new(command).arg("-v").output() {
@@ -239,6 +247,8 @@ fn poppler_check() -> ReadinessCheck {
         .collect::<Vec<_>>();
     if missing.is_empty() {
         ReadinessCheck::ok("poppler", "Poppler PDF commands are available")
+    } else if required {
+        ReadinessCheck::error("poppler", missing.join("; "))
     } else {
         ReadinessCheck::warn("poppler", missing.join("; "))
     }
@@ -248,7 +258,7 @@ fn ocr_check(settings: &crate::config::Settings) -> ReadinessCheck {
     if !settings.ocr_enabled {
         return ReadinessCheck::ok("ocr", "disabled");
     }
-    command_check("ocr", &settings.ocr_command, &["--version"], false)
+    command_check("ocr", &settings.ocr_command, &["--version"], true)
 }
 
 fn readiness_response(checks: Vec<ReadinessCheck>) -> ReadinessResponse {
@@ -265,11 +275,15 @@ fn readiness_response(checks: Vec<ReadinessCheck>) -> ReadinessResponse {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
     use std::fs;
     use std::path::PathBuf;
 
-    use super::{model_checks, readiness_response, writable_dir_check, ReadinessCheck};
-    use crate::config::Settings;
+    use super::{
+        command_check, media_tool_checks, model_checks, ocr_check, readiness_response,
+        writable_dir_check, ReadinessCheck,
+    };
+    use crate::config::{parse_extensions, Settings};
 
     #[test]
     fn readiness_status_is_not_ready_when_any_check_errors() {
@@ -336,7 +350,7 @@ mod tests {
     }
 
     #[test]
-    fn model_check_warns_when_enabled_face_models_are_missing() {
+    fn model_check_errors_when_enabled_face_models_are_missing() {
         let root = tempfile_dir();
         let settings = Settings {
             visual_embedding_enabled: false,
@@ -350,10 +364,82 @@ mod tests {
 
         let checks = model_checks(&settings);
 
-        assert_eq!(check_named(&checks, "model.face_detection").status, "warn");
-        assert_eq!(check_named(&checks, "model.face_embedding").status, "warn");
-        assert_eq!(readiness_response(checks).status, "ready");
+        assert_eq!(check_named(&checks, "model.face_detection").status, "error");
+        assert_eq!(check_named(&checks, "model.face_embedding").status, "error");
+        assert_eq!(readiness_response(checks).status, "not_ready");
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn required_media_commands_make_readiness_not_ready_when_missing() {
+        let check = command_check(
+            "ffmpeg",
+            "__image_similarity_missing_ffmpeg__",
+            &["-version"],
+            true,
+        );
+
+        assert_eq!(check.status, "error");
+        assert_eq!(readiness_response(vec![check]).status, "not_ready");
+    }
+
+    #[test]
+    fn disabled_media_command_dependency_remains_a_warning() {
+        let check = command_check(
+            "ffmpeg",
+            "__image_similarity_missing_ffmpeg__",
+            &["-version"],
+            false,
+        );
+
+        assert_eq!(check.status, "warn");
+        assert_eq!(readiness_response(vec![check]).status, "ready");
+    }
+
+    #[test]
+    fn enabled_pdf_support_requires_poppler_commands() {
+        let settings = Settings {
+            audio_extensions: BTreeSet::new(),
+            pdf_extensions: parse_extensions(".pdf").unwrap(),
+            ..Settings::default()
+        };
+
+        let checks = media_tool_checks(&settings);
+        let poppler = check_named(&checks, "poppler");
+
+        if poppler.status == "error" {
+            assert_eq!(readiness_response(checks).status, "not_ready");
+        } else {
+            assert_eq!(poppler.status, "ok");
+        }
+    }
+
+    #[test]
+    fn disabled_pdf_support_does_not_require_poppler_commands() {
+        let settings = Settings {
+            audio_extensions: BTreeSet::new(),
+            pdf_extensions: BTreeSet::new(),
+            ..Settings::default()
+        };
+
+        let checks = media_tool_checks(&settings);
+
+        assert_ne!(check_named(&checks, "poppler").status, "error");
+        assert_eq!(readiness_response(checks).status, "ready");
+    }
+
+    #[test]
+    fn enabled_ocr_requires_configured_command() {
+        let settings = Settings {
+            ocr_enabled: true,
+            ocr_command: "__image_similarity_missing_ocr__".to_string(),
+            ..Settings::default()
+        };
+
+        let check = ocr_check(&settings);
+
+        assert_eq!(check.status, "error");
+        assert_eq!(readiness_response(vec![check]).status, "not_ready");
     }
 
     #[test]

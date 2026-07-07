@@ -123,10 +123,18 @@ impl EditableIndexingConfig {
     pub fn apply_to_settings(&self, settings: &mut Settings) {
         settings.image_extensions = parse_extensions(&self.image_extensions.join(","))
             .expect("validated indexing config contains image extensions");
-        settings.audio_extensions = parse_extensions(&self.audio_extensions.join(","))
-            .expect("validated indexing config contains audio extensions");
-        settings.pdf_extensions = parse_extensions(&self.pdf_extensions.join(","))
-            .expect("validated indexing config contains PDF extensions");
+        settings.audio_extensions = if self.audio_extensions.is_empty() {
+            Default::default()
+        } else {
+            parse_extensions(&self.audio_extensions.join(","))
+                .expect("validated indexing config contains audio extensions")
+        };
+        settings.pdf_extensions = if self.pdf_extensions.is_empty() {
+            Default::default()
+        } else {
+            parse_extensions(&self.pdf_extensions.join(","))
+                .expect("validated indexing config contains PDF extensions")
+        };
         settings.visual_embedding_enabled = self.visual_embedding_enabled;
         settings.face_analysis_enabled = self.face_analysis_enabled;
         settings.face_detection_min_confidence = self.face_detection_min_confidence;
