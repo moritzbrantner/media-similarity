@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "check:hygiene": "bash scripts/check_repo_hygiene.sh",
-    "dev": "bun run dev:containers && vite --host 127.0.0.1",
-    "dev:containers": "bash scripts/prepare-dev-data.sh && HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up --build -d api qdrant",
+    "dev": "bash scripts/dev.sh",
+    "dev:containers": "bash scripts/prepare-dev-data.sh && HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d qdrant",
     "build": "tsc --noEmit && vite build",
     "build:rust": "cargo build --manifest-path backend/Cargo.toml --bins",
     "bench": "bun run bench:rust",

@@ -76,7 +76,7 @@ For frontend development with Vite hot reload, run:
 bun dev
 ```
 
-This starts only the Docker containers needed by the dev server, then serves the React app through Vite at `http://localhost:5173`.
+This starts Qdrant through Docker Compose, runs the Rust API locally with `cargo run`, then serves the React app through Vite at `http://localhost:5173`.
 
 ## Sample Corpus And Showcase Data
 
@@ -411,7 +411,7 @@ Start the full local app stack and the Vite frontend:
 bun dev
 ```
 
-This runs Docker Compose for the Rust API and Qdrant, then starts Vite with hot reload. Use this lighter command when only the containers need to be refreshed:
+This runs Qdrant through Docker Compose, starts the Rust API locally with `cargo run`, then starts Vite with hot reload. Use this lighter command when only the container dependency needs to be refreshed:
 
 ```bash
 bun run dev:containers
@@ -467,6 +467,8 @@ bun run test:service:smoke -- --disposable
 | `bun run build` | Build the frontend into `frontend/dist`. |
 | `bun run build:rust` | Build Rust service binaries. |
 | `bun run check:hygiene` | Report dirty status, upstream state, and ignored/generated directory issues. |
+| `bun dev` | Start Qdrant, the local Cargo API, and Vite with hot reload. |
+| `bun run dev:containers` | Start only Qdrant for local development. |
 | `bun run service:up` | Start the background API, static web UI, and Qdrant service stack. |
 | `bun run service:down` | Stop background services without deleting persistent data volumes. |
 | `bun run service:ps` | Inspect background service state. |
@@ -563,11 +565,11 @@ Run the React dev server:
 bun run dev
 ```
 
-The dev script starts the Docker Compose API and Qdrant first, then starts Vite on `127.0.0.1`. The Vite dev server proxies `/api`, `/thumbnails`, and `/uploads` to `http://127.0.0.1:8000`, so browser-facing API and media URLs stay root-relative in development.
+The dev script starts Qdrant through Docker Compose, runs the Rust API locally on `127.0.0.1:8000` with `cargo run`, then starts Vite on `127.0.0.1`. The Vite dev server proxies `/api`, `/thumbnails`, and `/uploads` to `http://127.0.0.1:8000`, so browser-facing API and media URLs stay root-relative in development.
 
-The default Docker Compose port mappings bind the Rust app and Qdrant to `127.0.0.1` on the host. To expose them to other machines, opt in deliberately by changing the `ports` mappings or using an override compose file; this service does not include user authentication.
+The default Docker Compose port mappings bind Qdrant to `127.0.0.1` on the host. To expose it to other machines, opt in deliberately by changing the `ports` mappings or using an override compose file; this service does not include user authentication.
 
-Start or refresh only the Docker containers used by the dev server:
+Start or refresh only Qdrant for the local dev server:
 
 ```bash
 bun run dev:containers
