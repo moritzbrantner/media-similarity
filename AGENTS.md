@@ -108,7 +108,7 @@ Codex/T3 rules:
 
 ## Agent skills
 
-This repo is configured for the Matt Pocock workflow skills and the agent-loop control plane.
+This repository is configured for the Matt Pocock workflow skills and the agent-loop control plane.
 
 - Issue tracker: `docs/agents/issue-tracker.md`
 - Triage labels: `docs/agents/triage-labels.md`
