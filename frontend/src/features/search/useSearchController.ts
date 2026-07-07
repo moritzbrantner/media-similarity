@@ -10,6 +10,7 @@ import type {
 } from "../../search/types";
 import { createQueryPreview } from "../../search/preview";
 import {
+  applyIdentityMutationToHistory,
   removeResultFromResponse,
   updateMediaInResponse,
   loadSearchHistory,
@@ -222,21 +223,7 @@ export function useSearchController() {
   }
 
   function applyIdentityMutationToSearchHistory(mutation: IdentityMutationResponse) {
-    updateSearchHistory((history) =>
-      history.map((item) => ({
-        ...item,
-        response: {
-          ...item.response,
-          results: item.response.results.map((result) => ({
-            ...result,
-            image:
-              mutation.kind === "person"
-                ? applyPersonMutation(result.image, mutation)
-                : applySpeakerMutation(result.image, mutation),
-          })),
-        },
-      })),
-    );
+    updateSearchHistory((history) => applyIdentityMutationToHistory(history, mutation));
   }
 
   function updateSearchHistory(updater: (history: SearchHistoryItem[]) => SearchHistoryItem[]) {
@@ -324,123 +311,6 @@ export function useSearchController() {
       : undefined,
     applyIdentityMutationToSearchHistory,
   };
-}
-
-function applyPersonMutation(
-  image: SearchResult["image"],
-  mutation: IdentityMutationResponse,
-): SearchResult["image"] {
-  const sourceIds = new Set(mutation.source_ids);
-  const targetLabel = mutation.target_label;
-  const nextFaces = image.faces.map((face) => {
-    if (
-      face.person_id === mutation.target_id ||
-      (face.person_id && sourceIds.has(face.person_id))
-    ) {
-      return {
-        ...face,
-        person_id: mutation.target_id,
-        person_label: targetLabel,
-      };
-    }
-    return face;
-  });
-
-  const people = new Map<string, SearchResult["image"]["people"][number]>();
-  for (const person of image.people) {
-    const nextId = sourceIds.has(person.person_id) ? mutation.target_id : person.person_id;
-    const nextPerson = {
-      ...person,
-      label: nextId === mutation.target_id ? targetLabel : person.label,
-      person_id: nextId,
-    };
-    const existing = people.get(nextId);
-    if (existing) {
-      people.set(nextId, {
-        ...existing,
-        confidence: Math.max(existing.confidence, nextPerson.confidence),
-        face_count: existing.face_count + nextPerson.face_count,
-        media_count: Math.max(existing.media_count, nextPerson.media_count),
-      });
-    } else {
-      people.set(nextId, nextPerson);
-    }
-  }
-
-  return {
-    ...image,
-    faces: nextFaces,
-    people: [...people.values()],
-  };
-}
-
-function applySpeakerMutation(
-  image: SearchResult["image"],
-  mutation: IdentityMutationResponse,
-): SearchResult["image"] {
-  if (!image.audio_analysis) {
-    return image;
-  }
-
-  const sourceIds = new Set(mutation.source_ids);
-  const targetLabel = mutation.target_label ?? mutation.target_id;
-  const voiceWeights = new Map<string, number>();
-  const recognizedVoices = new Map<
-    string,
-    NonNullable<SearchResult["image"]["audio_analysis"]>["recognized_voices"][number]
-  >();
-
-  for (const voice of image.audio_analysis.recognized_voices) {
-    const nextId = sourceIds.has(voice.id) ? mutation.target_id : voice.id;
-    const nextVoice = {
-      ...voice,
-      id: nextId,
-      label: nextId === mutation.target_id ? targetLabel : voice.label,
-    };
-    const existing = recognizedVoices.get(nextId);
-    if (!existing) {
-      recognizedVoices.set(nextId, nextVoice);
-      voiceWeights.set(nextId, Math.max(voice.segment_count, 1));
-      continue;
-    }
-
-    const existingWeight = voiceWeights.get(nextId) ?? 1;
-    const nextWeight = Math.max(voice.segment_count, 1);
-    recognizedVoices.set(nextId, {
-      ...existing,
-      confidence:
-        (existing.confidence * existingWeight + voice.confidence * nextWeight) /
-        (existingWeight + nextWeight),
-      segment_count: existing.segment_count + voice.segment_count,
-      total_seconds: roundMillis(existing.total_seconds + voice.total_seconds),
-    });
-    voiceWeights.set(nextId, existingWeight + nextWeight);
-  }
-
-  return {
-    ...image,
-    audio_analysis: {
-      ...image.audio_analysis,
-      audio_segments: image.audio_analysis.audio_segments.map((segment) => {
-        if (
-          segment.speaker_id === mutation.target_id ||
-          (segment.speaker_id && sourceIds.has(segment.speaker_id))
-        ) {
-          return {
-            ...segment,
-            speaker_id: mutation.target_id,
-            speaker_label: targetLabel,
-          };
-        }
-        return segment;
-      }),
-      recognized_voices: [...recognizedVoices.values()],
-    },
-  };
-}
-
-function roundMillis(value: number) {
-  return Math.round(value * 1000) / 1000;
 }
 
 function createHistoryId() {

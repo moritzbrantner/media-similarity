@@ -12,8 +12,8 @@
     "bench": "bun run bench:rust",
     "bench:rust": "cargo bench --manifest-path backend/Cargo.toml",
     "bench:rust:quick": "IMAGE_SIM_BENCH_QUICK=1 IMAGE_SIM_BENCH_ITEMS=100 cargo bench --manifest-path backend/Cargo.toml",
-    "format": "oxfmt --write package.json tsconfig.json vite.config.ts playwright.config.ts unlighthouse.config.ts scripts/run-unlighthouse.mjs scripts/serve-unlighthouse-preview.mjs frontend tests/e2e",
-    "format:check": "oxfmt --check package.json tsconfig.json vite.config.ts playwright.config.ts unlighthouse.config.ts scripts/run-unlighthouse.mjs scripts/serve-unlighthouse-preview.mjs frontend tests/e2e",
+    "format": "oxfmt --write package.json tsconfig.json vite.config.ts playwright.config.ts unlighthouse.config.ts .storybook scripts/run-unlighthouse.mjs scripts/serve-unlighthouse-preview.mjs frontend tests/e2e",
+    "format:check": "oxfmt --check package.json tsconfig.json vite.config.ts playwright.config.ts unlighthouse.config.ts .storybook scripts/run-unlighthouse.mjs scripts/serve-unlighthouse-preview.mjs frontend tests/e2e",
     "format:rust": "cargo fmt --manifest-path backend/Cargo.toml",
     "format:check:rust": "cargo fmt --manifest-path backend/Cargo.toml -- --check",
     "lint": "bun run typecheck && bun run format:check:rust && cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings",
@@ -32,6 +32,8 @@
     "test:e2e": "bunx playwright test",
     "test:e2e:ui": "bunx playwright test --ui",
     "test:perf": "bun scripts/run-unlighthouse.mjs",
+    "storybook": "storybook dev -p 6006",
+    "storybook:build": "storybook build",
     "test:service:smoke": "bash scripts/service-smoke.sh",
     "test:service:sample-smoke": "bash scripts/service-smoke.sh --disposable --sample-corpus",
     "typecheck": "tsc --noEmit",
@@ -53,10 +55,13 @@
     "@tanstack/react-query": "^5.100.11",
     "lucide-react": "^1.17.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "react-router": "^8.1.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
+    "@storybook/addon-docs": "^10.4.6",
+    "@storybook/react-vite": "^10.4.6",
     "@tailwindcss/vite": "^4.3.0",
     "@types/react": "^19.2.6",
     "@types/react-dom": "^19.2.3",
@@ -64,6 +69,7 @@
     "@vitejs/plugin-react": "^6.0.2",
     "oxfmt": "^0.51.0",
     "puppeteer": "^25.1.0",
+    "storybook": "^10.4.6",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
     "vite": "^8.0.13"

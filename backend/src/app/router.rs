@@ -107,9 +107,14 @@ pub fn upload_body_limit_bytes(settings: &Settings) -> usize {
 }
 
 fn mount_frontend_routes(router: Router, static_dir: PathBuf) -> Router {
+    let index_file = static_dir.join("index.html");
     router
         .nest_service("/static", ServeDir::new(static_dir.clone()))
-        .route_service("/", ServeFile::new(static_dir.join("index.html")))
+        .route_service("/", ServeFile::new(index_file.clone()))
+        .route_service("/albums", ServeFile::new(index_file.clone()))
+        .route_service("/registry", ServeFile::new(index_file.clone()))
+        .route_service("/sources", ServeFile::new(index_file.clone()))
+        .route_service("/workflows", ServeFile::new(index_file))
 }
 
 #[cfg(test)]
@@ -156,6 +161,22 @@ mod tests {
 
         assert_eq!(
             server.get_body("/").await,
+            (StatusCode::OK, "frontend".to_string())
+        );
+        assert_eq!(
+            server.get_body("/albums").await,
+            (StatusCode::OK, "frontend".to_string())
+        );
+        assert_eq!(
+            server.get_body("/registry").await,
+            (StatusCode::OK, "frontend".to_string())
+        );
+        assert_eq!(
+            server.get_body("/sources").await,
+            (StatusCode::OK, "frontend".to_string())
+        );
+        assert_eq!(
+            server.get_body("/workflows").await,
             (StatusCode::OK, "frontend".to_string())
         );
         assert_eq!(

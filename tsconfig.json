@@ -17,5 +17,12 @@
     "types": ["vite/client"],
     "useDefineForClassFields": true
   },
-  "include": ["frontend", "unlighthouse.config.ts", "vite.config.ts"]
+  "include": [
+    ".storybook",
+    "frontend",
+    "playwright.config.ts",
+    "unlighthouse.config.ts",
+    "vite.config.ts"
+  ],
+  "exclude": ["frontend/src/**/*.e2e.spec.ts"]
 }

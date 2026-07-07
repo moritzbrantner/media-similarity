@@ -1,58 +1,27 @@
 import { Button } from "@moritzbrantner/ui";
-import {
-  AlertCircle,
-  CheckCircle2,
-  Database,
-  FolderSearch,
-  Loader2,
-  Search,
-  Settings,
-  SlidersHorizontal,
-  Users,
-} from "lucide-react";
+import { AlertCircle, CheckCircle2, Database, Loader2 } from "lucide-react";
+import { NavLink } from "react-router";
 
-import type { AppView } from "../search/types";
+import { appRouteNavItems } from "../app/routes";
 import type { HealthResponse } from "../types";
 
 type AppHeaderProps = {
-  activeView: AppView;
   health: HealthResponse | undefined;
   healthError: boolean;
   healthLoading: boolean;
   indexActive: boolean;
   indexPending: boolean;
   onIndex: () => void;
-  onViewChange: (view: AppView) => void;
   sourcesLabel: string;
 };
 
-const navItems: Array<{
-  icon: typeof Search;
-  label: string;
-  pressedLabel: string;
-  view: AppView;
-}> = [
-  { icon: Search, label: "Search", pressedLabel: "Open query page", view: "search" },
-  { icon: FolderSearch, label: "Albums", pressedLabel: "Open smart albums", view: "albums" },
-  { icon: Users, label: "Registry", pressedLabel: "Open inverse index", view: "inverse-index" },
-  { icon: Settings, label: "Sources", pressedLabel: "Open media configuration", view: "configure" },
-  {
-    icon: SlidersHorizontal,
-    label: "Workflows",
-    pressedLabel: "Open workflow editor",
-    view: "workflows",
-  },
-];
-
 export function AppHeader({
-  activeView,
   health,
   healthError,
   healthLoading,
   indexActive,
   indexPending,
   onIndex,
-  onViewChange,
   sourcesLabel,
 }: AppHeaderProps) {
   return (
@@ -76,32 +45,34 @@ export function AppHeader({
         </p>
       </div>
 
-      <div className="flex flex-col gap-2 sm:flex-row lg:items-center">
-        <div className="flex min-h-10 flex-wrap rounded-md border border-neutral-300 bg-white p-1 shadow-sm">
-          {navItems.map((item) => {
+      <div className="flex w-full flex-col gap-2 lg:w-auto lg:items-end">
+        <nav
+          aria-label="Primary"
+          className="grid grid-cols-2 gap-1 rounded-md border border-neutral-300 bg-white p-1 shadow-sm sm:flex sm:flex-wrap sm:justify-end"
+        >
+          {appRouteNavItems.map((item) => {
             const Icon = item.icon;
             return (
-              <Button
-                aria-label={item.pressedLabel}
-                aria-pressed={activeView === item.view}
-                className={`inline-flex items-center justify-center gap-2 rounded px-3 text-sm font-semibold transition ${
-                  activeView === item.view
-                    ? "bg-neutral-900 text-white"
-                    : "text-neutral-700 hover:bg-neutral-100"
-                }`}
-                key={item.view}
-                onClick={() => onViewChange(item.view)}
-                type="button"
+              <NavLink
+                aria-label={item.screenReaderLabel}
+                className={({ isActive }) =>
+                  `inline-flex h-9 min-w-0 items-center justify-center gap-2 rounded px-3 text-sm font-semibold transition ${
+                    isActive ? "bg-neutral-900 text-white" : "text-neutral-700 hover:bg-neutral-100"
+                  }`
+                }
+                end={item.path === "/"}
+                key={item.id}
+                to={item.path}
               >
                 <Icon className="size-4" aria-hidden="true" />
-                <span>{item.label}</span>
-              </Button>
+                <span className="truncate">{item.label}</span>
+              </NavLink>
             );
           })}
-        </div>
+        </nav>
         <Button
           variant="outline"
-          className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md border border-neutral-400 bg-white px-4 text-sm font-semibold text-neutral-900 shadow-sm transition hover:border-neutral-500 hover:bg-neutral-50 disabled:cursor-wait disabled:opacity-60"
+          className="inline-flex h-10 w-full shrink-0 items-center justify-center gap-2 rounded-md border border-neutral-400 bg-white px-4 text-sm font-semibold text-neutral-900 shadow-sm transition hover:border-neutral-500 hover:bg-neutral-50 disabled:cursor-wait disabled:opacity-60 sm:w-auto"
           disabled={indexPending || indexActive}
           onClick={onIndex}
           type="button"

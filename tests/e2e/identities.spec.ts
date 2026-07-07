@@ -6,7 +6,7 @@ import { inverseIndexResponse } from "./support/media-fixtures";
 test("renames a person from the inverse index", async ({ page }) => {
   const api = await installDefaultApiMocks(page, { inverseIndex: inverseIndexWithExtraEntries() });
   await page.goto("/");
-  await page.getByRole("button", { name: "Open inverse index" }).click();
+  await page.getByRole("link", { name: "Open inverse index" }).click();
 
   await page.getByRole("button", { name: "Rename Ada" }).click();
   await page.getByRole("textbox", { name: "Label for Ada" }).fill("Ada Lovelace");
@@ -21,7 +21,7 @@ test("renames a person from the inverse index", async ({ page }) => {
 test("merges one person into another and removes the source entry", async ({ page }) => {
   const api = await installDefaultApiMocks(page, { inverseIndex: inverseIndexWithExtraEntries() });
   await page.goto("/");
-  await page.getByRole("button", { name: "Open inverse index" }).click();
+  await page.getByRole("link", { name: "Open inverse index" }).click();
 
   page.once("dialog", async (dialog) => {
     expect(dialog.message()).toContain("Merge selected people into Ada?");
@@ -40,7 +40,7 @@ test("merges one person into another and removes the source entry", async ({ pag
 test("renames a speaker and refreshes the speaker card", async ({ page }) => {
   const api = await installDefaultApiMocks(page, { inverseIndex: inverseIndexWithExtraEntries() });
   await page.goto("/");
-  await page.getByRole("button", { name: "Open inverse index" }).click();
+  await page.getByRole("link", { name: "Open inverse index" }).click();
 
   await page.getByRole("button", { name: "Rename Voice 1" }).click();
   await page.getByRole("textbox", { name: "Label for Voice 1" }).fill("Alice");
@@ -53,7 +53,7 @@ test("renames a speaker and refreshes the speaker card", async ({ page }) => {
 test("requires confirmation before merging speakers", async ({ page }) => {
   const api = await installDefaultApiMocks(page, { inverseIndex: inverseIndexWithExtraEntries() });
   await page.goto("/");
-  await page.getByRole("button", { name: "Open inverse index" }).click();
+  await page.getByRole("link", { name: "Open inverse index" }).click();
 
   await page.getByRole("button", { name: "Merge into Voice 1" }).click();
   await page.getByRole("checkbox", { name: /Voice 2/ }).check();
@@ -79,7 +79,7 @@ test("renders identity mutation failures without changing local state", async ({
   const api = await installDefaultApiMocks(page, { inverseIndex: inverseIndexWithExtraEntries() });
   await mockEndpointFailure(page, "**/api/identities/people/*", 500, "rename failed");
   await page.goto("/");
-  await page.getByRole("button", { name: "Open inverse index" }).click();
+  await page.getByRole("link", { name: "Open inverse index" }).click();
 
   await page.getByRole("button", { name: "Rename Ada" }).click();
   await page.getByRole("textbox", { name: "Label for Ada" }).fill("Ada Failed");

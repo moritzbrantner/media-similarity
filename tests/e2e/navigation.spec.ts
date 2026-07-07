@@ -50,43 +50,47 @@ test("renders service health and empty UI state", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("navigates between web UI pages with pressed tab state", async ({ page }) => {
+test("navigates between web UI pages with route link state", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByRole("button", { name: "Open query page" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
+  await expect(page.getByRole("link", { name: "Open query page" })).toHaveAttribute(
+    "aria-current",
+    "page",
   );
 
-  await page.getByRole("button", { name: "Open inverse index" }).click();
+  await page.getByRole("link", { name: "Open inverse index" }).click();
+  await expect(page).toHaveURL(/\/registry$/);
   await expect(page.getByRole("heading", { name: "Inverse Index" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open inverse index" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
+  await expect(page.getByRole("link", { name: "Open inverse index" })).toHaveAttribute(
+    "aria-current",
+    "page",
   );
 
-  await page.getByRole("button", { name: "Open media configuration" }).click();
+  await page.getByRole("link", { name: "Open media configuration" }).click();
+  await expect(page).toHaveURL(/\/sources$/);
   await expect(page.getByRole("heading", { name: "Media Sources" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open media configuration" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
+  await expect(page.getByRole("link", { name: "Open media configuration" })).toHaveAttribute(
+    "aria-current",
+    "page",
   );
 
-  await page.getByRole("button", { name: "Open workflow editor" }).click();
+  await page.getByRole("link", { name: "Open workflow editor" }).click();
+  await expect(page).toHaveURL(/\/workflows$/);
   await expect(page.getByRole("heading", { name: "Processing Workflows" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Open workflow editor" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
+  await expect(page.getByRole("link", { name: "Open workflow editor" })).toHaveAttribute(
+    "aria-current",
+    "page",
   );
 
-  await page.getByRole("button", { name: "Open query page" }).click();
+  await page.getByRole("link", { name: "Open query page" }).click();
+  await expect(page).toHaveURL("/");
   await expect(page.getByRole("heading", { name: "Results" })).toBeVisible();
 });
 
 test("renders inverse index people and speaker registries", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Open inverse index" }).click();
+  await page.getByRole("link", { name: "Open inverse index" }).click();
 
   await expect(page.getByRole("heading", { name: "Inverse Index" })).toBeVisible();
   await expect(page.getByText("Indexed media", { exact: true })).toBeVisible();
@@ -107,15 +111,15 @@ test.describe("mobile viewport", () => {
   test("supports core navigation and search on mobile", async ({ page }) => {
     await page.goto("/");
 
-    await page.getByRole("button", { name: "Open media configuration" }).click();
+    await page.getByRole("link", { name: "Open media configuration" }).click();
     await expect(page.getByRole("heading", { name: "Media Sources" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
 
-    await page.getByRole("button", { name: "Open workflow editor" }).click();
+    await page.getByRole("link", { name: "Open workflow editor" }).click();
     await expect(page.getByRole("heading", { name: "Processing Workflows" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
 
-    await page.getByRole("button", { name: "Open query page" }).click();
+    await page.getByRole("link", { name: "Open query page" }).click();
     await page.locator("#query-image").setInputFiles(imageUpload);
     await expect(page.getByRole("button", { name: "Search" })).toBeVisible();
     await page.getByRole("button", { name: "Search" }).click();

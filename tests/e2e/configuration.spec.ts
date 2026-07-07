@@ -41,7 +41,7 @@ test.beforeEach(async ({ page }) => {
 test("configures media sources from the UI", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Open media configuration" }).click();
+  await page.getByRole("link", { name: "Open media configuration" }).click();
 
   await expect(page.getByRole("heading", { name: "Media Sources" })).toBeVisible();
   await expect(page.getByText("Stored in config/media-sources.txt")).toBeVisible();
@@ -70,7 +70,7 @@ test("configures media sources from the UI", async ({ page }) => {
 test("renders model status from the source configuration panel", async ({ page }) => {
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Open media configuration" }).click();
+  await page.getByRole("link", { name: "Open media configuration" }).click();
 
   await expect(page.getByRole("heading", { name: "Model Status" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Visual embedding" })).toBeVisible();
@@ -82,7 +82,7 @@ test("disables active models from the source configuration panel", async ({ page
   const mocks = await resetApiMocks(page);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Open media configuration" }).click();
+  await page.getByRole("link", { name: "Open media configuration" }).click();
   await page.getByRole("button", { exact: true, name: "Disable" }).click();
 
   await expect.poll(() => mocks.modelDisables).toEqual([{ role: "visual_embedding" }]);
@@ -107,7 +107,7 @@ test("calls out blocking first-run models and downloads them from the panel", as
   });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Open media configuration" }).click();
+  await page.getByRole("link", { name: "Open media configuration" }).click();
 
   await expect(page.getByText("blocking")).toBeVisible();
   await expect(page.getByText("blocks indexing and search")).toBeVisible();
@@ -128,7 +128,7 @@ test("configures processing workflows from the UI", async ({ page }) => {
   const mocks = await resetApiMocks(page);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Open workflow editor" }).click();
+  await page.getByRole("link", { name: "Open workflow editor" }).click();
 
   await expect(page.getByRole("heading", { name: "Processing Workflows" })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Workflow document" })).toHaveValue(
@@ -155,7 +155,7 @@ test("covers source editing edge cases", async ({ page }) => {
   const mocks = await resetApiMocks(page);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Open media configuration" }).click();
+  await page.getByRole("link", { name: "Open media configuration" }).click();
   await page.getByRole("button", { name: "Remove source 1" }).click();
   await page.getByRole("button", { name: "Remove source 1" }).click();
 
@@ -197,7 +197,7 @@ test("renders source save failures and non-ready source statuses", async ({ page
   });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Open media configuration" }).click();
+  await page.getByRole("link", { name: "Open media configuration" }).click();
   await expect(page.getByText("unavailable")).toBeVisible();
   await expect(page.getByText("Folder does not exist")).toBeVisible();
   await expect(page.getByText("unsupported")).toBeVisible();
@@ -232,7 +232,7 @@ test("disables source saves when the source file is read-only", async ({ page })
   });
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Open media configuration" }).click();
+  await page.getByRole("link", { name: "Open media configuration" }).click();
 
   await expect(page.getByText("Stored in /app/data/media-sources.txt")).toBeVisible();
   await expect(page.getByText("Seeded from /app/config/media-sources.txt")).toBeVisible();
@@ -244,7 +244,7 @@ test("covers workflow configuration edge cases", async ({ page }) => {
   const mocks = await resetApiMocks(page);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Open workflow editor" }).click();
+  await page.getByRole("link", { name: "Open workflow editor" }).click();
   await page.getByRole("button", { name: "Reset" }).click();
 
   await expect.poll(() => mocks.workflowResets.length).toBe(1);
@@ -253,7 +253,7 @@ test("covers workflow configuration edge cases", async ({ page }) => {
 
 test("renders workflow configuration save failures", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open workflow editor" }).click();
+  await page.getByRole("link", { name: "Open workflow editor" }).click();
 
   await page.unroute("**/api/workflows");
   await page.route("**/api/workflows", async (route) => {

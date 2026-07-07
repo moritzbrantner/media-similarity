@@ -12,5 +12,6 @@ benchmarks/results/
 backend/target/
 playwright-report/
 test-results/
+storybook-static/
 .unlighthouse/
 .agent-loop/

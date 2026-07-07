@@ -8,7 +8,7 @@ test.beforeEach(async ({ page }) => {
 
 test("renders smart albums and duplicate group results", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open smart albums" }).click();
+  await page.getByRole("link", { name: "Open smart albums" }).click();
 
   await expect(page.getByText("Duplicate Sunrises")).toBeVisible();
   await expect(page.getByRole("heading", { name: "sunrise.jpg" })).toBeVisible();
@@ -20,7 +20,7 @@ test("creates and previews a smart album", async ({ page }) => {
   const mocks = await resetApiMocks(page, { smartAlbums: [] });
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Open smart albums" }).click();
+  await page.getByRole("link", { name: "Open smart albums" }).click();
   await page.getByRole("button", { name: "New" }).click();
   await page.getByRole("textbox", { exact: true, name: "Name" }).fill("Duplicate review");
   await page.getByLabel("Duplicate status").selectOption("only");
@@ -45,9 +45,9 @@ test("seeds an album draft from current search filters", async ({ page }) => {
   await page.getByLabel("Text query").fill("invoice");
   await page.getByRole("button", { name: "Save as album" }).click();
 
-  await expect(page.getByRole("button", { name: "Open smart albums" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
+  await expect(page.getByRole("link", { name: "Open smart albums" })).toHaveAttribute(
+    "aria-current",
+    "page",
   );
   await expect(page.getByLabel("Name or path")).toHaveValue("sunrise");
   await expect(page.getByLabel("Text in media")).toHaveValue("invoice");

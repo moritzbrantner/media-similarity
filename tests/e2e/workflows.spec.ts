@@ -5,7 +5,7 @@ test("edits and persists processing workflows from the UI", async ({ page }) => 
   const mocks = await installDefaultApiMocks(page);
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Open workflow editor" }).click();
+  await page.getByRole("link", { name: "Open workflow editor" }).click();
 
   await expect(page.getByRole("heading", { name: "Processing Workflows" })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Workflow document" })).toHaveValue(
