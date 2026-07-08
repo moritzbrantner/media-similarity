@@ -40,6 +40,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=rust-builder /workspace/image-similarity-service/backend/target/release/image-similarity-service /usr/local/bin/image-similarity-service
+COPY --from=rust-builder /workspace/image-similarity-service/backend/target/release/quality_corpus /usr/local/bin/quality_corpus
 COPY --from=rust-builder /workspace/image-similarity-service/backend/target/release/seed_dummy_data /usr/local/bin/seed_dummy_data
 COPY config ./config
 

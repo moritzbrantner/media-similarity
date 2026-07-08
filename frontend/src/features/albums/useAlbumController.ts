@@ -1,6 +1,6 @@
 import { useState } from "react";
+import { smartAlbumDraftFromSearch } from "../../pages/albums/smart-albums-page";
 import type { EditableSmartAlbum } from "../../types";
-import { smartAlbumDraftFromSearch } from "../../components/smart-albums-page";
 import type { MetadataFilters, ResultSortMode } from "../../search/types";
 
 export function useAlbumController() {

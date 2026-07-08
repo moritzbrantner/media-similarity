@@ -7,7 +7,7 @@ use futures_util::TryStreamExt;
 use object_store::aws::AmazonS3Builder;
 use object_store::path::Path as ObjectPath;
 use object_store::{ObjectStore, ObjectStoreExt};
-use sha2::{Digest, Sha256};
+use sha2::Sha256;
 use url::Url;
 
 use crate::config::{Settings, SourceSettings};
@@ -19,6 +19,7 @@ use crate::workers::media::video::is_video_extension;
 
 #[derive(Clone, Debug)]
 pub struct SourceImage {
+    pub source_id: String,
     pub source_type: String,
     pub source_uri: String,
     #[allow(dead_code)]
@@ -37,6 +38,7 @@ impl SourceImage {
     pub(crate) fn test_local_image(path: &str, size_bytes: u64, modified_at: f64) -> Self {
         let path = PathBuf::from(path);
         Self {
+            source_id: "src_v1_test".to_string(),
             source_type: "local".to_string(),
             source_uri: "/images".to_string(),
             item_uri: path.to_string_lossy().to_string(),
@@ -83,6 +85,31 @@ impl SourceImage {
                 SourceLoader::ObjectStoreObject(object)
                     if matches!(object.kind, ObjectSourceKind::Pdf)
             )
+    }
+
+    pub fn media_kind(&self) -> &'static str {
+        if self.is_video() {
+            "video"
+        } else if self.is_audio() {
+            "audio"
+        } else if self.is_pdf() {
+            "pdf"
+        } else if self
+            .filename
+            .rsplit_once('.')
+            .map(|(_, extension)| extension.eq_ignore_ascii_case("gif"))
+            .unwrap_or(false)
+        {
+            "animated_gif"
+        } else {
+            "static_image"
+        }
+    }
+
+    pub fn extension(&self) -> Option<String> {
+        self.filename
+            .rsplit_once('.')
+            .map(|(_, extension)| format!(".{}", extension.to_ascii_lowercase()))
     }
 
     pub fn local_path(&self) -> Option<&PathBuf> {

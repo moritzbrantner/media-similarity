@@ -13,9 +13,10 @@ use crate::api::{
     download_audio_transcription_model, download_model, enable_audio_transcription_model,
     enable_model, get_job, get_job_events, get_models, get_source_config, get_workflows, health,
     index_images, inverse_index, list_albums, list_jobs, merge_people, merge_speakers,
-    preview_album, ready, rename_person, rename_speaker, reset_workflows, search_face_upload,
-    search_upload, spawn_index_job, update_album, update_indexed_media_tags_route,
-    update_source_config, update_workflows, validate_workflows, AppState,
+    preview_album, preview_source_config, ready, rename_person, rename_speaker, reset_workflows,
+    search_face_upload, search_upload, spawn_index_job, update_album,
+    update_indexed_media_tags_route, update_source_config, update_workflows, validate_workflows,
+    AppState,
 };
 use crate::config::Settings;
 
@@ -50,6 +51,7 @@ pub fn build_app_router(
             "/api/source-config",
             get(get_source_config).put(update_source_config),
         )
+        .route("/api/source-config/preview", post(preview_source_config))
         .route("/api/workflows", get(get_workflows).put(update_workflows))
         .route("/api/workflows/validate", post(validate_workflows))
         .route("/api/workflows/reset", post(reset_workflows))

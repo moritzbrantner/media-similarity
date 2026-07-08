@@ -1,44 +1,51 @@
 use crate::config::Settings;
+use crate::workers::sources::{
+    parse_media_source_spec, SourceCapabilities, SourceDiagnostic, SourceDiagnosticCode,
+    SourceDiagnosticSeverity,
+};
 
 use super::contracts::{SourceConfigSource, SupportedSourceType};
 
 pub(crate) fn source_config_source(spec: String, settings: &Settings) -> SourceConfigSource {
-    let kind = source_kind(&spec);
-    let (status, detail) = match kind.as_str() {
+    let media_source = parse_media_source_spec(&spec);
+    let kind = media_source.kind.as_str().to_string();
+    let mut diagnostics = media_source.diagnostics;
+    match kind.as_str() {
         "local" => {
-            let path = local_source_path(&spec);
-            if path.is_dir() {
-                ("ready".to_string(), None)
-            } else {
-                (
-                    "unavailable".to_string(),
-                    Some(format!("Directory does not exist: {}", path.display())),
-                )
+            let path = local_source_path(&media_source.normalized_uri);
+            if !path.is_dir() {
+                diagnostics.push(SourceDiagnostic::error(
+                    SourceDiagnosticCode::Unavailable,
+                    format!("Directory does not exist: {}", path.display()),
+                ));
             }
         }
-        "minio" | "s3" => object_source_config_status(&spec, &kind, settings),
-        "video" => (
-            "not_implemented".to_string(),
-            Some(
-                "Video source specs are not implemented; local folders can include video files"
-                    .to_string(),
-            ),
-        ),
-        "camera" => (
-            "not_implemented".to_string(),
-            Some("Camera sources are not implemented in the native Rust service yet".to_string()),
-        ),
-        _ => (
-            "unsupported".to_string(),
-            Some(format!("Unsupported media source: {spec}")),
-        ),
+        "minio" | "s3" => {
+            diagnostics.extend(object_source_config_diagnostics(&spec, &kind, settings));
+        }
+        "video" | "camera" => {}
+        _ => {}
     };
+    let status = if matches!(kind.as_str(), "video" | "camera") {
+        "not_implemented".to_string()
+    } else {
+        source_status(&diagnostics, &media_source.capabilities)
+    };
+    let detail = diagnostics
+        .iter()
+        .find(|diagnostic| matches!(diagnostic.severity, SourceDiagnosticSeverity::Error))
+        .or_else(|| diagnostics.first())
+        .map(|diagnostic| diagnostic.message.clone());
 
     SourceConfigSource {
+        id: media_source.id,
         spec,
+        normalized_uri: media_source.normalized_uri,
         kind,
         status,
         detail,
+        diagnostics,
+        capabilities: media_source.capabilities,
     }
 }
 
@@ -84,36 +91,64 @@ pub(crate) fn video_source_extensions() -> Vec<String> {
         .collect()
 }
 
-pub(crate) fn source_kind(spec: &str) -> String {
-    if let Some((scheme, _)) = spec.split_once(':') {
-        if scheme.chars().all(|character| {
-            character.is_ascii_alphanumeric() || matches!(character, '+' | '-' | '.')
-        }) {
-            return match scheme {
-                "file" | "local" => "local".to_string(),
-                other => other.to_string(),
-            };
-        }
+pub(crate) fn source_status(
+    diagnostics: &[SourceDiagnostic],
+    capabilities: &SourceCapabilities,
+) -> String {
+    if !capabilities.enumerates_items {
+        return "unsupported".to_string();
     }
-    "local".to_string()
+    if diagnostics
+        .iter()
+        .any(|diagnostic| matches!(diagnostic.code, SourceDiagnosticCode::ParseError))
+    {
+        return "invalid".to_string();
+    }
+    if diagnostics.iter().any(|diagnostic| {
+        matches!(
+            diagnostic.code,
+            SourceDiagnosticCode::Unavailable
+                | SourceDiagnosticCode::CredentialsMissing
+                | SourceDiagnosticCode::EnumerationFailed
+        )
+    }) {
+        return "unavailable".to_string();
+    }
+    if diagnostics
+        .iter()
+        .any(|diagnostic| matches!(diagnostic.code, SourceDiagnosticCode::EmptySource))
+    {
+        return "empty".to_string();
+    }
+    if diagnostics.iter().any(|diagnostic| {
+        matches!(
+            diagnostic.code,
+            SourceDiagnosticCode::ModelFeatureUnavailable
+                | SourceDiagnosticCode::IndexingFailed
+                | SourceDiagnosticCode::UnsupportedKind
+        )
+    }) {
+        return "degraded".to_string();
+    }
+    "ready".to_string()
 }
 
-fn object_source_config_status(
+fn object_source_config_diagnostics(
     spec: &str,
     kind: &str,
     settings: &Settings,
-) -> (String, Option<String>) {
+) -> Vec<SourceDiagnostic> {
     let Ok(url) = url::Url::parse(spec) else {
-        return (
-            "unavailable".to_string(),
-            Some(format!("Invalid object-store source URI: {spec}")),
-        );
+        return vec![SourceDiagnostic::error(
+            SourceDiagnosticCode::ParseError,
+            format!("Invalid object-store source URI: {spec}"),
+        )];
     };
     if url.host_str().filter(|bucket| !bucket.is_empty()).is_none() {
-        return (
-            "unavailable".to_string(),
-            Some(format!("Missing bucket in object-store source URI: {spec}")),
-        );
+        return vec![SourceDiagnostic::error(
+            SourceDiagnosticCode::ParseError,
+            format!("Missing bucket in object-store source URI: {spec}"),
+        )];
     }
 
     let endpoint = match kind {
@@ -151,22 +186,22 @@ fn object_source_config_status(
     };
 
     if kind == "minio" && endpoint.is_none() {
-        return (
-            "unavailable".to_string(),
-            Some("MINIO_ENDPOINT or S3_ENDPOINT is required for MinIO sources".to_string()),
-        );
+        return vec![SourceDiagnostic::error(
+            SourceDiagnosticCode::CredentialsMissing,
+            "MINIO_ENDPOINT or S3_ENDPOINT is required for MinIO sources",
+        )];
     }
     if endpoint.is_some() && (access_key.is_none() || secret_key.is_none()) {
-        return (
-            "unavailable".to_string(),
-            Some(format!(
+        return vec![SourceDiagnostic::error(
+            SourceDiagnosticCode::CredentialsMissing,
+            format!(
                 "{} object-store credentials are incomplete",
                 kind.to_ascii_uppercase()
-            )),
-        );
+            ),
+        )];
     }
 
-    ("ready".to_string(), None)
+    Vec::new()
 }
 
 fn local_source_path(spec: &str) -> std::path::PathBuf {
@@ -204,7 +239,7 @@ mod tests {
         assert!(source
             .detail
             .as_deref()
-            .is_some_and(|detail| detail.contains("Unsupported media source")));
+            .is_some_and(|detail| { detail.contains("Unsupported media source kind") }));
     }
 
     #[test]

@@ -7,6 +7,7 @@ import {
   enableModel,
   fetchModels,
   fetchSourceConfig,
+  previewSourceConfig,
   updateIndexingConfig,
   updateSourceConfig,
 } from "../../api";
@@ -44,6 +45,10 @@ export function useConfigurationController({
       queryClient.setQueryData(["source-config"], response);
       queryClient.invalidateQueries({ queryKey: ["health"] });
     },
+  });
+
+  const sourcePreviewMutation = useMutation({
+    mutationFn: previewSourceConfig,
   });
 
   const downloadModelMutation = useMutation({
@@ -130,6 +135,7 @@ export function useConfigurationController({
     modelActionPending,
     sourceConfigMutation,
     sourceConfigQuery,
+    sourcePreviewMutation,
     modelError: modelError as Error | null,
   };
 }

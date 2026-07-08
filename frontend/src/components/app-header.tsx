@@ -2,7 +2,7 @@ import { Button } from "@moritzbrantner/ui";
 import { AlertCircle, CheckCircle2, Database, Loader2 } from "lucide-react";
 import { NavLink } from "react-router";
 
-import { appRouteNavItems } from "../app/routes";
+import { appRouteNavItems } from "../pages/routes";
 import type { HealthResponse } from "../types";
 
 type AppHeaderProps = {

@@ -5,14 +5,60 @@ recognition language used by the service.
 
 ## Language
 
-**Local static image source**:
-A supported still image file discovered from a configured local media folder.
+**Media source**:
+A configured provider root that can enumerate source items. Examples include a
+local folder, S3 prefix, or MinIO prefix.
+_Avoid_: image source, source image
+
+**Local media source**:
+A media source backed by a local filesystem folder.
+_Avoid_: local static image source
+
+**Source spec**:
+The user-entered string form of a media source, such as `/media/pictures`,
+`local:///media/pictures`, `s3://bucket/prefix`, or `minio://bucket/prefix`.
+_Avoid_: raw source string
+
+**Normalized source URI**:
+The canonical URI used for deterministic source identity and stable comparison.
+_Avoid_: display path
+
+**Source ID**:
+A deterministic ID derived from source kind plus normalized source URI. A moved
+or renamed source becomes a new source unless an explicit move operation is
+added later.
+_Avoid_: source UUID
+
+**Source item**:
+A single enumerated media object inside a media source, such as a file or
+object-store key.
 _Avoid_: source image
+
+**Source inventory**:
+A bounded, non-mutating preview of a source: parse status, reachability, sample
+item count, media-kind counts where cheap, and required model-backed features.
+_Avoid_: indexing run
+
+**Source diagnostic**:
+A structured parse, reachability, enumeration, indexing, or model-readiness
+message attached to a media source or source item.
+_Avoid_: status string
+
+**Feature degradation**:
+A model-backed analysis was skipped or incomplete while the source item was
+still indexed where possible.
+_Avoid_: source failure
 
 **Query upload**:
 A user-supplied media file decoded for search but not permanently indexed as a
 source item.
 _Avoid_: uploaded source
+
+**Derived query asset**:
+A query upload generated locally from a quality corpus source asset using
+deterministic non-model transformations, such as text overlays, crops,
+re-encoding, trimming, gain changes, or PDF text variants.
+_Avoid_: exact test copy, synthetic benchmark file
 
 **Media point**:
 A searchable indexed media record with payload metadata and a visual vector.
@@ -78,7 +124,8 @@ _Avoid_: Python WhisperX runtime, whisper.cpp path, transcript service
 The app-managed model files for the configured speech recognizer, defaulting to
 `openai/whisper-large-v3-turbo`, reported through the same model readiness
 language as other model roles. A missing or unusable bundle is a blocking setup
-condition for enabled speech-bearing transcription, not degraded mode.
+condition for the transcription feature, but it does not block saving a media
+source or indexing non-transcription payloads from that source.
 _Avoid_: Python model install, CPU fallback model, ad hoc model path
 
 **Video transcript slice**:

@@ -230,6 +230,7 @@ mod tests {
             scene_start_seconds: None,
             scene_end_seconds: None,
             source_type: "local".to_string(),
+            source_id: None,
             source_item_uri: None,
             indexing_profile: None,
             source_uri: None,

@@ -39,6 +39,9 @@ jobs:
       - name: Type-check frontend
         run: bun run typecheck
 
+      - name: Build Storybook
+        run: bun run storybook:build
+
       - name: Build frontend into temporary directory
         run: |
           set -euo pipefail

@@ -54,13 +54,22 @@ async fn source_config_read_reports_configured_sources_and_indexing_settings() {
     );
 
     let ready = source_by_spec(&response, &ready_source.to_string_lossy());
+    assert!(ready["id"].as_str().unwrap().starts_with("src_v1_"));
     assert_eq!(ready["kind"], "local");
+    assert_eq!(
+        ready["normalized_uri"],
+        ready_source.to_string_lossy().to_string()
+    );
     assert_eq!(ready["status"], "ready");
     assert!(ready["detail"].is_null());
+    assert_eq!(ready["capabilities"]["enumerates_items"], true);
+    assert_eq!(ready["capabilities"]["supports_video_files"], true);
+    assert!(ready["diagnostics"].as_array().unwrap().is_empty());
 
     let missing = source_by_spec(&response, &missing_source.to_string_lossy());
     assert_eq!(missing["kind"], "local");
     assert_eq!(missing["status"], "unavailable");
+    assert_eq!(missing["diagnostics"][0]["code"], "unavailable");
     assert!(missing["detail"]
         .as_str()
         .is_some_and(|detail| detail.contains("Directory does not exist")));
@@ -116,6 +125,93 @@ async fn source_config_write_persists_sources_and_updates_runtime_indexing_roots
     let payloads = app.stored_media_payloads();
     assert_eq!(payloads.len(), 1);
     assert_eq!(payloads[0].filename, "configured.png");
+    assert!(payloads[0]
+        .source_id
+        .as_deref()
+        .is_some_and(|source_id| source_id.starts_with("src_v1_")));
+}
+
+#[tokio::test]
+async fn source_config_accepts_unavailable_object_sources_with_diagnostics() {
+    let app = source_config_app().await;
+
+    let response = app
+        .put_json(
+            "/api/source-config",
+            json!({ "sources": ["minio://archive/photos"] }),
+        )
+        .await;
+
+    let source = source_by_spec(&response, "minio://archive/photos");
+    assert!(source["id"].as_str().unwrap().starts_with("src_v1_"));
+    assert_eq!(source["kind"], "minio");
+    assert_eq!(source["normalized_uri"], "minio://archive/photos");
+    assert_eq!(source["status"], "unavailable");
+    assert_eq!(source["diagnostics"][0]["code"], "credentials_missing");
+    assert_eq!(source["capabilities"]["requires_credentials"], true);
+    let persisted = fs::read_to_string(app.media_sources_file()).unwrap();
+    assert!(persisted.contains("minio://archive/photos"));
+}
+
+#[tokio::test]
+async fn source_config_preview_reports_bounded_inventory_without_saving_sources() {
+    let app = source_config_app().await;
+    let preview_library = app.source_path("preview-library");
+    fs::create_dir_all(&preview_library).unwrap();
+    write_pattern_image(
+        &preview_library.join("first.png"),
+        40,
+        40,
+        [30, 180, 90],
+        [20, 20, 20],
+    );
+    write_pattern_image(
+        &preview_library.join("second.jpg"),
+        40,
+        40,
+        [180, 30, 90],
+        [20, 20, 20],
+    );
+
+    let response = app
+        .post_json(
+            "/api/source-config/preview",
+            json!({
+                "sources": [preview_library.to_string_lossy()],
+                "limit_per_source": 1
+            }),
+        )
+        .await;
+
+    let preview = &response["sources"][0];
+    assert_eq!(preview["source"]["status"], "degraded");
+    assert_eq!(preview["inventory"]["scanned_count"], 2);
+    assert_eq!(preview["inventory"]["truncated"], true);
+    assert_eq!(
+        preview["inventory"]["sample_items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(preview["inventory"]["media_kind_counts"]["static_image"], 2);
+    assert!(preview["inventory"]["required_model_roles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|role| role == "visual_embedding"));
+    assert!(preview["inventory"]["degraded_model_roles"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|role| role == "visual_embedding"));
+
+    let config_after_preview = app.get_json("/api/source-config").await;
+    assert!(config_after_preview["sources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|source| source["spec"] != preview_library.to_string_lossy().to_string()));
 }
 
 #[tokio::test]

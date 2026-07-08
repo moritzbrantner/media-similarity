@@ -7,6 +7,7 @@ use image_similarity_service::config::parse_extensions;
 use image_similarity_service::workers::duplicates::duplicate_index;
 use image_similarity_service::workers::media::embedder::ImageEmbedder;
 use image_similarity_service::workers::media::image_io::iter_image_paths;
+use image_similarity_service::workers::sources::parse_media_source_spec;
 
 mod support;
 
@@ -71,6 +72,37 @@ fn search_pipeline(c: &mut Criterion) {
             )
         })
     });
+
+    c.bench_function("sources/parse_specs_1000", |b| {
+        let specs = source_specs(1_000);
+        b.iter(|| {
+            specs
+                .iter()
+                .map(|spec| parse_media_source_spec(std::hint::black_box(spec)))
+                .collect::<Vec<_>>()
+        })
+    });
+
+    c.bench_function("sources/source_id_generation_1000", |b| {
+        let specs = source_specs(1_000);
+        b.iter(|| {
+            specs
+                .iter()
+                .map(|spec| parse_media_source_spec(std::hint::black_box(spec)).id)
+                .collect::<Vec<_>>()
+        })
+    });
+}
+
+fn source_specs(count: usize) -> Vec<String> {
+    (0..count)
+        .map(|index| match index % 4 {
+            0 => format!("/media/library-{index}"),
+            1 => format!("local:///media/library-{index}"),
+            2 => format!("s3://archive/photos/{index}"),
+            _ => format!("minio://library/photos/{index}"),
+        })
+        .collect()
 }
 
 fn criterion_config() -> Criterion {

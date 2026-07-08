@@ -34,6 +34,8 @@ pub use smart_albums::{
     album_results, create_album, delete_album, list_albums, preview_album, update_album,
 };
 pub(crate) use source_config::source_config_source;
-pub use source_config::{get_source_config, update_source_config, EditableIndexingConfig};
+pub use source_config::{
+    get_source_config, preview_source_config, update_source_config, EditableIndexingConfig,
+};
 pub use state::AppState;
 pub use workflows::{get_workflows, reset_workflows, update_workflows, validate_workflows};

@@ -19,9 +19,9 @@ use image_similarity_service::api::{
     delete_indexed_media_route, delete_indexed_sources_route, disable_model,
     download_audio_transcription_model, download_model, enable_audio_transcription_model,
     enable_model, get_job, get_job_events, get_models, get_source_config, health, index_images,
-    inverse_index, list_albums, list_jobs, merge_people, merge_speakers, preview_album, ready,
-    rename_person, rename_speaker, search_upload, spawn_index_job, update_album,
-    update_indexed_media_tags_route, update_source_config, AppState,
+    inverse_index, list_albums, list_jobs, merge_people, merge_speakers, preview_album,
+    preview_source_config, ready, rename_person, rename_speaker, search_upload, spawn_index_job,
+    update_album, update_indexed_media_tags_route, update_source_config, AppState,
 };
 use image_similarity_service::app::upload_body_limit_bytes;
 use image_similarity_service::config::Settings;
@@ -101,6 +101,7 @@ impl TestApp {
                 "/api/source-config",
                 get(get_source_config).put(update_source_config),
             )
+            .route("/api/source-config/preview", post(preview_source_config))
             .route("/api/jobs", get(list_jobs))
             .route("/api/jobs/index", post(spawn_index_job))
             .route("/api/jobs/:job_id", get(get_job))

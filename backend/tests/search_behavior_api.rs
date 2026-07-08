@@ -280,6 +280,7 @@ fn pdf_page_payload(id: &str, filename: &str, ocr_text: &str) -> ImagePayload {
         scene_start_seconds: None,
         scene_end_seconds: None,
         source_type: "local".to_string(),
+        source_id: None,
         source_item_uri: Some(format!("file:///fixtures/{filename}")),
         indexing_profile: Some("test-seeded-pdf".to_string()),
         source_uri: Some("file:///fixtures/meeting-notes.pdf".to_string()),

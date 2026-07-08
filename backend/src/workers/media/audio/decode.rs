@@ -121,16 +121,54 @@ fn run_command_output_cancellable(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut child = command.spawn().map_err(audio_tool_error)?;
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "failed to capture audio tool stdout".to_string())?;
+    let mut stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "failed to capture audio tool stderr".to_string())?;
+    let stdout_reader = thread::spawn(move || {
+        let mut buffer = Vec::new();
+        stdout.read_to_end(&mut buffer).map(|_| buffer)
+    });
+    let stderr_reader = thread::spawn(move || {
+        let mut buffer = Vec::new();
+        stderr.read_to_end(&mut buffer).map(|_| buffer)
+    });
+
     loop {
-        check_cancelled(is_cancelled).inspect_err(|_| {
+        if let Err(error) = check_cancelled(is_cancelled) {
             let _ = child.kill();
             let _ = child.wait();
-        })?;
+            let _ = stdout_reader.join();
+            let _ = stderr_reader.join();
+            return Err(error);
+        }
         match child.try_wait().map_err(audio_tool_error)? {
-            Some(_) => return child.wait_with_output().map_err(audio_tool_error),
+            Some(status) => {
+                let stdout = join_output_reader("stdout", stdout_reader)?;
+                let stderr = join_output_reader("stderr", stderr_reader)?;
+                return Ok(Output {
+                    status,
+                    stdout,
+                    stderr,
+                });
+            }
             None => thread::sleep(Duration::from_millis(50)),
         }
     }
+}
+
+fn join_output_reader(
+    stream_name: &str,
+    reader: thread::JoinHandle<std::io::Result<Vec<u8>>>,
+) -> Result<Vec<u8>, String> {
+    reader
+        .join()
+        .map_err(|_| format!("audio tool {stream_name} reader panicked"))?
+        .map_err(audio_tool_error)
 }
 
 fn check_cancelled(is_cancelled: &mut impl FnMut() -> bool) -> Result<(), String> {
@@ -163,9 +201,10 @@ fn audio_tool_error(error: impl std::fmt::Display) -> String {
 mod tests {
     use super::{
         analyze_audio_samples, audio_upload_path, decode_source_audio_segments_cancellable,
-        is_audio_content_type, is_audio_extension,
+        is_audio_content_type, is_audio_extension, run_command_output_cancellable,
     };
     use crate::config::Settings;
+    use std::process::Command;
 
     #[test]
     fn audio_detection_accepts_common_types_and_extensions() {
@@ -187,6 +226,19 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(error, "job cancelled");
+    }
+
+    #[test]
+    fn cancellable_command_drains_large_stdout() {
+        let mut command = Command::new("sh");
+        command
+            .arg("-c")
+            .arg("dd if=/dev/zero bs=1024 count=256 2>/dev/null");
+
+        let output = run_command_output_cancellable(&mut command, &mut || false).unwrap();
+
+        assert!(output.status.success());
+        assert_eq!(output.stdout.len(), 256 * 1024);
     }
 
     #[test]

@@ -52,6 +52,7 @@ pub fn test_media_payload(id: &str, filename: &str) -> ImagePayload {
         scene_start_seconds: None,
         scene_end_seconds: None,
         source_type: "local".to_string(),
+        source_id: None,
         source_item_uri: Some(format!("local:///images/{filename}")),
         indexing_profile: Some("test".to_string()),
         source_uri: Some("local:///images".to_string()),

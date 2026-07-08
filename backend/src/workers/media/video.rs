@@ -289,6 +289,12 @@ fn sample_scene_media_cancellable(
             continue;
         }
         if scene_frames[scene_index].len() >= max_frames_per_scene {
+            if scene_frames
+                .iter()
+                .all(|frames| frames.len() >= max_frames_per_scene)
+            {
+                break;
+            }
             continue;
         }
         let offset = frame
@@ -303,6 +309,12 @@ fn sample_scene_media_cancellable(
             image: rgb_image_from_frame(&frame)?,
             delay_ms: frame_delay_ms,
         });
+        if scene_frames
+            .iter()
+            .all(|frames| frames.len() >= max_frames_per_scene)
+        {
+            break;
+        }
     }
 
     scenes

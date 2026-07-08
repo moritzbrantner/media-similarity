@@ -1,10 +1,10 @@
 import { Navigate, Route, Routes } from "react-router";
-import { AlbumsRoute } from "./app/albums-route";
-import { AppShell } from "./app/app-shell";
-import { RegistryRoute } from "./app/registry-route";
-import { SearchRoute } from "./app/search-route";
-import { SourcesRoute } from "./app/sources-route";
-import { WorkflowsRoute } from "./app/workflows-route";
+import { AppShell } from "./pages/_layout";
+import { SearchRoute } from "./pages";
+import { AlbumsRoute } from "./pages/albums";
+import { RegistryRoute } from "./pages/registry";
+import { SourcesRoute } from "./pages/sources";
+import { WorkflowsRoute } from "./pages/workflows";
 
 export function App() {
   return (

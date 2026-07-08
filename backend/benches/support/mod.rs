@@ -171,6 +171,7 @@ pub fn synthetic_payload(index: usize) -> ImagePayload {
         scene_start_seconds: (media_kind == "video_scene").then_some(0.0),
         scene_end_seconds: (media_kind == "video_scene").then_some(4.0),
         source_type: source_type.to_string(),
+        source_id: None,
         source_item_uri: Some(format!("{source_type}://bench/media-{index:06}")),
         indexing_profile: Some("bench-profile".to_string()),
         source_uri: Some(format!("{source_type}://bench/source-{}", index % 4)),
