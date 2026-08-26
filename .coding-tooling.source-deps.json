@@ -1,7 +1,6 @@
 {
   "schemaVersion": 1,
   "cargo": {
-    "manifestPath": "backend/Cargo.toml",
     "patches": [
       {
         "package": "moenarch-audio-analysis-core",
