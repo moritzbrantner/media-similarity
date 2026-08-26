@@ -19,7 +19,7 @@ Native Rust media similarity service with a React/Vite frontend. The backend ind
 ## Required Local Shape
 
 - Use Bun for frontend commands. The lockfile is `bun.lock`.
-- Registry dependencies are the distribution contract. For cross-repository feature work, activate the exact source graph with `bash scripts/source-deps activate`; sibling checkouts are optional but must match the pinned revisions when present.
+- Registry dependencies are the distribution contract. Cross-repository feature work uses local-only source mode: prepare every sibling checkout declared in `.coding-tooling.source-deps.json` at its exact pinned revision, then run `bash scripts/source-deps activate`. Missing local source is an error; do not add authenticated Git fallback.
 - Do not publish crates or start a release train merely to make an unreleased capability available during implementation.
 - Docker Compose is needed for `bun dev` and the full app stack.
 - `ffmpeg` and `ffprobe` are required for video/audio runtime behavior.
@@ -55,7 +55,7 @@ There is no safe release or publish script in this repo. The root package is pri
 
 `bun run verify` runs the hygiene report, frontend format check, TypeScript/Rust static checks, Rust tests, Playwright tests, and frontend build. When current unpublished capability work is involved, activate source mode first. It may be slower than the fast Rust test command.
 
-Source-mode verification is valid implementation evidence. Registry-only dependency verification is a separate distribution/release concern and must not force publication during feature work.
+Source-mode verification in the local multi-repository workspace is valid implementation evidence. GitHub-hosted CI must not require private sibling-repository credentials merely to reproduce that workspace. Registry-only dependency verification is a separate distribution/release concern and must not force publication during feature work.
 
 Always run `bun run lint` before finishing a job. If linting cannot be run, report the blocker in the final response.
 
