@@ -2,6 +2,7 @@
 .env.local
 .env.*.local
 .dev-data/
+/.cargo/config.toml
 node_modules/
 /dist/
 data/
