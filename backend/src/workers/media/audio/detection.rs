@@ -128,8 +128,10 @@ fn extract_mono_f32_samples_cancellable(
     }
     Ok(output
         .stdout
-        .chunks_exact(std::mem::size_of::<f32>())
-        .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .as_chunks::<{ std::mem::size_of::<f32>() }>()
+        .0
+        .iter()
+        .map(|chunk| f32::from_le_bytes(*chunk))
         .filter(|sample| sample.is_finite())
         .collect())
 }
