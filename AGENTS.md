@@ -19,7 +19,8 @@ Native Rust media similarity service with a React/Vite frontend. The backend ind
 ## Required Local Shape
 
 - Use Bun for frontend commands. The lockfile is `bun.lock`.
-- Rust path dependencies expect the sibling repository at `../rust-packages`.
+- Registry dependencies are the distribution contract. For cross-repository feature work, activate the exact source graph with `bash scripts/source-deps activate`; sibling checkouts are optional but must match the pinned revisions when present.
+- Do not publish crates or start a release train merely to make an unreleased capability available during implementation.
 - Docker Compose is needed for `bun dev` and the full app stack.
 - `ffmpeg` and `ffprobe` are required for video/audio runtime behavior.
 - Playwright needs Chromium installed once with `bunx playwright install chromium`.
@@ -27,6 +28,9 @@ Native Rust media similarity service with a React/Vite frontend. The backend ind
 ## Standard Commands
 
 - Install frontend dependencies: `bun install`
+- Activate exact capability source revisions: `bash scripts/source-deps activate`
+- Inspect source mode: `bash scripts/source-deps status`
+- Return to registry-only resolution: `bash scripts/source-deps deactivate`
 - Start the development stack and Vite UI with hot reload: `bun dev`
 - Start only Docker services used by the Vite dev server: `bun run dev:containers`
 - Start the background API, static web UI, and Qdrant service stack: `bun run service:up`
@@ -49,7 +53,9 @@ There is no safe release or publish script in this repo. The root package is pri
 
 ## Verification Notes
 
-`bun run verify` runs the hygiene report, frontend format check, TypeScript/Rust static checks, Rust tests, Playwright tests, and frontend build. It requires `../rust-packages` and Playwright Chromium. It may be slower than the fast Rust test command.
+`bun run verify` runs the hygiene report, frontend format check, TypeScript/Rust static checks, Rust tests, Playwright tests, and frontend build. When current unpublished capability work is involved, activate source mode first. It may be slower than the fast Rust test command.
+
+Source-mode verification is valid implementation evidence. Registry-only dependency verification is a separate distribution/release concern and must not force publication during feature work.
 
 Always run `bun run lint` before finishing a job. If linting cannot be run, report the blocker in the final response.
 
@@ -58,6 +64,7 @@ CI intentionally keeps frontend and Rust jobs separate. Do not change existing `
 ## Files Agents Should Not Edit Manually
 
 - `bun.lock` and `backend/Cargo.lock`: update only through the package manager.
+- `.cargo/config.toml`: generated source-mode state; never commit it.
 - `frontend/dist/**`: generated Vite output; update with `bun run build`.
 - `node_modules/`, `backend/target/`, `data/`, `backend/data/`, `sample-images/`, `uploads/`, `thumbnails/`, `playwright-report/`, `test-results/`, and `benchmarks/results/`: local/generated directories that should stay ignored.
 - `.env` and `.env.local`: local configuration. Keep `.env.example` checked in.
@@ -72,7 +79,7 @@ CI intentionally keeps frontend and Rust jobs separate. Do not change existing `
 
 - `bun dev` starts Docker Compose and leaves containers running.
 - `docker compose up --build -d` can rebuild the Rust app image.
-- `cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings` and `cargo test --manifest-path backend/Cargo.toml` depend on `../rust-packages`.
+- `cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings` and `cargo test --manifest-path backend/Cargo.toml` exercise the active dependency mode.
 - `bun run build` rewrites the checked-in static frontend bundle under `frontend/dist`.
 - Seed commands can download sample face images into `sample-images/`.
 

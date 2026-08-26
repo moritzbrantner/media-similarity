@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "cargo": {
+    "patches": [
+      {
+        "package": "moenarch-audio-analysis-core",
+        "git": "https://github.com/moritzbrantner/audio-analysis",
+        "rev": "d81bfcf600145c9e12f8bb835ac394ca86ebf262",
+        "localPath": "../audio-analysis/crates/audio/audio-analysis-core"
+      },
+      {
+        "package": "moenarch-audio-analysis-rhythm",
+        "git": "https://github.com/moritzbrantner/audio-analysis",
+        "rev": "d81bfcf600145c9e12f8bb835ac394ca86ebf262",
+        "localPath": "../audio-analysis/crates/audio/audio-analysis-rhythm"
+      },
+      {
+        "package": "moenarch-audio-analysis-speakers",
+        "git": "https://github.com/moritzbrantner/audio-analysis",
+        "rev": "d81bfcf600145c9e12f8bb835ac394ca86ebf262",
+        "localPath": "../audio-analysis/crates/audio/audio-analysis-speakers"
+      },
+      {
+        "package": "moenarch-audio-analysis-transcription",
+        "git": "https://github.com/moritzbrantner/audio-analysis",
+        "rev": "d81bfcf600145c9e12f8bb835ac394ca86ebf262",
+        "localPath": "../audio-analysis/crates/audio/audio-analysis-transcription"
+      },
+      {
+        "package": "moenarch-image-analysis-core",
+        "git": "https://github.com/moritzbrantner/visual-analysis",
+        "rev": "d341c668f1baa14cd3d4e99c8ce8f5d39e43a974",
+        "localPath": "../visual-analysis/crates/image/image-analysis-core"
+      },
+      {
+        "package": "moenarch-image-analysis-io",
+        "git": "https://github.com/moritzbrantner/visual-analysis",
+        "rev": "d341c668f1baa14cd3d4e99c8ce8f5d39e43a974",
+        "localPath": "../visual-analysis/crates/image/image-analysis-io"
+      },
+      {
+        "package": "moenarch-image-analysis-processing",
+        "git": "https://github.com/moritzbrantner/visual-analysis",
+        "rev": "d341c668f1baa14cd3d4e99c8ce8f5d39e43a974",
+        "localPath": "../visual-analysis/crates/image/image-analysis-processing"
+      },
+      {
+        "package": "moenarch-image-analysis-embeddings",
+        "git": "https://github.com/moritzbrantner/visual-analysis",
+        "rev": "d341c668f1baa14cd3d4e99c8ce8f5d39e43a974",
+        "localPath": "../visual-analysis/crates/image/image-analysis-embeddings"
+      },
+      {
+        "package": "moenarch-image-analysis-detection",
+        "git": "https://github.com/moritzbrantner/visual-analysis",
+        "rev": "d341c668f1baa14cd3d4e99c8ce8f5d39e43a974",
+        "localPath": "../visual-analysis/crates/image/image-analysis-detection"
+      },
+      {
+        "package": "moenarch-video-analysis-core",
+        "git": "https://github.com/moritzbrantner/visual-analysis",
+        "rev": "d341c668f1baa14cd3d4e99c8ce8f5d39e43a974",
+        "localPath": "../visual-analysis/crates/video/video-analysis-core"
+      },
+      {
+        "package": "moenarch-video-analysis-detectors",
+        "git": "https://github.com/moritzbrantner/visual-analysis",
+        "rev": "d341c668f1baa14cd3d4e99c8ce8f5d39e43a974",
+        "localPath": "../visual-analysis/crates/video/video-analysis-detectors"
+      },
+      {
+        "package": "moenarch-video-analysis-ffmpeg",
+        "git": "https://github.com/moritzbrantner/visual-analysis",
+        "rev": "d341c668f1baa14cd3d4e99c8ce8f5d39e43a974",
+        "localPath": "../visual-analysis/crates/video/video-analysis-ffmpeg"
+      },
+      {
+        "package": "moenarch-video-analysis-split",
+        "git": "https://github.com/moritzbrantner/visual-analysis",
+        "rev": "d341c668f1baa14cd3d4e99c8ce8f5d39e43a974",
+        "localPath": "../visual-analysis/crates/video/video-analysis-split"
+      },
+      {
+        "package": "moenarch-jobs-core",
+        "git": "https://github.com/moritzbrantner/moenarch-foundation",
+        "rev": "565fa0046ff96032832a21493e5334c6506ffef1",
+        "localPath": "../moenarch-foundation/crates/jobs/jobs-core"
+      },
+      {
+        "package": "moenarch-model-runtime",
+        "git": "https://github.com/moritzbrantner/moenarch-foundation",
+        "rev": "565fa0046ff96032832a21493e5334c6506ffef1",
+        "localPath": "../moenarch-foundation/crates/runtime/model-runtime"
+      },
+      {
+        "package": "moenarch-runtime-onnx",
+        "git": "https://github.com/moritzbrantner/moenarch-foundation",
+        "rev": "565fa0046ff96032832a21493e5334c6506ffef1",
+        "localPath": "../moenarch-foundation/crates/runtime/runtime-onnx"
+      },
+      {
+        "package": "moenarch-vector-analysis-core",
+        "git": "https://github.com/moritzbrantner/moenarch-foundation",
+        "rev": "565fa0046ff96032832a21493e5334c6506ffef1",
+        "localPath": "../moenarch-foundation/crates/vector/vector-analysis-core"
+      },
+      {
+        "package": "moenarch-text-transcripts",
+        "git": "https://github.com/moritzbrantner/nlp-stack",
+        "rev": "057689ca1df031d677f4afd9d65eed181c6fca06",
+        "localPath": "../nlp-stack/crates/text/text-transcripts"
+      }
+    ]
+  }
+}
