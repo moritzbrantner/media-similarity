@@ -22,6 +22,9 @@ jobs:
           git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin "$GITHUB_REF"
           git checkout --force FETCH_HEAD
 
+      - name: Check dependency architecture
+        run: python3 scripts/check_dependency_boundaries.py
+
       - name: Set up Bun
         env:
           BUN_VERSION: "1.3.14"
@@ -80,6 +83,11 @@ jobs:
           git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin "$GITHUB_REF"
           git checkout --force FETCH_HEAD
+
+      - name: Install media tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg poppler-utils
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable

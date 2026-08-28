@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "check:architecture": "python3 scripts/check_dependency_boundaries.py",
     "check:hygiene": "bash scripts/check_repo_hygiene.sh",
     "dev": "bash scripts/dev.sh",
     "dev:containers": "bash scripts/prepare-dev-data.sh && HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d qdrant",
@@ -38,7 +39,7 @@
     "test:service:smoke": "bash scripts/service-smoke.sh",
     "test:service:sample-smoke": "bash scripts/service-smoke.sh --disposable --sample-corpus",
     "typecheck": "tsc --noEmit",
-    "verify": "bun run check:hygiene && bun run format:check && bun run lint && bun run test && bun run storybook:build && bun run test:e2e && bun run build && bun run test:perf",
+    "verify": "bun run check:architecture && bun run check:hygiene && bun run format:check && bun run lint && bun run test && bun run storybook:build && bun run test:e2e && bun run build && bun run test:perf",
     "services:up": "bash scripts/prepare-dev-data.sh && HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d qdrant",
     "services:down": "docker compose stop qdrant",
     "services:clean": "docker compose down -v --remove-orphans",
