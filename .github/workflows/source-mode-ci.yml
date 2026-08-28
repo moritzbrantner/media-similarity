@@ -24,9 +24,19 @@ jobs:
       - uses: actions/checkout@v5
       - name: Verify local-only dependency declaration
         run: |
-          jq -e '.schemaVersion == 1 and .cargo.localOnly == true' .coding-tooling.source-deps.json >/dev/null
-          jq -e '.cargo.patches | length > 0 and all(.[]; (.package | length > 0) and (.git | length > 0) and (.rev | test("^[0-9a-f]{40}$")) and (.localPath | length > 0))' .coding-tooling.source-deps.json >/dev/null
+          jq -e '
+            .schemaVersion == 2 and
+            .cargo.localOnly == true and
+            (.cargo.patches | type == "array") and
+            all(.cargo.patches[];
+              (.package | length > 0) and
+              (.git | length > 0) and
+              (.rev | test("^[0-9a-f]{40}$")) and
+              (.localPath | length > 0)
+            )
+          ' .coding-tooling.source-deps.json >/dev/null
       - name: Explain verification boundary
         run: |
-          echo "Cross-repository source builds run in the local agent workspace using exact sibling revisions."
+          echo "Normal development uses versioned capability dependencies with no ambient source patches."
+          echo "Cross-repository work may activate exact local-only sibling revisions for the task, then remove them again."
           echo "Hosted CI remains repository-local; registry-only proof is a later distribution gate."
