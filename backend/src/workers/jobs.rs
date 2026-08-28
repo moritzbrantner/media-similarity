@@ -123,6 +123,7 @@ impl JobManager {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::mpsc;
     use std::time::Duration;
 
     use jobs_core::{JobSpec, JobStatus};
@@ -139,12 +140,19 @@ mod tests {
         )
         .and_then(|spec| spec.with_kind("index.manual"))
         .unwrap();
+        let (started_tx, started_rx) = mpsc::sync_channel(1);
         let snapshot = jobs
-            .spawn(spec, |context| loop {
-                context.check_cancelled()?;
-                std::thread::sleep(Duration::from_millis(5));
+            .spawn(spec, move |context| {
+                let _ = started_tx.send(());
+                loop {
+                    context.check_cancelled()?;
+                    std::thread::sleep(Duration::from_millis(5));
+                }
             })
             .unwrap();
+        started_rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("cancellable job worker should start");
 
         let cancelled = jobs.request_cancel_kind_prefix("index.").unwrap();
         assert_eq!(cancelled, vec![snapshot.spec.id.clone()]);
