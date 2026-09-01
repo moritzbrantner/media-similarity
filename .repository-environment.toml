@@ -1,0 +1,18 @@
+schema_version = 1
+
+[policy]
+track = "latest-stable"
+
+[system]
+apt = ["cmake", "ffmpeg", "poppler-utils", "tesseract-ocr", "tesseract-ocr-eng"]
+
+[setup]
+commands = ["bun install --frozen-lockfile", "cargo fetch --manifest-path backend/Cargo.toml --locked"]
+
+[maintenance]
+commands = ["bun install --frozen-lockfile", "cargo fetch --manifest-path backend/Cargo.toml --locked"]
+
+[cache]
+paths = ["~/.cargo", "~/.bun/install/cache"]
+
+[compatibility_holds]
