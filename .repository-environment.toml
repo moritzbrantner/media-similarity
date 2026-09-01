@@ -4,7 +4,7 @@ schema_version = 1
 track = "latest-stable"
 
 [system]
-apt = ["ffmpeg", "poppler-utils", "tesseract-ocr", "tesseract-ocr-eng"]
+apt = ["cmake", "ffmpeg", "poppler-utils", "tesseract-ocr", "tesseract-ocr-eng"]
 
 [setup]
 commands = ["bun install --frozen-lockfile", "cargo fetch --manifest-path backend/Cargo.toml --locked"]
