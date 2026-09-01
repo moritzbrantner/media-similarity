@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { cancelJob, fetchJobEvents, fetchJobs, startIndexJob } from "../../api";
 import { jobIsActive, jobIsTerminal, numberFromMetadata, sortJobs } from "../../jobs/job-utils";
@@ -7,7 +7,7 @@ import type { HealthResponse, IndexResponse } from "../../types";
 export function useJobsController({ healthData }: { healthData?: HealthResponse }) {
   const queryClient = useQueryClient();
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
-  const [refreshedModelJobId, setRefreshedModelJobId] = useState<string | null>(null);
+  const refreshedModelJobIdRef = useRef<string | null>(null);
 
   const jobsQuery = useQuery({
     queryKey: ["jobs"],
@@ -44,47 +44,6 @@ export function useJobsController({ healthData }: { healthData?: HealthResponse 
     refetchInterval: selectedJob && jobIsActive(selectedJob.status) ? 1500 : false,
   });
 
-  useEffect(() => {
-    if (!selectedJobId && jobs.length > 0) {
-      setSelectedJobId(jobs[0].spec.id);
-    }
-  }, [jobs, selectedJobId]);
-
-  useEffect(() => {
-    if (!latestIndexJob || !jobIsTerminal(latestIndexJob.status)) {
-      return;
-    }
-
-    const indexed = numberFromMetadata(latestIndexJob.metadata.indexed);
-    const alreadyIndexed = numberFromMetadata(latestIndexJob.metadata.already_indexed);
-    const skipped = numberFromMetadata(latestIndexJob.metadata.skipped);
-    const failed = numberFromMetadata(latestIndexJob.metadata.failed);
-    if (indexed === null || skipped === null || failed === null) {
-      return;
-    }
-
-    if (latestIndexJob.status === "Succeeded") {
-      queryClient.invalidateQueries({ queryKey: ["health"] });
-      queryClient.invalidateQueries({ queryKey: ["inverse-index"] });
-    }
-  }, [healthData, latestIndexJob, queryClient]);
-
-  useEffect(() => {
-    if (
-      !latestModelJob ||
-      !jobIsTerminal(latestModelJob.status) ||
-      latestModelJob.spec.id === refreshedModelJobId
-    ) {
-      return;
-    }
-
-    setRefreshedModelJobId(latestModelJob.spec.id);
-    queryClient.invalidateQueries({ queryKey: ["models"] });
-    queryClient.invalidateQueries({ queryKey: ["health"] });
-    queryClient.invalidateQueries({ queryKey: ["source-config"] });
-  }, [latestModelJob, queryClient, refreshedModelJobId]);
-
-  const indexActive = Boolean(latestIndexJob && jobIsActive(latestIndexJob.status));
   const lastIndex = useMemo<IndexResponse | null>(() => {
     if (!latestIndexJob || !jobIsTerminal(latestIndexJob.status)) {
       return null;
@@ -113,6 +72,31 @@ export function useJobsController({ healthData }: { healthData?: HealthResponse 
     };
   }, [healthData, latestIndexJob]);
 
+  useEffect(() => {
+    if (latestIndexJob?.status !== "Succeeded") {
+      return;
+    }
+    queryClient.invalidateQueries({ queryKey: ["health"] });
+    queryClient.invalidateQueries({ queryKey: ["inverse-index"] });
+  }, [latestIndexJob?.spec.id, latestIndexJob?.status, queryClient]);
+
+  useEffect(() => {
+    if (
+      !latestModelJob ||
+      !jobIsTerminal(latestModelJob.status) ||
+      latestModelJob.spec.id === refreshedModelJobIdRef.current
+    ) {
+      return;
+    }
+
+    refreshedModelJobIdRef.current = latestModelJob.spec.id;
+    queryClient.invalidateQueries({ queryKey: ["models"] });
+    queryClient.invalidateQueries({ queryKey: ["health"] });
+    queryClient.invalidateQueries({ queryKey: ["source-config"] });
+  }, [latestModelJob, queryClient]);
+
+  const indexActive = Boolean(latestIndexJob && jobIsActive(latestIndexJob.status));
+
   return {
     cancelJobMutation,
     jobs,
@@ -124,7 +108,7 @@ export function useJobsController({ healthData }: { healthData?: HealthResponse 
     latestModelJob,
     lastIndex,
     selectedJob,
-    selectedJobId,
+    selectedJobId: selectedJob?.spec.id ?? null,
     setSelectedJobId,
     indexError: indexMutation.error,
   };
