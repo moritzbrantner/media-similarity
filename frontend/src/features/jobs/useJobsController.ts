@@ -7,7 +7,6 @@ import type { HealthResponse, IndexResponse } from "../../types";
 export function useJobsController({ healthData }: { healthData?: HealthResponse }) {
   const queryClient = useQueryClient();
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
-  const [lastIndex, setLastIndex] = useState<IndexResponse | null>(null);
   const [refreshedModelJobId, setRefreshedModelJobId] = useState<string | null>(null);
 
   const jobsQuery = useQuery({
@@ -64,20 +63,6 @@ export function useJobsController({ healthData }: { healthData?: HealthResponse 
       return;
     }
 
-    setLastIndex({
-      collection: latestIndexJob.metadata.collection ?? healthData?.collection ?? "",
-      errors: latestIndexJob.logs
-        .filter((entry) => entry.level === "Warn" || entry.level === "Error")
-        .map((entry) => entry.message),
-      failed,
-      indexed,
-      already_indexed: alreadyIndexed ?? 0,
-      pruned: numberFromMetadata(latestIndexJob.metadata.pruned) ?? 0,
-      skipped,
-      source_dir: healthData?.source_dir ?? "",
-      sources: healthData?.sources ?? [],
-    });
-
     if (latestIndexJob.status === "Succeeded") {
       queryClient.invalidateQueries({ queryKey: ["health"] });
       queryClient.invalidateQueries({ queryKey: ["inverse-index"] });
@@ -100,6 +85,33 @@ export function useJobsController({ healthData }: { healthData?: HealthResponse 
   }, [latestModelJob, queryClient, refreshedModelJobId]);
 
   const indexActive = Boolean(latestIndexJob && jobIsActive(latestIndexJob.status));
+  const lastIndex = useMemo<IndexResponse | null>(() => {
+    if (!latestIndexJob || !jobIsTerminal(latestIndexJob.status)) {
+      return null;
+    }
+
+    const indexed = numberFromMetadata(latestIndexJob.metadata.indexed);
+    const alreadyIndexed = numberFromMetadata(latestIndexJob.metadata.already_indexed);
+    const skipped = numberFromMetadata(latestIndexJob.metadata.skipped);
+    const failed = numberFromMetadata(latestIndexJob.metadata.failed);
+    if (indexed === null || skipped === null || failed === null) {
+      return null;
+    }
+
+    return {
+      collection: latestIndexJob.metadata.collection ?? healthData?.collection ?? "",
+      errors: latestIndexJob.logs
+        .filter((entry) => entry.level === "Warn" || entry.level === "Error")
+        .map((entry) => entry.message),
+      failed,
+      indexed,
+      already_indexed: alreadyIndexed ?? 0,
+      pruned: numberFromMetadata(latestIndexJob.metadata.pruned) ?? 0,
+      skipped,
+      source_dir: healthData?.source_dir ?? "",
+      sources: healthData?.sources ?? [],
+    };
+  }, [healthData, latestIndexJob]);
 
   return {
     cancelJobMutation,
