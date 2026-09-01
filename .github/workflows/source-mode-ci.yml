@@ -21,7 +21,7 @@ jobs:
     name: local-only source contract
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Verify local-only dependency declaration
         run: |
           jq -e '.schemaVersion == 1 and .cargo.localOnly == true' .coding-tooling.source-deps.json >/dev/null
