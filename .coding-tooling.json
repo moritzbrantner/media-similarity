@@ -53,5 +53,10 @@
     "benchmark",
     "benchmark:smoke",
     "storybook:check"
-  ]
+  ],
+  "capabilityCommands": {
+    ".": {
+      "lint": ["bun", "run", "lint:static"]
+    }
+  }
 }
