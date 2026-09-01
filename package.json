@@ -17,6 +17,7 @@
     "format:rust": "cargo fmt --manifest-path backend/Cargo.toml",
     "format:check:rust": "cargo fmt --manifest-path backend/Cargo.toml -- --check",
     "lint": "bun run typecheck && bun run format:check:rust && cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings",
+    "lint:static": "oxlint frontend tests/e2e scripts",
     "sample:check": "cargo run --manifest-path backend/Cargo.toml --bin sample_corpus -- check",
     "sample:download": "cargo run --manifest-path backend/Cargo.toml --bin sample_corpus -- download",
     "sample:showcase": "cargo run --manifest-path backend/Cargo.toml --bin sample_corpus -- showcase",
@@ -73,7 +74,8 @@
     "storybook": "^10.4.6",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
-    "vite": "^8.0.13"
+    "vite": "^8.0.13",
+    "oxlint": "1.80.0"
   },
   "packageManager": "bun@1.3.14"
 }
