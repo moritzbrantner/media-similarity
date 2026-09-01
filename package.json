@@ -36,6 +36,7 @@
     "test:perf": "bun scripts/run-unlighthouse.mjs",
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build",
+    "storybook:check": "bun run storybook:build",
     "test:service:smoke": "bash scripts/service-smoke.sh",
     "test:service:sample-smoke": "bash scripts/service-smoke.sh --disposable --sample-corpus",
     "typecheck": "tsc --noEmit",
