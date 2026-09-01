@@ -11,8 +11,10 @@ on:
       - "rust-toolchain.toml"
       - "backend/Cargo.toml"
       - "backend/Cargo.lock"
+      - "Dockerfile"
       - ".github/workflows/environment-v1.yml"
       - ".github/workflows/verify.yml"
+      - ".github/workflows/tests.yml"
   push:
     branches: [main]
     paths:
@@ -24,8 +26,10 @@ on:
       - "rust-toolchain.toml"
       - "backend/Cargo.toml"
       - "backend/Cargo.lock"
+      - "Dockerfile"
       - ".github/workflows/environment-v1.yml"
       - ".github/workflows/verify.yml"
+      - ".github/workflows/tests.yml"
   workflow_dispatch:
 
 permissions:
@@ -57,10 +61,11 @@ jobs:
           test "$(bun --version)" = "$expected_bun"
           test "$(rustc --version | awk '{print $2}')" = "$expected_rust"
 
-      - name: Verify media prerequisites
+      - name: Verify media and build prerequisites
         shell: bash
         run: |
           set -euo pipefail
+          cmake --version >/dev/null
           ffmpeg -version >/dev/null
           ffprobe -version >/dev/null
           pdftotext -v 2>&1 | grep -q '^pdftotext version'
@@ -70,5 +75,5 @@ jobs:
       - name: Verify source mode remains explicit
         run: test ! -e .cargo/config.toml
 
-      - name: Verify registry baseline resolves
-        run: cargo metadata --manifest-path backend/Cargo.toml --locked --no-deps --format-version 1 > /dev/null
+      - name: Check backend from the cold registry environment
+        run: cargo check --manifest-path backend/Cargo.toml --locked
