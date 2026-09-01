@@ -32,6 +32,13 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Show package formatting repair
+        shell: bash
+        run: |
+          bun run format
+          git diff -- package.json
+          git reset --hard HEAD
+
       - name: Check frontend formatting
         run: bun run format:check
 
