@@ -1,0 +1,74 @@
+name: Environment v1
+
+on:
+  pull_request:
+    paths:
+      - ".repository-environment.toml"
+      - ".coding-tooling.source-deps.json"
+      - "scripts/codex-environment.sh"
+      - "package.json"
+      - "bun.lock"
+      - "rust-toolchain.toml"
+      - "backend/Cargo.toml"
+      - "backend/Cargo.lock"
+      - ".github/workflows/environment-v1.yml"
+      - ".github/workflows/verify.yml"
+  push:
+    branches: [main]
+    paths:
+      - ".repository-environment.toml"
+      - ".coding-tooling.source-deps.json"
+      - "scripts/codex-environment.sh"
+      - "package.json"
+      - "bun.lock"
+      - "rust-toolchain.toml"
+      - "backend/Cargo.toml"
+      - "backend/Cargo.lock"
+      - ".github/workflows/environment-v1.yml"
+      - ".github/workflows/verify.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cold-setup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Prepare declared environment
+        run: bash scripts/codex-environment.sh setup
+
+      - name: Verify exact toolchains
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_bun="$(node -p "require('./package.json').packageManager.split('@')[1]")"
+          expected_rust="$(python3 - <<'PY'
+          import tomllib
+          with open('rust-toolchain.toml', 'rb') as handle:
+              print(tomllib.load(handle)['toolchain']['channel'])
+          PY
+          )"
+          test "$(bun --version)" = "$expected_bun"
+          test "$(rustc --version | awk '{print $2}')" = "$expected_rust"
+
+      - name: Verify media prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          ffmpeg -version >/dev/null
+          ffprobe -version >/dev/null
+          pdftotext -v 2>&1 | grep -q '^pdftotext version'
+          tesseract --version | grep -q '^tesseract '
+          tesseract --list-langs | grep -qx 'eng'
+
+      - name: Verify source mode remains explicit
+        run: test ! -e .cargo/config.toml
+
+      - name: Verify registry baseline resolves
+        run: cargo metadata --manifest-path backend/Cargo.toml --locked --no-deps --format-version 1 > /dev/null
