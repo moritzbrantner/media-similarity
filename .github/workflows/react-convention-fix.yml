@@ -1,0 +1,157 @@
+name: React convention fix
+
+on:
+  push:
+    branches:
+      - chore/repository-foundation-v1
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: chore/repository-foundation-v1
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.14
+      - run: bun install --frozen-lockfile
+      - name: Remove derived state effects
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one match, found {count}")
+              file.write_text(text.replace(old, new, 1))
+
+          # Workflow configuration: initialize from config and render-sync when query data changes.
+          path = "frontend/src/pages/workflows/workflow-configuration-page.tsx"
+          replace_once(path, 'import { useEffect, useState } from "react";\n', 'import { useState } from "react";\n')
+          replace_once(
+              path,
+              '''  const [draft, setDraft] = useState<WorkflowEditorLibrary<MediaWorkflowNodeData> | null>(null);\n  const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);\n  const [validationDiagnostics, setValidationDiagnostics] = useState<WorkflowDiagnostic[] | null>(\n    null,\n  );\n  const [configTextByNode, setConfigTextByNode] = useState<Record<string, string>>({});\n  const [configErrorByNode, setConfigErrorByNode] = useState<Record<string, string>>({});\n\n  useEffect(() => {\n    if (!config) {\n      return;\n    }\n    setDraft(config.library);\n    setActiveDocumentId(config.library.activeDocumentId ?? config.library.documents[0]?.id ?? null);\n    setValidationDiagnostics(null);\n    setConfigTextByNode({});\n    setConfigErrorByNode({});\n  }, [config]);\n''',
+              '''  const initialLibrary = config?.library ?? null;\n  const [previousConfig, setPreviousConfig] = useState(config);\n  const [draft, setDraft] = useState<WorkflowEditorLibrary<MediaWorkflowNodeData> | null>(\n    initialLibrary,\n  );\n  const [activeDocumentId, setActiveDocumentId] = useState<string | null>(\n    initialLibrary?.activeDocumentId ?? initialLibrary?.documents[0]?.id ?? null,\n  );\n  const [validationDiagnostics, setValidationDiagnostics] = useState<WorkflowDiagnostic[] | null>(\n    null,\n  );\n  const [configTextByNode, setConfigTextByNode] = useState<Record<string, string>>({});\n  const [configErrorByNode, setConfigErrorByNode] = useState<Record<string, string>>({});\n\n  if (config && config !== previousConfig) {\n    setPreviousConfig(config);\n    setDraft(config.library);\n    setActiveDocumentId(config.library.activeDocumentId ?? config.library.documents[0]?.id ?? null);\n    setValidationDiagnostics(null);\n    setConfigTextByNode({});\n    setConfigErrorByNode({});\n  }\n''',
+          )
+
+          # Indexing configuration: draft follows a new server config during render.
+          path = "frontend/src/pages/sources/indexing-configuration-page.tsx"
+          replace_once(path, 'import { useEffect, useState } from "react";\n', 'import { useState } from "react";\n')
+          replace_once(
+              path,
+              '''  const [draft, setDraft] = useState<SourceIndexingConfig | null>(null);\n\n  useEffect(() => {\n    if (!config) {\n      return;\n    }\n    setDraft(completeIndexingConfig(config.indexing));\n  }, [config]);\n''',
+              '''  const [previousConfig, setPreviousConfig] = useState(config);\n  const [draft, setDraft] = useState<SourceIndexingConfig | null>(() =>\n    config ? completeIndexingConfig(config.indexing) : null,\n  );\n\n  if (config && config !== previousConfig) {\n    setPreviousConfig(config);\n    setDraft(completeIndexingConfig(config.indexing));\n  }\n''',
+          )
+
+          # Tag editor: reset draft when the media identity/tag payload changes, without an effect.
+          path = "frontend/src/components/results/media-tag-editor.tsx"
+          replace_once(path, 'import { useEffect, useState } from "react";\n', 'import { useState } from "react";\n')
+          replace_once(
+              path,
+              '''  const tags = image.tags ?? [];\n  const [draft, setDraft] = useState(tags.join(", "));\n\n  useEffect(() => {\n    setDraft(tags.join(", "));\n  }, [image.id, tags.join("\\u0000")]);\n''',
+              '''  const tags = image.tags ?? [];\n  const sourceDraft = tags.join(", ");\n  const sourceKey = `${image.id}\\u0000${tags.join("\\u0000")}`;\n  const [previousSourceKey, setPreviousSourceKey] = useState(sourceKey);\n  const [draft, setDraft] = useState(sourceDraft);\n\n  if (sourceKey !== previousSourceKey) {\n    setPreviousSourceKey(sourceKey);\n    setDraft(sourceDraft);\n  }\n''',
+          )
+
+          # Jobs: derive index summary, use effective fallback selection, and use a ref for one-shot invalidation.
+          path = "frontend/src/features/jobs/useJobsController.ts"
+          replace_once(path, 'import { useEffect, useMemo, useState } from "react";\n', 'import { useEffect, useMemo, useRef, useState } from "react";\n')
+          replace_once(path, '  const [refreshedModelJobId, setRefreshedModelJobId] = useState<string | null>(null);\n', '  const refreshedModelJobIdRef = useRef<string | null>(null);\n')
+          replace_once(
+              path,
+              '''  useEffect(() => {\n    if (!selectedJobId && jobs.length > 0) {\n      setSelectedJobId(jobs[0].spec.id);\n    }\n  }, [jobs, selectedJobId]);\n\n  useEffect(() => {\n    if (!latestIndexJob || !jobIsTerminal(latestIndexJob.status)) {\n      return;\n    }\n\n    const indexed = numberFromMetadata(latestIndexJob.metadata.indexed);\n    const alreadyIndexed = numberFromMetadata(latestIndexJob.metadata.already_indexed);\n    const skipped = numberFromMetadata(latestIndexJob.metadata.skipped);\n    const failed = numberFromMetadata(latestIndexJob.metadata.failed);\n    if (indexed === null || skipped === null || failed === null) {\n      return;\n    }\n\n    setLastIndex({\n      collection: latestIndexJob.metadata.collection ?? healthData?.collection ?? "",\n      errors: latestIndexJob.logs\n        .filter((entry) => entry.level === "Warn" || entry.level === "Error")\n        .map((entry) => entry.message),\n      failed,\n      indexed,\n      already_indexed: alreadyIndexed ?? 0,\n      pruned: numberFromMetadata(latestIndexJob.metadata.pruned) ?? 0,\n      skipped,\n      source_dir: healthData?.source_dir ?? "",\n      sources: healthData?.sources ?? [],\n    });\n\n    if (latestIndexJob.status === "Succeeded") {\n      queryClient.invalidateQueries({ queryKey: ["health"] });\n      queryClient.invalidateQueries({ queryKey: ["inverse-index"] });\n    }\n  }, [healthData, latestIndexJob, queryClient]);\n''',
+              '''  const lastIndex = useMemo<IndexResponse | null>(() => {\n    if (!latestIndexJob || !jobIsTerminal(latestIndexJob.status)) {\n      return null;\n    }\n\n    const indexed = numberFromMetadata(latestIndexJob.metadata.indexed);\n    const alreadyIndexed = numberFromMetadata(latestIndexJob.metadata.already_indexed);\n    const skipped = numberFromMetadata(latestIndexJob.metadata.skipped);\n    const failed = numberFromMetadata(latestIndexJob.metadata.failed);\n    if (indexed === null || skipped === null || failed === null) {\n      return null;\n    }\n\n    return {\n      collection: latestIndexJob.metadata.collection ?? healthData?.collection ?? "",\n      errors: latestIndexJob.logs\n        .filter((entry) => entry.level === "Warn" || entry.level === "Error")\n        .map((entry) => entry.message),\n      failed,\n      indexed,\n      already_indexed: alreadyIndexed ?? 0,\n      pruned: numberFromMetadata(latestIndexJob.metadata.pruned) ?? 0,\n      skipped,\n      source_dir: healthData?.source_dir ?? "",\n      sources: healthData?.sources ?? [],\n    };\n  }, [healthData, latestIndexJob]);\n\n  useEffect(() => {\n    if (latestIndexJob?.status !== "Succeeded") {\n      return;\n    }\n    queryClient.invalidateQueries({ queryKey: ["health"] });\n    queryClient.invalidateQueries({ queryKey: ["inverse-index"] });\n  }, [latestIndexJob?.spec.id, latestIndexJob?.status, queryClient]);\n''',
+          )
+          replace_once(
+              path,
+              '''      latestModelJob.spec.id === refreshedModelJobId\n''',
+              '''      latestModelJob.spec.id === refreshedModelJobIdRef.current\n''',
+          )
+          replace_once(path, '    setRefreshedModelJobId(latestModelJob.spec.id);\n', '    refreshedModelJobIdRef.current = latestModelJob.spec.id;\n')
+          replace_once(path, '  }, [latestModelJob, queryClient, refreshedModelJobId]);\n', '  }, [latestModelJob, queryClient]);\n')
+          replace_once(path, '    selectedJobId,\n', '    selectedJobId: selectedJob?.spec.id ?? null,\n')
+
+          # Smart albums: consume incoming drafts via render-state adjustment; effect only notifies parent.
+          path = "frontend/src/pages/albums/smart-albums-page.tsx"
+          replace_once(
+              path,
+              '''  const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);\n  const [draft, setDraft] = useState<EditableSmartAlbum | null>(null);\n  const [editingAlbumId, setEditingAlbumId] = useState<string | null>(null);\n  const [offset, setOffset] = useState(0);\n''',
+              '''  const [selectedAlbumId, setSelectedAlbumId] = useState<string | null>(null);\n  const [previousInitialDraft, setPreviousInitialDraft] = useState(initialDraft);\n  const [draft, setDraft] = useState<EditableSmartAlbum | null>(initialDraft);\n  const [editingAlbumId, setEditingAlbumId] = useState<string | null>(null);\n  const [offset, setOffset] = useState(0);\n\n  if (initialDraft !== previousInitialDraft) {\n    setPreviousInitialDraft(initialDraft);\n    if (initialDraft) {\n      setDraft(initialDraft);\n      setEditingAlbumId(null);\n      setSelectedAlbumId(null);\n      setOffset(0);\n    }\n  }\n''',
+          )
+          replace_once(
+              path,
+              '''  useEffect(() => {\n    if (initialDraft) {\n      setDraft(initialDraft);\n      setEditingAlbumId(null);\n      setSelectedAlbumId(null);\n      setOffset(0);\n      onDraftConsumed();\n    }\n  }, [initialDraft, onDraftConsumed]);\n\n  useEffect(() => {\n    if (!selectedAlbumId && selectedAlbum) {\n      setSelectedAlbumId(selectedAlbum.id);\n    }\n  }, [selectedAlbum, selectedAlbumId]);\n''',
+              '''  useEffect(() => {\n    if (initialDraft) {\n      onDraftConsumed();\n    }\n  }, [initialDraft, onDraftConsumed]);\n''',
+          )
+
+          # Search preview URL lifecycle: create it from the file-change event; effect is cleanup only.
+          path = "frontend/src/features/search/useSearchController.ts"
+          replace_once(
+              path,
+              '''  useEffect(() => {\n    if (!file || isPdfFile(file)) {\n      setPreviewUrl(null);\n      return;\n    }\n\n    const url = URL.createObjectURL(file);\n    setPreviewUrl(url);\n    return () => URL.revokeObjectURL(url);\n  }, [file]);\n''',
+              '''  useEffect(() => {\n    return () => {\n      if (previewUrl) {\n        URL.revokeObjectURL(previewUrl);\n      }\n    };\n  }, [previewUrl]);\n''',
+          )
+          replace_once(
+              path,
+              '''  function handleFileChange(nextFile: File | null) {\n    setFile(nextFile);\n''',
+              '''  function handleFileChange(nextFile: File | null) {\n    setFile(nextFile);\n    setPreviewUrl(nextFile && !isPdfFile(nextFile) ? URL.createObjectURL(nextFile) : null);\n''',
+          )
+          replace_once(path, '    setFile,\n', '    setFile: handleFileChange,\n')
+
+          # Source configuration: reset editor draft directly when a fresh config arrives.
+          path = "frontend/src/pages/sources/source-configuration-page.tsx"
+          replace_once(path, 'import { useEffect, useState } from "react";\n', 'import { useState } from "react";\n')
+          replace_once(
+              path,
+              '''  const [drafts, setDrafts] = useState<SourceDraft[]>([]);\n\n  useEffect(() => {\n    if (!config) {\n      return;\n    }\n\n    setDrafts(\n      config.sources.map((source) => ({\n        id: createHistoryId(),\n        kind: source.kind,\n        spec: source.spec,\n      })),\n    );\n  }, [config]);\n''',
+              '''  const [previousConfig, setPreviousConfig] = useState(config);\n  const [drafts, setDrafts] = useState<SourceDraft[]>(() =>\n    config\n      ? config.sources.map((source) => ({\n          id: createHistoryId(),\n          kind: source.kind,\n          spec: source.spec,\n        }))\n      : [],\n  );\n\n  if (config && config !== previousConfig) {\n    setPreviousConfig(config);\n    setDrafts(\n      config.sources.map((source) => ({\n        id: createHistoryId(),\n        kind: source.kind,\n        spec: source.spec,\n      })),\n    );\n  }\n''',
+          )
+
+          # Registry item editing: reset drafts in the user actions that open/close editors.
+          path = "frontend/src/pages/registry/inverse-index-page.tsx"
+          replace_once(path, 'import { useEffect, useState } from "react";\n', 'import { useState } from "react";\n')
+          replace_once(
+              path,
+              '''  useEffect(() => {\n    if (isEditing) {\n      setLabelDraft(displayName);\n    }\n  }, [displayName, isEditing]);\n\n  useEffect(() => {\n    if (!isMerging) {\n      setSelectedSourceIds([]);\n    }\n  }, [isMerging]);\n''',
+              '',
+          )
+          replace_once(
+              path,
+              '''            onClick={() => {\n              onSetSuccessText(null);\n              onSetEditingIdentity({ id: entry.id, kind });\n            }}\n''',
+              '''            onClick={() => {\n              setLabelDraft(displayName);\n              onSetSuccessText(null);\n              onSetEditingIdentity({ id: entry.id, kind });\n            }}\n''',
+          )
+          replace_once(
+              path,
+              '''            onClick={() => {\n              onSetSuccessText(null);\n              onSetMergingEntry(isMerging ? null : { id: entry.id, kind });\n            }}\n''',
+              '''            onClick={() => {\n              setSelectedSourceIds([]);\n              onSetSuccessText(null);\n              onSetMergingEntry(isMerging ? null : { id: entry.id, kind });\n            }}\n''',
+          )
+          replace_once(
+              path,
+              '''              onClick={() => onSetMergingEntry(null)}\n''',
+              '''              onClick={() => {\n                setSelectedSourceIds([]);\n                onSetMergingEntry(null);\n              }}\n''',
+          )
+          PY
+
+          bunx oxfmt --write \
+            frontend/src/pages/workflows/workflow-configuration-page.tsx \
+            frontend/src/pages/sources/indexing-configuration-page.tsx \
+            frontend/src/components/results/media-tag-editor.tsx \
+            frontend/src/features/jobs/useJobsController.ts \
+            frontend/src/pages/albums/smart-albums-page.tsx \
+            frontend/src/features/search/useSearchController.ts \
+            frontend/src/pages/sources/source-configuration-page.tsx \
+            frontend/src/pages/registry/inverse-index-page.tsx
+          bun run typecheck
+          git add frontend
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "refactor: remove derived state effects"
+          git push origin HEAD:chore/repository-foundation-v1
