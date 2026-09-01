@@ -80,26 +80,9 @@ jobs:
           git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin "$GITHUB_REF"
           git checkout --force FETCH_HEAD
 
-      - name: Set up repository Rust
+      - name: Prepare declared repository environment
         working-directory: image-similarity-service
-        run: |
-          set -euo pipefail
-          toolchain="$(python3 - <<'PY'
-          import tomllib
-          with open('rust-toolchain.toml', 'rb') as handle:
-              print(tomllib.load(handle)['toolchain']['channel'])
-          PY
-          )"
-          rustup toolchain install "$toolchain" --profile minimal
-          while IFS= read -r component; do
-            rustup component add --toolchain "$toolchain" "$component"
-          done < <(python3 - <<'PY'
-          import tomllib
-          with open('rust-toolchain.toml', 'rb') as handle:
-              for component in tomllib.load(handle)['toolchain'].get('components', []):
-                  print(component)
-          PY
-          )
+        run: bash scripts/codex-environment.sh setup
 
       - name: Check Rust formatting
         working-directory: image-similarity-service
@@ -132,17 +115,9 @@ jobs:
           git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin "$GITHUB_REF"
           git checkout --force FETCH_HEAD
 
-      - name: Set up repository Rust
+      - name: Prepare declared repository environment
         working-directory: image-similarity-service
-        run: |
-          set -euo pipefail
-          toolchain="$(python3 - <<'PY'
-          import tomllib
-          with open('rust-toolchain.toml', 'rb') as handle:
-              print(tomllib.load(handle)['toolchain']['channel'])
-          PY
-          )"
-          rustup toolchain install "$toolchain" --profile minimal
+        run: bash scripts/codex-environment.sh setup
 
       - name: Run real Qdrant smoke test
         working-directory: image-similarity-service
