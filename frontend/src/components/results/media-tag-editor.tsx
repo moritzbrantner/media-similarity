@@ -18,9 +18,11 @@ export function MediaTagEditor({
   const tags = image.tags ?? [];
   const [draft, setDraft] = useState(tags.join(", "));
 
+  // oxlint-disable react/set-state-in-effect -- Preserve the existing prop-to-draft reset when the rendered media or its persisted tags change.
   useEffect(() => {
     setDraft(tags.join(", "));
   }, [image.id, tags.join("\u0000")]);
+  // oxlint-enable react/set-state-in-effect
 
   const draftTags = parseTagDraft(draft);
   const dirty = !sameTags(draftTags, tags);

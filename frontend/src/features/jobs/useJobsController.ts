@@ -24,6 +24,7 @@ export function useJobsController({ healthData }: { healthData?: HealthResponse 
     mutationFn: startIndexJob,
     onSuccess: (job) => {
       setSelectedJobId(job.spec.id);
+      // oxlint-disable-next-line typescript/no-floating-promises -- Preserve the existing detached cache refresh after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
     },
   });
@@ -32,8 +33,10 @@ export function useJobsController({ healthData }: { healthData?: HealthResponse 
     mutationFn: cancelJob,
     onSuccess: (job) => {
       setSelectedJobId(job.spec.id);
+      // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["job-events", job.spec.id] });
+      // oxlint-enable typescript/no-floating-promises
     },
   });
 
@@ -76,8 +79,10 @@ export function useJobsController({ healthData }: { healthData?: HealthResponse 
     if (latestIndexJob?.status !== "Succeeded") {
       return;
     }
+    // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes triggered by terminal job state.
     queryClient.invalidateQueries({ queryKey: ["health"] });
     queryClient.invalidateQueries({ queryKey: ["inverse-index"] });
+    // oxlint-enable typescript/no-floating-promises
   }, [latestIndexJob?.spec.id, latestIndexJob?.status, queryClient]);
 
   useEffect(() => {
@@ -90,9 +95,11 @@ export function useJobsController({ healthData }: { healthData?: HealthResponse 
     }
 
     refreshedModelJobIdRef.current = latestModelJob.spec.id;
+    // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes triggered by terminal model-job state.
     queryClient.invalidateQueries({ queryKey: ["models"] });
     queryClient.invalidateQueries({ queryKey: ["health"] });
     queryClient.invalidateQueries({ queryKey: ["source-config"] });
+    // oxlint-enable typescript/no-floating-promises
   }, [latestModelJob, queryClient]);
 
   const indexActive = Boolean(latestIndexJob && jobIsActive(latestIndexJob.status));
