@@ -15,8 +15,10 @@ export function useWorkflowsController({ workflowsEnabled }: { workflowsEnabled:
     mutationFn: updateWorkflows,
     onSuccess: (response) => {
       queryClient.setQueryData(["workflows"], response);
+      // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes after a successful workflow mutation.
       queryClient.invalidateQueries({ queryKey: ["health"] });
       queryClient.invalidateQueries({ queryKey: ["source-config"] });
+      // oxlint-enable typescript/no-floating-promises
     },
   });
 
@@ -24,8 +26,10 @@ export function useWorkflowsController({ workflowsEnabled }: { workflowsEnabled:
     mutationFn: resetWorkflows,
     onSuccess: (response) => {
       queryClient.setQueryData(["workflows"], response);
+      // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes after a successful workflow mutation.
       queryClient.invalidateQueries({ queryKey: ["health"] });
       queryClient.invalidateQueries({ queryKey: ["source-config"] });
+      // oxlint-enable typescript/no-floating-promises
     },
   });
 

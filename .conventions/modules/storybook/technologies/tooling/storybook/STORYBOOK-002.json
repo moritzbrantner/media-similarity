@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "ruleId": "STORYBOOK-002",
+  "enforcement": {
+    "kind": "capability",
+    "capability": "storybook:check",
+    "tiers": ["full"]
+  }
+}

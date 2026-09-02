@@ -64,17 +64,22 @@ export function RegistryRoute() {
             }
           : null
       }
-      onMergeIdentity={(kind, targetId, sourceIds) =>
-        mergeIdentitiesMutation.mutateAsync({
+      onMergeIdentity={(kind, targetId, sourceIds) => {
+        // oxlint-disable-next-line typescript/no-floating-promises -- Preserve the existing promise-returning child callback contract.
+        return mergeIdentitiesMutation.mutateAsync({
           kind,
           sourceIds,
           targetId,
-        })
-      }
+        });
+      }}
       onRefresh={() => {
+        // oxlint-disable-next-line typescript/no-floating-promises -- Preserve the existing detached manual cache refresh from this UI event.
         inverseIndexQuery.refetch();
       }}
-      onRenameIdentity={(kind, id, label) => sourceKindMutation.mutateAsync({ id, kind, label })}
+      onRenameIdentity={(kind, id, label) => {
+        // oxlint-disable-next-line typescript/no-floating-promises -- Preserve the existing promise-returning child callback contract.
+        return sourceKindMutation.mutateAsync({ id, kind, label });
+      }}
       refreshing={inverseIndexQuery.isFetching}
       renameError={sourceKindMutation.error}
       renameErrorIdentity={
@@ -98,5 +103,6 @@ export function RegistryRoute() {
 }
 
 function invalidateIdentityQueries(queryClient: ReturnType<typeof useQueryClient>) {
+  // oxlint-disable-next-line typescript/no-floating-promises -- Preserve the existing detached cache refresh helper semantics.
   queryClient.invalidateQueries({ queryKey: ["inverse-index"] });
 }
