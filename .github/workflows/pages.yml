@@ -31,6 +31,15 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
+      - name: Capture showcase formatter output
+        run: |
+          set -euo pipefail
+          bunx oxfmt frontend/src/showcase/samples.ts
+          echo '----- formatted samples.ts -----'
+          cat frontend/src/showcase/samples.ts
+          echo '----- end formatted samples.ts -----'
+          exit 1
+
       - name: Prepare Rust WebAssembly target
         run: rustup target add wasm32-unknown-unknown
 
