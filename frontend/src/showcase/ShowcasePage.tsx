@@ -105,7 +105,12 @@ export function ShowcasePage() {
       }
     }
 
-    void prepare();
+    prepare().catch((cause) => {
+      if (!cancelled) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+        setStatus("error");
+      }
+    });
     return () => {
       cancelled = true;
       indexRef.current?.free();
@@ -189,7 +194,11 @@ export function ShowcasePage() {
                 className="sr-only"
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
-                onChange={(event) => void uploadQuery(event.currentTarget.files?.[0])}
+                onChange={(event) => {
+                  uploadQuery(event.currentTarget.files?.[0]).catch((cause) => {
+                    setError(cause instanceof Error ? cause.message : String(cause));
+                  });
+                }}
                 disabled={status !== "ready"}
               />
             </label>
