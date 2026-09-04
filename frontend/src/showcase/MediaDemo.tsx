@@ -367,8 +367,8 @@ export function MediaDemo() {
       <p className="max-w-4xl text-sm leading-6 text-neutral-400">
         The Pages path intentionally uses compact browser-safe signatures: pixels for images,
         spectral slices for audio, and sampled frames for video. The native service remains the
-        owner of semantic embeddings, pHash, scene detection, speech/transcript analysis,
-        recognized voices, Qdrant search, and corpus workflows.
+        owner of semantic embeddings, pHash, scene detection, speech/transcript analysis, recognized
+        voices, Qdrant search, and corpus workflows.
       </p>
     </section>
   );
