@@ -18,3 +18,4 @@ test-results/
 storybook-static/
 .unlighthouse/
 .agent-loop/
+.artifacts/

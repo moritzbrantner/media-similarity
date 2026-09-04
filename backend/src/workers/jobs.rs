@@ -123,6 +123,7 @@ impl JobManager {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Barrier};
     use std::time::Duration;
 
     use jobs_core::{JobSpec, JobStatus};
@@ -139,13 +140,19 @@ mod tests {
         )
         .and_then(|spec| spec.with_kind("index.manual"))
         .unwrap();
+        let started = Arc::new(Barrier::new(2));
+        let worker_started = Arc::clone(&started);
         let snapshot = jobs
-            .spawn(spec, |context| loop {
-                context.check_cancelled()?;
-                std::thread::sleep(Duration::from_millis(5));
+            .spawn(spec, move |context| {
+                worker_started.wait();
+                loop {
+                    context.check_cancelled()?;
+                    std::thread::sleep(Duration::from_millis(5));
+                }
             })
             .unwrap();
 
+        started.wait();
         let cancelled = jobs.request_cancel_kind_prefix("index.").unwrap();
         assert_eq!(cancelled, vec![snapshot.spec.id.clone()]);
         jobs.wait_for_terminal(&cancelled, Duration::from_secs(2))
