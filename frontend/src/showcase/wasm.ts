@@ -5,8 +5,10 @@ export type SimilaritySearchHit = {
 
 type WasmSimilarityIndex = {
   add(imageBytes: Uint8Array): number;
+  addFeatures(features: Float32Array): number;
   free(): void;
   search(queryImageBytes: Uint8Array, limit: number): ArrayLike<number>;
+  searchFeatures(queryFeatures: Float32Array, limit: number): ArrayLike<number>;
 };
 
 type WasmBindings = {
@@ -15,12 +17,28 @@ type WasmBindings = {
 };
 
 export type SimilarityIndexClient = {
-  add(imageBytes: Uint8Array): number;
+  addImage(imageBytes: Uint8Array): number;
+  addFeatures(features: Float32Array): number;
   free(): void;
-  search(queryImageBytes: Uint8Array, limit: number): SimilaritySearchHit[];
+  searchImage(queryImageBytes: Uint8Array, limit: number): SimilaritySearchHit[];
+  searchFeatures(queryFeatures: Float32Array, limit: number): SimilaritySearchHit[];
 };
 
 let bindingsPromise: Promise<WasmBindings> | null = null;
+
+function decodeHits(flattened: ArrayLike<number>): SimilaritySearchHit[] {
+  const values = Array.from(flattened);
+  const hits: SimilaritySearchHit[] = [];
+
+  for (let offset = 0; offset + 1 < values.length; offset += 2) {
+    hits.push({
+      index: Math.trunc(values[offset]),
+      score: values[offset + 1],
+    });
+  }
+
+  return hits;
+}
 
 async function loadBindings(): Promise<WasmBindings> {
   if (!bindingsPromise) {
@@ -40,20 +58,11 @@ export async function createSimilarityIndex(): Promise<SimilarityIndexClient> {
   const index = new bindings.SimilarityIndex();
 
   return {
-    add: (imageBytes) => index.add(imageBytes),
+    addImage: (imageBytes) => index.add(imageBytes),
+    addFeatures: (features) => index.addFeatures(features),
     free: () => index.free(),
-    search: (queryImageBytes, limit) => {
-      const flattened = Array.from(index.search(queryImageBytes, limit));
-      const hits: SimilaritySearchHit[] = [];
-
-      for (let offset = 0; offset + 1 < flattened.length; offset += 2) {
-        hits.push({
-          index: Math.trunc(flattened[offset]),
-          score: flattened[offset + 1],
-        });
-      }
-
-      return hits;
-    },
+    searchImage: (queryImageBytes, limit) => decodeHits(index.search(queryImageBytes, limit)),
+    searchFeatures: (queryFeatures, limit) =>
+      decodeHits(index.searchFeatures(queryFeatures, limit)),
   };
 }
