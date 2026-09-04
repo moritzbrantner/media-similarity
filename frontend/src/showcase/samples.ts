@@ -105,13 +105,7 @@ function drawSunset(context: CanvasRenderingContext2D, variant: 0 | 1) {
   context.fillRect(0, 0, WIDTH, HEIGHT);
 
   context.beginPath();
-  context.arc(
-    variant === 0 ? 455 : 420,
-    variant === 0 ? 145 : 155,
-    48,
-    0,
-    Math.PI * 2,
-  );
+  context.arc(variant === 0 ? 455 : 420, variant === 0 ? 145 : 155, 48, 0, Math.PI * 2);
   context.fillStyle = "#ffe29a";
   context.fill();
 
