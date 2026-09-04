@@ -87,8 +87,7 @@ function synthesize(recipe: AudioRecipe): Float32Array {
     const time = frame / SAMPLE_RATE;
     const rhythm =
       0.25 +
-      0.75 *
-        (0.5 + 0.5 * Math.sin(Math.PI * 2 * recipe.rhythmHz * time + recipe.phase)) ** 2;
+      0.75 * (0.5 + 0.5 * Math.sin(Math.PI * 2 * recipe.rhythmHz * time + recipe.phase)) ** 2;
     const edge = Math.min(1, time * 8, (DURATION_SECONDS - time) * 8);
     const fundamental = Math.sin(Math.PI * 2 * recipe.baseFrequency * time);
     const overtone = Math.sin(
@@ -168,10 +167,7 @@ function waveformPreview(samples: Float32Array, family: string): string {
 
   for (let x = 0; x < canvas.width; x += 1) {
     const start = Math.floor((x / canvas.width) * samples.length);
-    const end = Math.max(
-      start + 1,
-      Math.floor(((x + 1) / canvas.width) * samples.length),
-    );
+    const end = Math.max(start + 1, Math.floor(((x + 1) / canvas.width) * samples.length));
     let peak = 0;
     for (let index = start; index < end; index += 1) {
       peak = Math.max(peak, Math.abs(samples[index] ?? 0));
@@ -186,10 +182,7 @@ function waveformPreview(samples: Float32Array, family: string): string {
 
   for (let x = canvas.width - 1; x >= 0; x -= 1) {
     const start = Math.floor((x / canvas.width) * samples.length);
-    const end = Math.max(
-      start + 1,
-      Math.floor(((x + 1) / canvas.width) * samples.length),
-    );
+    const end = Math.max(start + 1, Math.floor(((x + 1) / canvas.width) * samples.length));
     let peak = 0;
     for (let index = start; index < end; index += 1) {
       peak = Math.max(peak, Math.abs(samples[index] ?? 0));
