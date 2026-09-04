@@ -1,0 +1,52 @@
+name: Performance Smoke
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  iai-callgrind:
+    name: Iai-Callgrind smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PERF_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+
+    steps:
+      - name: Check out candidate and baseline
+        env:
+          CHECKOUT_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          auth_header="$(printf 'x-access-token:%s' "$CHECKOUT_TOKEN" | base64 -w 0)"
+          git init --initial-branch=main .
+          git config --global --add safe.directory "$PWD"
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin "$GITHUB_REF"
+          git checkout --force FETCH_HEAD
+          if [[ -n "${PERF_BASE_SHA:-}" ]]; then
+            git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin "$PERF_BASE_SHA"
+          fi
+
+      - name: Set up repository environment
+        run: bash scripts/codex-environment.sh setup
+
+      - name: Install Callgrind runtime
+        run: sudo apt-get install --yes valgrind
+
+      - name: Install Iai-Callgrind runner
+        run: cargo install iai-callgrind-runner --version 0.16.1 --locked
+
+      - name: Run deterministic performance smoke
+        run: bash scripts/benchmark-smoke.sh
+
+      - name: Upload performance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-smoke-${{ github.run_id }}
+          path: .artifacts/performance-smoke
+          if-no-files-found: warn
