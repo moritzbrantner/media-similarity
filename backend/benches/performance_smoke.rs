@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
 use iai_callgrind::{
-    Callgrind, EventKind, LibraryBenchmarkConfig, library_benchmark, library_benchmark_group, main,
+    library_benchmark, library_benchmark_group, main, Callgrind, EventKind, LibraryBenchmarkConfig,
 };
 use image_similarity_service::domain::models::ImagePayload;
 use image_similarity_service::workers::duplicates::duplicate_index;
