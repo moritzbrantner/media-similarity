@@ -48,7 +48,7 @@ function openDatabase(): Promise<IDBDatabase> {
 }
 
 export function createUploadId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return `upload:${crypto.randomUUID()}`;
   }
 
@@ -60,9 +60,10 @@ export async function listPersistedUploads(): Promise<PersistedUpload[]> {
 
   try {
     const transaction = database.transaction(UPLOAD_STORE, "readonly");
+    const done = transactionDone(transaction);
     const request = transaction.objectStore(UPLOAD_STORE).getAll();
     const uploads = (await requestResult(request)) as PersistedUpload[];
-    await transactionDone(transaction);
+    await done;
     return uploads.sort((left, right) => left.createdAt - right.createdAt);
   } finally {
     database.close();
@@ -74,8 +75,9 @@ export async function savePersistedUpload(upload: PersistedUpload): Promise<void
 
   try {
     const transaction = database.transaction(UPLOAD_STORE, "readwrite");
+    const done = transactionDone(transaction);
     transaction.objectStore(UPLOAD_STORE).put(upload);
-    await transactionDone(transaction);
+    await done;
   } finally {
     database.close();
   }
@@ -86,8 +88,9 @@ export async function deletePersistedUpload(id: string): Promise<void> {
 
   try {
     const transaction = database.transaction(UPLOAD_STORE, "readwrite");
+    const done = transactionDone(transaction);
     transaction.objectStore(UPLOAD_STORE).delete(id);
-    await transactionDone(transaction);
+    await done;
   } finally {
     database.close();
   }
@@ -98,8 +101,9 @@ export async function clearPersistedUploads(): Promise<void> {
 
   try {
     const transaction = database.transaction(UPLOAD_STORE, "readwrite");
+    const done = transactionDone(transaction);
     transaction.objectStore(UPLOAD_STORE).clear();
-    await transactionDone(transaction);
+    await done;
   } finally {
     database.close();
   }
