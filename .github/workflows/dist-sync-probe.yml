@@ -1,0 +1,47 @@
+name: Dist sync probe
+
+on:
+  push:
+    branches:
+      - feat/github-pages-audio-video
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: feat/github-pages-audio-video
+
+      - name: Set up repository Bun
+        run: |
+          set -euo pipefail
+          bun_version="$(node -p "require('./package.json').packageManager.split('@')[1]")"
+          curl -fsSL https://bun.sh/install | bash -s "bun-v${bun_version}"
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Refresh checked-in frontend bundle
+        run: bunx vite build --outDir frontend/dist
+
+      - name: Commit only the expected generated CSS
+        run: |
+          set -euo pipefail
+          changes="$(git diff --name-only -- frontend/dist)"
+          if [ "$changes" != "frontend/dist/assets/index.css" ]; then
+            echo "Unexpected generated bundle changes:"
+            printf '%s\n' "$changes"
+            exit 1
+          fi
+          git add frontend/dist/assets/index.css
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Refresh checked-in frontend bundle"
+          git push origin HEAD:feat/github-pages-audio-video
