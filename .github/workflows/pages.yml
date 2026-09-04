@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: github-pages-${{ github.ref }}
@@ -20,6 +20,42 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref }}
+
+      - name: Fix observed showcase promises
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("frontend/src/showcase/ShowcasePage.tsx")
+          text = path.read_text()
+
+          old_prepare = "    void prepare();\n"
+          new_prepare = '''    prepare().catch((cause) => {\n      if (!cancelled) {\n        setError(cause instanceof Error ? cause.message : String(cause));\n        setStatus("error");\n      }\n    });\n'''
+          if old_prepare not in text:
+              raise SystemExit("prepare() floating-promise pattern not found")
+          text = text.replace(old_prepare, new_prepare, 1)
+
+          old_upload = '''                onChange={(event) => void uploadQuery(event.currentTarget.files?.[0])}\n'''
+          new_upload = '''                onChange={(event) => {\n                  uploadQuery(event.currentTarget.files?.[0]).catch((cause) => {\n                    setError(cause instanceof Error ? cause.message : String(cause));\n                  });\n                }}\n'''
+          if old_upload not in text:
+              raise SystemExit("uploadQuery() floating-promise pattern not found")
+          text = text.replace(old_upload, new_upload, 1)
+          path.write_text(text)
+          PY
+          bun_version="$(node -p "require('./package.json').packageManager.split('@')[1]")"
+          curl -fsSL https://bun.sh/install | bash -s "bun-v${bun_version}"
+          export PATH="$HOME/.bun/bin:$PATH"
+          bun install --frozen-lockfile
+          bunx oxfmt frontend/src/showcase/ShowcasePage.tsx
+          git add frontend/src/showcase/ShowcasePage.tsx
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix: observe showcase promises"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
 
       - name: Set up repository Bun
         run: |
