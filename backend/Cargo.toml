@@ -57,6 +57,7 @@ image-analysis-detection = { package = "moenarch-image-analysis-detection", vers
 
 [dev-dependencies]
 criterion = "0.8.2"
+iai-callgrind = "0.16.1"
 
 [[bench]]
 name = "media_pipeline"
@@ -68,4 +69,8 @@ harness = false
 
 [[bench]]
 name = "response_and_filters"
+harness = false
+
+[[bench]]
+name = "performance_smoke"
 harness = false
