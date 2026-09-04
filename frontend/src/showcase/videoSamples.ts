@@ -207,11 +207,7 @@ function filmstripPreview(renderer: VideoFrameRenderer): string {
     renderer(frameContext, progress, frame.width, frame.height);
     const column = index % 2;
     const row = Math.floor(index / 2);
-    context.drawImage(
-      frame,
-      gap + column * (cellWidth + gap),
-      gap + row * (cellHeight + gap),
-    );
+    context.drawImage(frame, gap + column * (cellWidth + gap), gap + row * (cellHeight + gap));
   });
 
   return canvas.toDataURL("image/png");
