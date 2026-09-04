@@ -26,8 +26,8 @@ const RECIPES: SampleRecipe[] = [
   { id: "coast-cove", label: "Blue cove", family: "Coast", scene: "coast", variant: 1 },
   { id: "forest-hills", label: "Forest hills", family: "Forest", scene: "forest", variant: 0 },
   { id: "forest-lake", label: "Forest lake", family: "Forest", scene: "forest", variant: 1 },
-  { id: "geometry-coral", label: "Coral geometry", family: "Poster", scene: "geometry", variant: 0 },
-  { id: "geometry-orbit", label: "Orbit geometry", family: "Poster", scene: "geometry", variant: 1 },
+  { id: "coral", label: "Coral poster", family: "Poster", scene: "geometry", variant: 0 },
+  { id: "orbit", label: "Orbit poster", family: "Poster", scene: "geometry", variant: 1 },
 ];
 
 function polygon(
@@ -65,7 +65,7 @@ function drawSunset(context: CanvasRenderingContext2D, variant: 0 | 1) {
     context,
     variant === 0
       ? [[0, 315], [125, 205], [230, 298], [360, 188], [505, 303], [640, 230], [640, 400], [0, 400]]
-      : [[0, 300], [110, 225], [245, 305], [375, 205], [495, 290], [640, 245], [640, 400], [0, 400]],
+      : [[0, 300], [110, 225], [245, 305], [375, 205], [640, 245], [640, 400], [0, 400]],
     "#313457",
   );
   polygon(
@@ -112,7 +112,7 @@ function drawForest(context: CanvasRenderingContext2D, variant: 0 | 1) {
     context,
     variant === 0
       ? [[0, 285], [120, 185], [250, 280], [365, 160], [510, 275], [640, 195], [640, 400], [0, 400]]
-      : [[0, 270], [145, 175], [275, 275], [395, 175], [525, 265], [640, 205], [640, 400], [0, 400]],
+      : [[0, 270], [145, 175], [275, 275], [395, 175], [640, 205], [640, 400], [0, 400]],
     "#4e8f68",
   );
   polygon(
