@@ -89,7 +89,7 @@ function SampleThumbnail({ sample, className }: { sample: ShowcaseSample; classN
 
   return (
     <div
-      className={`${className} flex items-center justify-center bg-neutral-950 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500`}
+      className={`${className} flex items-center justify-center bg-neutral-950 text-sm text-neutral-500`}
     >
       {sample.kind}
     </div>
@@ -112,26 +112,22 @@ function SamplePicker({
       {gallery.map((sample) => (
         <div
           key={sample.id}
-          className={`relative overflow-hidden rounded-xl border transition ${
+          className={`overflow-hidden rounded-xl border transition ${
             query?.id === sample.id
               ? "border-emerald-400 bg-emerald-400/10"
               : "border-neutral-800 bg-neutral-950 hover:border-neutral-600"
           }`}
         >
-          <button type="button" onClick={() => onSelect(sample)} className="block w-full text-left">
+          <button type="button" onClick={() => onSelect(sample)} className="w-full text-left">
             <SampleThumbnail sample={sample} className="aspect-[8/5] w-full object-cover" />
             <div className="px-3 py-2">
-              <div className="flex items-center gap-2">
-                <div className="min-w-0 flex-1 truncate text-xs font-medium text-neutral-200">
-                  {sample.label}
-                </div>
-                {sample.source === "upload" ? (
-                  <span className="rounded-full bg-sky-400/10 px-2 py-0.5 text-[10px] font-medium text-sky-300">
-                    uploaded
-                  </span>
-                ) : null}
-              </div>
-              <div className="mt-0.5 text-[11px] text-neutral-500">{sample.family}</div>
+              <div className="text-xs font-medium text-neutral-200">{sample.label}</div>
+              <div className="mt-1 text-[11px] text-neutral-500">{sample.family}</div>
+              {sample.source === "upload" ? (
+                <span className="mt-2 inline-flex rounded-full bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300">
+                  uploaded
+                </span>
+              ) : null}
             </div>
           </button>
           {sample.source === "upload" ? (
@@ -139,9 +135,9 @@ function SamplePicker({
               type="button"
               aria-label={`Remove ${sample.label} from the local index`}
               onClick={() => onRemove(sample)}
-              className="absolute right-2 top-2 rounded-lg border border-neutral-700 bg-neutral-950/90 px-2 py-1 text-[10px] font-medium text-neutral-300 backdrop-blur hover:border-red-400/60 hover:text-red-200"
+              className="w-full bg-neutral-950 px-3 py-2 text-left text-xs font-medium text-neutral-300 hover:bg-neutral-800 hover:text-white"
             >
-              Remove
+              Remove from local index
             </button>
           ) : null}
         </div>
@@ -161,16 +157,14 @@ function RankedResults({ results }: { results: RankedSample[] }) {
           <SampleThumbnail sample={sample} className="h-full min-h-28 w-full object-cover" />
           <div className="flex flex-col justify-between gap-3 p-4">
             <div>
-              <div className="flex items-center gap-2 text-xs text-neutral-500">
-                <span>#{index + 1}</span>
-                {sample.source === "upload" ? (
-                  <span className="rounded-full bg-sky-400/10 px-2 py-0.5 text-[10px] font-medium text-sky-300">
-                    uploaded
-                  </span>
-                ) : null}
-              </div>
+              <div className="text-xs text-neutral-500">#{index + 1}</div>
               <div className="mt-1 text-sm font-medium text-white">{sample.label}</div>
               <div className="mt-1 text-[11px] text-neutral-500">{sample.family}</div>
+              {sample.source === "upload" ? (
+                <span className="mt-2 inline-flex rounded-full bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-300">
+                  uploaded
+                </span>
+              ) : null}
             </div>
             <div>
               <div className="flex items-center justify-between text-xs">
@@ -470,7 +464,7 @@ export function MediaDemo() {
             ))}
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col gap-3 sm:flex-row">
             {uploadCount > 0 ? (
               <button
                 type="button"
@@ -480,7 +474,7 @@ export function MediaDemo() {
                   });
                 }}
                 disabled={status !== "ready" || queryBusy}
-                className="rounded-xl border border-neutral-700 bg-neutral-950 px-4 py-2.5 text-sm font-medium text-neutral-300 hover:border-red-400/50 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-xl border border-neutral-700 bg-neutral-900 px-4 py-2.5 text-sm font-medium text-neutral-100 hover:border-neutral-500 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Clear uploads ({uploadCount})
               </button>
@@ -560,9 +554,7 @@ export function MediaDemo() {
         </div>
       ) : null}
 
-      {storageWarning ? (
-        <p className="max-w-4xl text-sm leading-6 text-amber-200">{storageWarning}</p>
-      ) : null}
+      {storageWarning ? <p className="text-sm text-red-300">{storageWarning}</p> : null}
 
       {error && status === "ready" ? (
         <p className="text-sm text-red-300">
