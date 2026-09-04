@@ -34,13 +34,8 @@ jobs:
       - name: Prepare Rust WebAssembly target
         run: rustup target add wasm32-unknown-unknown
 
-      - name: Capture standalone WASM lockfile
-        run: |
-          set -euo pipefail
-          cargo generate-lockfile --manifest-path wasm/similarity/Cargo.toml
-          cat wasm/similarity/Cargo.lock
-          echo "::error::Commit the generated standalone WASM lockfile"
-          exit 1
+      - name: Check WASM dependency lock
+        run: cargo metadata --manifest-path wasm/similarity/Cargo.toml --locked --no-deps >/dev/null
 
       - name: Install wasm-pack
         run: cargo install wasm-pack --locked --version 0.15.0
@@ -49,13 +44,13 @@ jobs:
         run: cargo fmt --manifest-path wasm/similarity/Cargo.toml -- --check
 
       - name: Test WASM similarity core
-        run: cargo test --manifest-path wasm/similarity/Cargo.toml
+        run: cargo test --manifest-path wasm/similarity/Cargo.toml --locked
 
       - name: Lint WASM similarity core
-        run: cargo clippy --manifest-path wasm/similarity/Cargo.toml --all-targets -- -D warnings
+        run: cargo clippy --manifest-path wasm/similarity/Cargo.toml --locked --all-targets -- -D warnings
 
       - name: Check wasm32 target
-        run: cargo check --manifest-path wasm/similarity/Cargo.toml --target wasm32-unknown-unknown
+        run: cargo check --manifest-path wasm/similarity/Cargo.toml --locked --target wasm32-unknown-unknown
 
       - name: Build GitHub Pages showcase
         run: bun run build:pages
