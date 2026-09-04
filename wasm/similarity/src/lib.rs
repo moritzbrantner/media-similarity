@@ -39,7 +39,8 @@ impl SimilarityIndex {
     /// 0.0..=1.0.
     #[wasm_bindgen(js_name = addFeatures)]
     pub fn add_features(&mut self, features: &[f32]) -> Result<u32, JsValue> {
-        self.push_signature(features.to_vec()).map_err(signature_error)
+        self.push_signature(features.to_vec())
+            .map_err(signature_error)
     }
 
     /// Returns flattened `(index, score)` pairs sorted by descending similarity.
@@ -57,7 +58,8 @@ impl SimilarityIndex {
         query_features: &[f32],
         limit: usize,
     ) -> Result<Vec<f64>, JsValue> {
-        self.rank_query(query_features, limit).map_err(signature_error)
+        self.rank_query(query_features, limit)
+            .map_err(signature_error)
     }
 }
 
