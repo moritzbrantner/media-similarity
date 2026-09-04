@@ -7,8 +7,10 @@ import { SourcesRoute } from "./pages/sources";
 import { WorkflowsRoute } from "./pages/workflows";
 import { ShowcasePage } from "./showcase/ShowcasePage";
 
+declare const __MEDIA_SIMILARITY_SHOWCASE__: boolean;
+
 export function App() {
-  if (import.meta.env.MODE === "github-pages") {
+  if (__MEDIA_SIMILARITY_SHOWCASE__) {
     return <ShowcasePage />;
   }
 
