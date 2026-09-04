@@ -12,10 +12,7 @@ export type ShowcaseSample = {
   label: string;
   mediaUrl?: string;
   previewUrl: string;
-} & (
-  | { bytes: Uint8Array; kind: "image" }
-  | { features: Float32Array; kind: "audio" | "video" }
-);
+} & ({ bytes: Uint8Array; kind: "image" } | { features: Float32Array; kind: "audio" | "video" });
 
 export type SimilarityInput =
   | { bytes: Uint8Array; kind: "image" }
