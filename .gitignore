@@ -11,6 +11,8 @@ uploads/
 thumbnails/
 benchmarks/results/
 backend/target/
+wasm/similarity/target/
+frontend/public/wasm/
 playwright-report/
 test-results/
 storybook-static/

@@ -1,0 +1,81 @@
+name: GitHub Pages
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up repository Bun
+        run: |
+          set -euo pipefail
+          bun_version="$(node -p "require('./package.json').packageManager.split('@')[1]")"
+          curl -fsSL https://bun.sh/install | bash -s "bun-v${bun_version}"
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Prepare Rust WebAssembly target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Check WASM dependency lock
+        run: cargo metadata --manifest-path wasm/similarity/Cargo.toml --locked --no-deps >/dev/null
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked --version 0.15.0
+
+      - name: Check WASM formatting
+        run: cargo fmt --manifest-path wasm/similarity/Cargo.toml -- --check
+
+      - name: Test WASM similarity core
+        run: cargo test --manifest-path wasm/similarity/Cargo.toml --locked
+
+      - name: Lint WASM similarity core
+        run: cargo clippy --manifest-path wasm/similarity/Cargo.toml --locked --all-targets -- -D warnings
+
+      - name: Check wasm32 target
+        run: cargo check --manifest-path wasm/similarity/Cargo.toml --locked --target wasm32-unknown-unknown
+
+      - name: Build GitHub Pages showcase
+        run: bun run build:pages
+
+      - name: Configure Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: frontend/dist
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

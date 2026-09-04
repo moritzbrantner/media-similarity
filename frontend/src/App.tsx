@@ -5,8 +5,15 @@ import { AlbumsRoute } from "./pages/albums";
 import { RegistryRoute } from "./pages/registry";
 import { SourcesRoute } from "./pages/sources";
 import { WorkflowsRoute } from "./pages/workflows";
+import { ShowcasePage } from "./showcase/ShowcasePage";
+
+declare const __MEDIA_SIMILARITY_SHOWCASE__: boolean;
 
 export function App() {
+  if (__MEDIA_SIMILARITY_SHOWCASE__) {
+    return <ShowcasePage />;
+  }
+
   return (
     <Routes>
       <Route element={<AppShell />}>
