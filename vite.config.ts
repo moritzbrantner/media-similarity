@@ -2,8 +2,8 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-export default defineConfig(({ command }) => ({
-  base: command === "serve" ? "/" : "/static/",
+export default defineConfig(({ command, mode }) => ({
+  base: command === "serve" ? "/" : mode === "github-pages" ? "/media-similarity/" : "/static/",
   plugins: [react(), tailwindcss()],
   root: "frontend",
   build: {

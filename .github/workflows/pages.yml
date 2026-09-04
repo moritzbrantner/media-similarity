@@ -1,0 +1,78 @@
+name: GitHub Pages
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up repository Bun
+        run: |
+          set -euo pipefail
+          bun_version="$(node -p "require('./package.json').packageManager.split('@')[1]")"
+          curl -fsSL https://bun.sh/install | bash -s "bun-v${bun_version}"
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Prepare Rust WebAssembly target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked --version 0.15.0
+
+      - name: Check WASM formatting
+        run: cargo fmt --manifest-path wasm/similarity/Cargo.toml -- --check
+
+      - name: Test WASM similarity core
+        run: cargo test --manifest-path wasm/similarity/Cargo.toml
+
+      - name: Lint WASM similarity core
+        run: cargo clippy --manifest-path wasm/similarity/Cargo.toml --all-targets -- -D warnings
+
+      - name: Check wasm32 target
+        run: cargo check --manifest-path wasm/similarity/Cargo.toml --target wasm32-unknown-unknown
+
+      - name: Build GitHub Pages showcase
+        run: bun run build:pages
+
+      - name: Configure Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/dist
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
