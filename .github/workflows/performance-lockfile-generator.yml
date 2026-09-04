@@ -1,0 +1,35 @@
+name: Performance lockfile generator
+
+on:
+  push:
+    branches:
+      - perf/iai-callgrind-smoke
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out branch
+        env:
+          CHECKOUT_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          auth_header="$(printf 'x-access-token:%s' "$CHECKOUT_TOKEN" | base64 -w 0)"
+          git init --initial-branch=main .
+          git config --global --add safe.directory "$PWD"
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin "$GITHUB_SHA"
+          git checkout --force FETCH_HEAD
+
+      - name: Update lockfile for performance dependency
+        run: cargo fetch --manifest-path backend/Cargo.toml
+
+      - name: Upload generated lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-lockfile-${{ github.sha }}
+          path: backend/Cargo.lock
+          if-no-files-found: error
