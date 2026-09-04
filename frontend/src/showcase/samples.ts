@@ -20,14 +20,62 @@ const WIDTH = 640;
 const HEIGHT = 400;
 
 const RECIPES: SampleRecipe[] = [
-  { id: "sunset-ridge", label: "Sunset ridge", family: "Sunset", scene: "sunset", variant: 0 },
-  { id: "sunset-valley", label: "Sunset valley", family: "Sunset", scene: "sunset", variant: 1 },
-  { id: "coast-calm", label: "Calm coast", family: "Coast", scene: "coast", variant: 0 },
-  { id: "coast-cove", label: "Blue cove", family: "Coast", scene: "coast", variant: 1 },
-  { id: "forest-hills", label: "Forest hills", family: "Forest", scene: "forest", variant: 0 },
-  { id: "forest-lake", label: "Forest lake", family: "Forest", scene: "forest", variant: 1 },
-  { id: "coral", label: "Coral poster", family: "Poster", scene: "geometry", variant: 0 },
-  { id: "orbit", label: "Orbit poster", family: "Poster", scene: "geometry", variant: 1 },
+  {
+    id: "sunset-ridge",
+    label: "Sunset ridge",
+    family: "Sunset",
+    scene: "sunset",
+    variant: 0,
+  },
+  {
+    id: "sunset-valley",
+    label: "Sunset valley",
+    family: "Sunset",
+    scene: "sunset",
+    variant: 1,
+  },
+  {
+    id: "coast-calm",
+    label: "Calm coast",
+    family: "Coast",
+    scene: "coast",
+    variant: 0,
+  },
+  {
+    id: "coast-cove",
+    label: "Blue cove",
+    family: "Coast",
+    scene: "coast",
+    variant: 1,
+  },
+  {
+    id: "forest-hills",
+    label: "Forest hills",
+    family: "Forest",
+    scene: "forest",
+    variant: 0,
+  },
+  {
+    id: "forest-lake",
+    label: "Forest lake",
+    family: "Forest",
+    scene: "forest",
+    variant: 1,
+  },
+  {
+    id: "coral",
+    label: "Coral poster",
+    family: "Poster",
+    scene: "geometry",
+    variant: 0,
+  },
+  {
+    id: "orbit",
+    label: "Orbit poster",
+    family: "Poster",
+    scene: "geometry",
+    variant: 1,
+  },
 ];
 
 function polygon(
@@ -57,20 +105,51 @@ function drawSunset(context: CanvasRenderingContext2D, variant: 0 | 1) {
   context.fillRect(0, 0, WIDTH, HEIGHT);
 
   context.beginPath();
-  context.arc(variant === 0 ? 455 : 420, variant === 0 ? 145 : 155, 48, 0, Math.PI * 2);
+  context.arc(
+    variant === 0 ? 455 : 420,
+    variant === 0 ? 145 : 155,
+    48,
+    0,
+    Math.PI * 2,
+  );
   context.fillStyle = "#ffe29a";
   context.fill();
 
   polygon(
     context,
     variant === 0
-      ? [[0, 315], [125, 205], [230, 298], [360, 188], [505, 303], [640, 230], [640, 400], [0, 400]]
-      : [[0, 300], [110, 225], [245, 305], [375, 205], [640, 245], [640, 400], [0, 400]],
+      ? [
+          [0, 315],
+          [125, 205],
+          [230, 298],
+          [360, 188],
+          [505, 303],
+          [640, 230],
+          [640, 400],
+          [0, 400],
+        ]
+      : [
+          [0, 300],
+          [110, 225],
+          [245, 305],
+          [375, 205],
+          [640, 245],
+          [640, 400],
+          [0, 400],
+        ],
     "#313457",
   );
   polygon(
     context,
-    [[0, 345], [175, 292], [315, 350], [470, 285], [640, 340], [640, 400], [0, 400]],
+    [
+      [0, 345],
+      [175, 292],
+      [315, 350],
+      [470, 285],
+      [640, 340],
+      [640, 400],
+      [0, 400],
+    ],
     "#20243d",
   );
 }
@@ -99,8 +178,18 @@ function drawCoast(context: CanvasRenderingContext2D, variant: 0 | 1) {
   polygon(
     context,
     variant === 0
-      ? [[505, 150], [640, 110], [640, 265], [555, 240]]
-      : [[520, 165], [640, 125], [640, 270], [560, 245]],
+      ? [
+          [505, 150],
+          [640, 110],
+          [640, 265],
+          [555, 240],
+        ]
+      : [
+          [520, 165],
+          [640, 125],
+          [640, 270],
+          [560, 245],
+        ],
     "#4f6f70",
   );
 }
@@ -111,13 +200,38 @@ function drawForest(context: CanvasRenderingContext2D, variant: 0 | 1) {
   polygon(
     context,
     variant === 0
-      ? [[0, 285], [120, 185], [250, 280], [365, 160], [510, 275], [640, 195], [640, 400], [0, 400]]
-      : [[0, 270], [145, 175], [275, 275], [395, 175], [640, 205], [640, 400], [0, 400]],
+      ? [
+          [0, 285],
+          [120, 185],
+          [250, 280],
+          [365, 160],
+          [510, 275],
+          [640, 195],
+          [640, 400],
+          [0, 400],
+        ]
+      : [
+          [0, 270],
+          [145, 175],
+          [275, 275],
+          [395, 175],
+          [640, 205],
+          [640, 400],
+          [0, 400],
+        ],
     "#4e8f68",
   );
   polygon(
     context,
-    [[0, 325], [125, 265], [255, 330], [420, 245], [640, 320], [640, 400], [0, 400]],
+    [
+      [0, 325],
+      [125, 265],
+      [255, 330],
+      [420, 245],
+      [640, 320],
+      [640, 400],
+      [0, 400],
+    ],
     "#286047",
   );
 
@@ -128,8 +242,21 @@ function drawForest(context: CanvasRenderingContext2D, variant: 0 | 1) {
     context.fill();
   }
 
-  for (const [x, y] of [[85, 280], [165, 300], [480, 285], [555, 310]] as const) {
-    polygon(context, [[x, y - 70], [x - 28, y], [x + 28, y]], "#194737");
+  for (const [x, y] of [
+    [85, 280],
+    [165, 300],
+    [480, 285],
+    [555, 310],
+  ] as const) {
+    polygon(
+      context,
+      [
+        [x, y - 70],
+        [x - 28, y],
+        [x + 28, y],
+      ],
+      "#194737",
+    );
   }
 }
 
