@@ -34,6 +34,14 @@ jobs:
       - name: Prepare Rust WebAssembly target
         run: rustup target add wasm32-unknown-unknown
 
+      - name: Capture standalone WASM lockfile
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile --manifest-path wasm/similarity/Cargo.toml
+          cat wasm/similarity/Cargo.lock
+          echo "::error::Commit the generated standalone WASM lockfile"
+          exit 1
+
       - name: Install wasm-pack
         run: cargo install wasm-pack --locked --version 0.15.0
 

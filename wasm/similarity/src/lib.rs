@@ -59,9 +59,7 @@ fn signature_from_image(image: &DynamicImage) -> Vec<f32> {
     let resized = image
         .resize_exact(SIGNATURE_GRID, SIGNATURE_GRID, FilterType::Triangle)
         .to_rgb8();
-    let mut signature = Vec::with_capacity(
-        (SIGNATURE_GRID * SIGNATURE_GRID) as usize * CHANNELS,
-    );
+    let mut signature = Vec::with_capacity((SIGNATURE_GRID * SIGNATURE_GRID) as usize * CHANNELS);
 
     for pixel in resized.pixels() {
         signature.extend(pixel.0.map(|channel| f32::from(channel) / 255.0));

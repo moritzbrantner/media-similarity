@@ -4,6 +4,9 @@ import { defineConfig } from "vite";
 
 export default defineConfig(({ command, mode }) => ({
   base: command === "serve" ? "/" : mode === "github-pages" ? "/media-similarity/" : "/static/",
+  define: {
+    __MEDIA_SIMILARITY_SHOWCASE__: JSON.stringify(mode === "github-pages"),
+  },
   plugins: [react(), tailwindcss()],
   root: "frontend",
   build: {

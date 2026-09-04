@@ -12,7 +12,6 @@ thumbnails/
 benchmarks/results/
 backend/target/
 wasm/similarity/target/
-wasm/similarity/Cargo.lock
 frontend/public/wasm/
 playwright-report/
 test-results/
