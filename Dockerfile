@@ -1,10 +1,20 @@
-FROM oven/bun:1.3.14 AS frontend-builder
+FROM debian:bookworm-slim AS frontend-builder
 
 ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV PATH="/root/.bun/bin:${PATH}"
 
 WORKDIR /workspace
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl unzip \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY package.json bun.lock tsconfig.json vite.config.ts .oxfmtrc.json ./
+RUN bun_version="$(sed -n 's/.*"packageManager": "bun@\([^"]*\)".*/\1/p' package.json)" \
+    && test -n "$bun_version" \
+    && curl -fsSL https://bun.sh/install | bash -s "bun-v${bun_version}" \
+    && test "$(bun --version)" = "$bun_version"
+
 COPY frontend ./frontend
 
 RUN bun install --frozen-lockfile \
