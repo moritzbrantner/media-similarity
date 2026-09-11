@@ -24,7 +24,6 @@ RUN toolchain="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' rust-toolchain.toml)" \
     && rustup toolchain install "$toolchain" --profile minimal \
     && test "$(rustc --version | awk '{print $2}')" = "$toolchain"
 
-COPY --from=rust-packages . /workspace/rust-packages
 COPY backend ./backend
 
 RUN cargo build --manifest-path backend/Cargo.toml --bins --release
