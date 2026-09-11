@@ -117,7 +117,7 @@ docker run --rm \
 
 docker run --rm \
   --network host \
-  --user "$(id -u):$(id-g)" \
+  --user "$(id -u):$(id -g)" \
   -e HOME=/tmp \
   -e QUALITY_REPO_ROOT=/workspace/image-similarity-service \
   -e QDRANT_URL="$qdrant_url" \
