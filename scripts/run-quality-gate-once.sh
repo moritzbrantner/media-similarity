@@ -96,7 +96,6 @@ if [[ "${QUALITY_SKIP_IMAGE_BUILD:-}" != "1" ]]; then
   docker buildx build \
     --load \
     "${build_args[@]}" \
-    --build-context rust-packages=../rust-packages \
     --target api-runtime \
     -t "$quality_image" \
     .
