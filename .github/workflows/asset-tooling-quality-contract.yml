@@ -1,0 +1,75 @@
+name: Asset Tooling Quality Contract
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        env:
+          CHECKOUT_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          auth_header="$(printf 'x-access-token:%s' "$CHECKOUT_TOKEN" | base64 -w 0)"
+
+          mkdir -p media-similarity
+          cd media-similarity
+          git init --initial-branch=main .
+          git config --global --add safe.directory "$PWD"
+          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin "$GITHUB_REF"
+          git checkout --force FETCH_HEAD
+
+      - name: Set up repository Bun
+        working-directory: media-similarity
+        run: |
+          set -euo pipefail
+          bun_version="$(node -p "require('./package.json').packageManager.split('@')[1]")"
+          curl -fsSL https://bun.sh/install | bash -s "bun-v${bun_version}"
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+
+      - name: Check out exact asset-tooling contract
+        working-directory: media-similarity
+        run: |
+          set -euo pipefail
+          revision="$(node -p "require('./tests/fixtures/quality-corpus/asset-tooling/contract.json').revision")"
+          repository="$(node -p "require('./tests/fixtures/quality-corpus/asset-tooling/contract.json').repository")"
+          mkdir -p ../asset-tooling
+          git -C ../asset-tooling init --initial-branch=main .
+          git -C ../asset-tooling remote add origin "$GITHUB_SERVER_URL/$repository"
+          git -C ../asset-tooling fetch --depth=1 origin "$revision"
+          git -C ../asset-tooling checkout --force FETCH_HEAD
+          test "$(git -C ../asset-tooling rev-parse HEAD)" = "$revision"
+
+      - name: Ensure FFmpeg image runtime is available
+        run: |
+          set -euo pipefail
+          if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends ffmpeg
+          fi
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
+
+      - name: Validate fixture relationships and metric logic
+        working-directory: media-similarity
+        run: bun run quality:asset-tooling:check
+
+      - name: Materialize reproducible quality fixtures
+        working-directory: media-similarity
+        env:
+          ASSET_TOOLING_ROOT: ${{ github.workspace }}/asset-tooling
+        run: |
+          set -euo pipefail
+          output=/tmp/media-similarity-asset-tooling-quality
+          bun scripts/materialize-asset-tooling-quality.mjs --output "$output"
+          cp "$output/asset-tooling-provenance.json" /tmp/provenance-first.json
+          bun scripts/materialize-asset-tooling-quality.mjs --output "$output"
+          cmp /tmp/provenance-first.json "$output/asset-tooling-provenance.json"
+          test "$(find "$output/sources" -maxdepth 1 -type f -name 'asset-tooling-*' | wc -l)" -eq 5
+          test "$(find "$output/queries/asset-tooling" -maxdepth 1 -type f -name '*.png' | wc -l)" -eq 10
+          test -f "$output/.asset-tooling-evaluator-root/tests/fixtures/quality-corpus/manifest.json"

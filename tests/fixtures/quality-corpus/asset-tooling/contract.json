@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "repository": "moritzbrantner/asset-tooling",
+  "revision": "c6734e90a334537535e8e10aca3276f53dc125a7",
+  "defaultSibling": "../asset-tooling",
+  "exports": {
+    "catalog": "./catalog",
+    "catalogAcquisition": "./catalog/acquisition",
+    "store": "./operations/store",
+    "imageCodecs": "./operations/image/codecs",
+    "imagePerturbations": "./operations/image/perturbations"
+  }
+}

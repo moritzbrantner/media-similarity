@@ -13,6 +13,7 @@ qdrant_container="media-sim-quality-qdrant-$$"
 qdrant_data_dir="$(mktemp -d)"
 qdrant_snapshots_dir="$(mktemp -d)"
 quality_model_root="${QUALITY_MODEL_ROOT:-/tmp/media-similarity-quality-models}"
+evaluation_repo_root="${QUALITY_EVALUATION_REPO_ROOT:-/workspace/image-similarity-service}"
 if [[ -n "${MODEL_BUNDLE_DIR:-}" ]]; then
   model_bundle_dir="$MODEL_BUNDLE_DIR"
   model_hf_cache_dir="${MODEL_HF_CACHE_DIR:-${project_root}/.dev-data/app/models/hf-cache}"
@@ -104,7 +105,7 @@ fi
 docker run --rm \
   --user "$(id -u):$(id -g)" \
   -e HOME=/tmp \
-  -e QUALITY_REPO_ROOT=/workspace/image-similarity-service \
+  -e QUALITY_REPO_ROOT="$evaluation_repo_root" \
   -e MODEL_BUNDLE_DIR=/workspace/image-similarity-service/.dev-data/app/models/bundles \
   -e MODEL_HF_CACHE_DIR=/workspace/image-similarity-service/.dev-data/app/models/hf-cache \
   -e MODEL_HF_TOKEN="${MODEL_HF_TOKEN:-}" \
@@ -119,7 +120,7 @@ docker run --rm \
   --network host \
   --user "$(id -u):$(id -g)" \
   -e HOME=/tmp \
-  -e QUALITY_REPO_ROOT=/workspace/image-similarity-service \
+  -e QUALITY_REPO_ROOT="$evaluation_repo_root" \
   -e QDRANT_URL="$qdrant_url" \
   -e MODEL_BUNDLE_DIR=/workspace/image-similarity-service/.dev-data/app/models/bundles \
   -e MODEL_HF_CACHE_DIR=/workspace/image-similarity-service/.dev-data/app/models/hf-cache \
