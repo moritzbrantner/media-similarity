@@ -1,7 +1,7 @@
 {
   "version": 1,
   "repository": "moritzbrantner/asset-tooling",
-  "revision": "1d44627079d02c6427a23ef33a2dd2ea10ea0502",
+  "revision": "583c1be45ac28c7e6943a5ce5f9fa5cbc3486a7b",
   "defaultSibling": "../asset-tooling",
   "exports": {
     "catalog": "./catalog",
