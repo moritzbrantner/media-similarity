@@ -101,6 +101,27 @@
       "queryAssetId": "at-gravel-border-resample",
       "relevance": [{ "assetId": "at-gravel", "grade": 3 }],
       "hardNegatives": ["at-grass", "at-brick"]
+    },
+    {
+      "searchId": "at-tone-440-gain-trim-search",
+      "family": "audio-gain-trim",
+      "queryAssetId": "at-tone-440-gain-trim",
+      "relevance": [{ "assetId": "at-tone-440", "grade": 3 }],
+      "hardNegatives": ["at-tone-445", "at-tone-880"]
+    },
+    {
+      "searchId": "at-tone-440-resample-roundtrip-search",
+      "family": "audio-resample",
+      "queryAssetId": "at-tone-440-resample-roundtrip",
+      "relevance": [{ "assetId": "at-tone-440", "grade": 3 }],
+      "hardNegatives": ["at-tone-445", "at-tone-880"]
+    },
+    {
+      "searchId": "at-tone-440-seeded-noise-search",
+      "family": "audio-noise-mix",
+      "queryAssetId": "at-tone-440-seeded-noise",
+      "relevance": [{ "assetId": "at-tone-440", "grade": 3 }],
+      "hardNegatives": ["at-tone-445", "at-tone-880"]
     }
   ]
 }
