@@ -12,8 +12,8 @@ raw_report_host="${compatibility_host}/benchmarks/results/quality-corpus-report.
 relationships="tests/fixtures/quality-corpus/asset-tooling/relationships.json"
 results_dir="${project_root}/benchmarks/results"
 
-if [[ ! -f "${output_host}/asset-tooling-materialization.json" || ! -f "${compatibility_host}/tests/fixtures/quality-corpus/manifest.json" ]]; then
-  printf 'Asset-tooling quality corpus is not materialized. Run `bun run quality:asset-tooling:prepare` first.\n' >&2
+if [[ ! -f "${output_host}/asset-tooling-materialization.json" || ! -f "${output_host}/asset-tooling-audio-provenance.json" || ! -f "${compatibility_host}/tests/fixtures/quality-corpus/manifest.json" ]]; then
+  printf 'Asset-tooling image/audio quality corpus is not materialized. Run `bun run quality:asset-tooling:prepare` first.\n' >&2
   exit 2
 fi
 
@@ -31,6 +31,9 @@ if [[ -f "$raw_report_host" ]]; then
   bun scripts/quality-metrics.mjs \
     --report "$raw_report_host" \
     --relationships "$relationships" \
+    --output-dir "$results_dir" || metrics_status=$?
+  bun scripts/quality-audio-metrics.mjs \
+    --report "$raw_report_host" \
     --output-dir "$results_dir" || metrics_status=$?
 else
   printf 'Quality evaluator did not produce %s\n' "$raw_report_host" >&2
