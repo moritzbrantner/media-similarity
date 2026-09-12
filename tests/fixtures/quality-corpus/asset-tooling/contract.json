@@ -8,6 +8,7 @@
     "catalogAcquisition": "./catalog/acquisition",
     "store": "./operations/store",
     "imageCodecs": "./operations/image/codecs",
-    "imagePerturbations": "./operations/image/perturbations"
+    "imagePerturbations": "./operations/image/perturbations",
+    "audioOperations": "./operations/audio"
   }
 }
