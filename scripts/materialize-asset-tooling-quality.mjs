@@ -25,6 +25,13 @@ function requireString(value, location) {
   return value;
 }
 
+function assertGitRevision(value, location) {
+  if (typeof value !== "string" || !/^[0-9a-f]{40}$/.test(value)) {
+    throw new Error(`${location} must be a lowercase 40-character Git commit SHA`);
+  }
+  return value;
+}
+
 function assertSha256(value, location) {
   if (typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value)) {
     throw new Error(`${location} must be a lowercase SHA-256 digest`);
@@ -45,7 +52,7 @@ function uniqueBy(values, key, location) {
 function validateFixtureDocuments(contract, catalogDocument, recipesDocument, relationshipsDocument, baseManifest) {
   if (contract.version !== 1) throw new Error("asset-tooling contract version must be 1");
   requireString(contract.repository, "asset-tooling contract repository");
-  assertSha256(contract.revision, "asset-tooling contract revision");
+  assertGitRevision(contract.revision, "asset-tooling contract revision");
   requireString(contract.defaultSibling, "asset-tooling contract defaultSibling");
   for (const key of ["catalog", "catalogAcquisition", "store", "imageCodecs", "imagePerturbations"]) {
     requireString(contract.exports?.[key], `asset-tooling contract exports.${key}`);
