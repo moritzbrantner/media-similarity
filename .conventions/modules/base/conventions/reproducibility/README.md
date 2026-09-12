@@ -114,3 +114,12 @@
 
 - Use an explicit Unicode normalization policy for identifiers, generated filenames, canonical serialized forms, hashes, search/deduplication keys, or cross-system equality when canonically equivalent text must compare the same.
 - Do not silently normalize ordinary human-facing text when the distinction could be meaningful to the domain.
+
+## REP-021 — Reconcile deterministic mutations instead of repeating work
+
+- A deterministic mutating operation inspects current state, derives the desired state, compares them, applies only the required delta, and verifies the resulting state.
+- Reapplying the same operation to an already-satisfied state must be a verified no-op: no unnecessary file rewrites, installs, fetches, rebuilds, or other side effects merely to rediscover the same result.
+- Machine-readable mutation results should distinguish at least `changed`, `unchanged`, and `conflict`, and expose created, changed, removed, skipped/no-op, or verified subjects when that detail is useful to callers.
+- Tests for deterministic mutators should apply the same operation twice and assert that the second application performs zero writes or equivalent reconciliation work while preserving the verified final state.
+- Unrelated input changes must not invalidate derived work. Relevant input changes should trigger only the smallest safe affected reconciliation.
+- Use input fingerprints or incremental state only for expensive derived work where the identity includes every relevant input and tool version. Do not add memoization to cheap pure algorithms merely because they are deterministic.

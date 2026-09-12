@@ -14,6 +14,7 @@ Read this section first. Open the linked managed source when a rule is relevant,
 - **PRINCIPLE-005 — Document decisions, not defaults** — Document consequential choices agents cannot reliably infer. ([details](modules/base/principles/README.md))
 - **PRINCIPLE-006 — Escalate complexity only when the workload requires it** — Treat direct human-to-agent work as a first-class execution mode. ([details](modules/base/principles/README.md))
 - **PRINCIPLE-007 — Keep capabilities replaceable; internalize with evidence** — External libraries, services, processes, and hosted infrastructure are valid bootstrap implementations; avoid unnecessary domain coupling to a particular implementation. ([details](modules/base/principles/README.md))
+- **PRINCIPLE-008 — Compute and validate once; reuse the trusted representation** — At a semantic or trust boundary, parse, normalize, probe, or otherwise compute the required representation once, validate it there, and pass the resulting trusted typed object downstream. ([details](modules/base/principles/README.md))
 - **AGENT-001 — Deterministic checks before agent judgment** — Encode mechanically checkable properties as executable checks. ([details](modules/base/conventions/agents/README.md))
 - **AGENT-003 — Separate execution from orchestration** — Keep the development loop independent of its local, CI, or hosted orchestration adapter. ([details](modules/base/conventions/agents/README.md))
 - **AGENT-004 — The harness defines completion** — The harness owns the completion gates; agents propose and repair changes. ([details](modules/base/conventions/agents/README.md))
@@ -22,7 +23,7 @@ Read this section first. Open the linked managed source when a rule is relevant,
 - **AGENT-007 — Run cheap validation before expensive validation** — Run required checks from narrowest and cheapest to broadest and most expensive; stop at the first failure. ([details](modules/base/conventions/agents/README.md))
 - **AGENT-008 — Revalidate downward after broader-scope fixes** — After fixing a broad validation failure with production-code changes, restart at the narrowest affected layer. ([details](modules/base/conventions/agents/README.md))
 - **AGENT-009 — Delegate one bounded capability per implementation run** — Give each delegated implementation run one independently verifiable capability slice. ([details](modules/base/conventions/agents/README.md))
-- **AGENT-010 — Apply progressive composition to agent execution** — Resolve execution-layer choices to `PRINCIPLE-006`; AGENT-010 is the agent-category pointer and adds no second copy of that policy. ([details](modules/base/conventions/agents/README.md))
+- **AGENT-010 — Apply progressive composition to agent execution** — Resolve execution-layer choices to `PRINCIPLE-006` and progressive verification to `PRINCIPLE-003`; AGENT-010 is the agent-category pointer and adds no second copy of those policies. ([details](modules/base/conventions/agents/README.md))
 - **DESIGN-001 — Prefer deep modules over pass-through layers** — Prefer a small, stable interface that hides meaningful behavior. ([details](modules/base/conventions/codebase-design/README.md))
 - **DESIGN-002 — Treat seam placement as a design decision** — Introduce a seam where behavior actually varies or where a stable public testing/calling surface is valuable. ([details](modules/base/conventions/codebase-design/README.md))
 - **DESIGN-003 — Make the interface the natural verification surface** — Design modules so callers and tests can exercise important behavior through the same stable interface. ([details](modules/base/conventions/codebase-design/README.md))
@@ -41,6 +42,9 @@ Read this section first. Open the linked managed source when a rule is relevant,
 - **REPO-011 — Verify only meaningful file permissions** — Directly executable scripts and tools have the executable bit when the target platform uses it; ordinary source/config files should not accidentally become executable. ([details](modules/base/conventions/repository/README.md))
 - **REPO-012 — Treat symlinks as explicit filesystem boundaries** — Deterministic traversal does not recursively follow symlinks by default. ([details](modules/base/conventions/repository/README.md))
 - **REPO-013 — Keep path casing portable** — Imports and references use the exact on-disk path casing. ([details](modules/base/conventions/repository/README.md))
+- **REPO-014 — Public agent tools expose a stable machine discovery document** — A public tool intentionally designed for coding-agent consumption exposes a versioned machine discovery document at a stable published URL, preferably `agent-tool.json` at the tool's Pages root. ([details](modules/base/conventions/repository/README.md))
+- **REPO-015 — Prefer vertical growth before creating another repository** — Before creating a new repository or lab, identify the capability, ownership boundary, runtime constraint, or validation need that cannot be expressed coherently in an existing repository. ([details](modules/base/conventions/repository/README.md))
+- **REPO-016 — Public repositories provide a useful GitHub Pages surface** — Public repositories should expose a maintained GitHub Pages site unless the repository records an explicit reason to opt out. ([details](modules/base/conventions/repository/README.md))
 - **REP-001 — Green verification introduces no new warnings** — New and cleaned repositories should treat compiler and linter warnings as failures. ([details](modules/base/conventions/reproducibility/README.md))
 - **REP-002 — Mechanize stable preferences before instructing agents** — Prefer ecosystem-native compiler options, formatters, linters, analyzers, schemas, tests, and configuration over prose instructions for mechanically decidable policy. ([details](modules/base/conventions/reproducibility/README.md))
 - **REP-003 — Generated outputs are disposable local state by default** — Do not commit generated artifacts when source inputs plus a deterministic generator can reproduce them. ([details](modules/base/conventions/reproducibility/README.md))
@@ -61,6 +65,7 @@ Read this section first. Open the linked managed source when a rule is relevant,
 - **REP-018 — Keep build artifacts reproducible from declared inputs** — Artifact contents do not accidentally depend on wall-clock time, host name, user name, absolute checkout path, random build IDs, or other ambient machine state. ([details](modules/base/conventions/reproducibility/README.md))
 - **REP-019 — Validate configuration against real contracts** — Use official or ecosystem-native schemas and validators when a configuration format has an established contract. ([details](modules/base/conventions/reproducibility/README.md))
 - **REP-020 — Normalize Unicode where byte identity represents textual identity** — Use an explicit Unicode normalization policy for identifiers, generated filenames, canonical serialized forms, hashes, search/deduplication keys, or cross-system equality when canonically equivalent text must compare the same. ([details](modules/base/conventions/reproducibility/README.md))
+- **REP-021 — Reconcile deterministic mutations instead of repeating work** — A deterministic mutating operation inspects current state, derives the desired state, compares them, applies only the required delta, and verifies the resulting state. ([details](modules/base/conventions/reproducibility/README.md))
 - **REL-001 — Handle errors specifically inside the system and broadly only at deliberate boundaries** — Internal code handles expected failures it can meaningfully recover from or translate; otherwise propagate them. ([details](modules/base/conventions/reliability/README.md))
 - **REL-002 — Bound external operations** — Network calls, database operations, queues, RPC, subprocesses, and similar cross-process operations use an explicit finite timeout or cancellation bound. ([details](modules/base/conventions/reliability/README.md))
 - **REL-003 — Retry only failures classified as transient and safe to repeat** — Retries are bounded, use a defined backoff strategy, and continue to respect timeout and cancellation. ([details](modules/base/conventions/reliability/README.md))
@@ -115,6 +120,9 @@ Read this section first. Open the linked managed source when a rule is relevant,
 - **DEP-012 — Declare dependency versions according to the consumer contract** — Applications, internal tooling, and other leaf deliverables prefer exact dependency versions for predictable resolution. ([details](modules/dependencies/conventions/dependencies/README.md))
 - **DEP-013 — Make dependency changes explicit transactions** — Ordinary install and verification commands use the committed lockfile without modifying it. ([details](modules/dependencies/conventions/dependencies/README.md))
 - **DEP-014 — Keep production dependency graphs acyclic by default** — Production package, module, project, and repository dependency graphs should be acyclic where the ecosystem can model and verify the relationship. ([details](modules/dependencies/conventions/dependencies/README.md))
+- **DEP-015 — Centralize automated dependency update policy** — Use Renovate as the canonical routine dependency-update engine for repositories adopting these conventions. ([details](modules/dependencies/conventions/dependencies/README.md))
+- **DEP-016 — Choose distribution by source ownership** — When upstream remains responsible for implementation changes, compatibility, fixes, and releases, consume the capability through the ecosystem's normal package or dependency mechanism. ([details](modules/dependencies/conventions/dependencies/README.md))
+- **DEP-017 — Prove dependency ranges as a clean consumer** — Treat the repository's locked development graph, the minimum compatibility point declared by peer ranges, and a fresh registry resolution as three different pieces of evidence. ([details](modules/dependencies/conventions/dependencies/README.md))
 - **DOCKER-001 — Pin container inputs according to reproducibility risk** — Local development may use exact version tags when readable version selection is useful. ([details](modules/docker/technologies/docker/README.md))
 - **DOCKERFILE-001 — Keep runtime images minimal and reproducible** — Prefer multi-stage builds when build and runtime requirements differ. ([details](modules/dockerfile/technologies/docker/dockerfile/README.md))
 - **ENV-001 — Keep irreplaceable development state outside disposable containers** — Containers provide reproducible execution, not source, Git, credentials, worktrees, or agent-session state. ([details](modules/environment/conventions/environment/README.md))
@@ -130,6 +138,8 @@ Read this section first. Open the linked managed source when a rule is relevant,
 - **TS-004 — Use strict compiler options that expose missing-state mistakes** — Enable `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, and `noFallthroughCasesInSwitch` by default. ([details](modules/typescript/technologies/typescript/README.md))
 - **TS-005 — Handle closed variants exhaustively** — Switches over enums and discriminated unions owned by the application should be exhaustive so adding a new variant produces a deterministic failure until callers handle it. ([details](modules/typescript/technologies/typescript/README.md))
 - **TS-006 — Do not leave promises unobserved** — Await or return promises by default. ([details](modules/typescript/technologies/typescript/README.md))
+- **TS-007 — Use structurally explicit control flow and side effects** — Require braces around control-flow bodies. ([details](modules/typescript/technologies/typescript/README.md))
+- **TS-008 — Keep imports mechanically canonical** — Combine duplicate compatible imports from the same resolved module; namespace imports may remain separate when syntax requires it. ([details](modules/typescript/technologies/typescript/README.md))
 - **REACT-001 — Colocate components and directly related artifacts** — Keep a component and its focused tests, styles, hooks, and types in their smallest shared directory. ([details](modules/react/technologies/typescript/react/README.md))
 - **REACT-002 — Keep React state local by default** — Own state in the smallest subtree that needs it; widen only for real shared ownership. ([details](modules/react/technologies/typescript/react/README.md))
 - **REACT-003 — Put important navigational state in URL query parameters** — Put durable, shareable view state in query parameters; keep ephemeral and sensitive state out of URLs. ([details](modules/react/technologies/typescript/react/README.md))
@@ -146,6 +156,7 @@ Read this section first. Open the linked managed source when a rule is relevant,
 - **UI-007 — Make primary workflows work on touch and mobile** — Preserve primary tasks, hierarchy, state, and required actions on representative mobile and touch input. ([details](modules/ui/conventions/interface-design/README.md))
 - **MORITZUI-001 — Compose applications from public component tiers** — Select public exports by semantic responsibility: stable primitives, patterns compositions, data collections, and shell chrome. ([details](modules/moritzbrantner-ui/technologies/typescript/react/moritzbrantner-ui/README.md))
 - **MORITZUI-002 — Select one concrete theme contract** — Import exactly one concrete theme stylesheet per application surface. ([details](modules/moritzbrantner-ui/technologies/typescript/react/moritzbrantner-ui/README.md))
+- **MORITZUI-003 — Do not add counters or KPI cards by default** — Do not add cards, tiles, hero statistics, or dashboard widgets whose primary purpose is merely to display a count or total. ([details](modules/moritzbrantner-ui/technologies/typescript/react/moritzbrantner-ui/README.md))
 - **BUN-001 — Use Bun as the default JavaScript toolchain** — Use Bun for packages, scripts, and JavaScript/TypeScript where required tooling supports it. ([details](modules/tooling/technologies/tooling/README.md))
 - **TAILWIND-001 — Prefer Tailwind CSS when practical** — Prefer Tailwind for application styling when utility classes preserve ownership near the markup. ([details](modules/tooling/technologies/tooling/README.md))
 - **TAILWIND-002 — Use semantic tokens and named variants** — Use semantic tokens and named variants for visual decisions. ([details](modules/tooling/technologies/tooling/README.md))
@@ -207,6 +218,8 @@ Read this section first. Open the linked managed source when a rule is relevant,
 - [modules/typescript/technologies/typescript/TS-003.json](modules/typescript/technologies/typescript/TS-003.json)
 - [modules/typescript/technologies/typescript/TS-005.json](modules/typescript/technologies/typescript/TS-005.json)
 - [modules/typescript/technologies/typescript/TS-006.json](modules/typescript/technologies/typescript/TS-006.json)
+- [modules/typescript/technologies/typescript/TS-007.json](modules/typescript/technologies/typescript/TS-007.json)
+- [modules/typescript/technologies/typescript/TS-008.json](modules/typescript/technologies/typescript/TS-008.json)
 
 ### react
 
@@ -253,6 +266,9 @@ Read this section first. Open the linked managed source when a rule is relevant,
 ### typescript
 
 - [modules/typescript/technologies/typescript/TS-003.oxlint.json](modules/typescript/technologies/typescript/TS-003.oxlint.json)
+- [modules/typescript/technologies/typescript/TS-007.oxlint.json](modules/typescript/technologies/typescript/TS-007.oxlint.json)
+- [modules/typescript/technologies/typescript/TS-008.oxlint.json](modules/typescript/technologies/typescript/TS-008.oxlint.json)
+- [modules/typescript/technologies/typescript/TS-008.oxfmt.json](modules/typescript/technologies/typescript/TS-008.oxfmt.json)
 
 ### react
 
