@@ -1,0 +1,191 @@
+{
+  "version": 1,
+  "name": "asset-tooling-image-quality-v1",
+  "outputDir": "sample-images/quality",
+  "sources": [
+    {
+      "assetId": "at-astronaut",
+      "catalogSourceId": "scikit-image.astronaut",
+      "filename": "sources/asset-tooling-astronaut.png",
+      "title": "Asset-tooling astronaut source",
+      "identity": "scikit-image-astronaut"
+    },
+    {
+      "assetId": "at-camera",
+      "catalogSourceId": "scikit-image.camera",
+      "filename": "sources/asset-tooling-camera.png",
+      "title": "Asset-tooling camera source",
+      "identity": "scikit-image-camera"
+    },
+    {
+      "assetId": "at-brick",
+      "catalogSourceId": "scikit-image.brick",
+      "filename": "sources/asset-tooling-brick.png",
+      "title": "Asset-tooling brick source",
+      "identity": "scikit-image-brick"
+    },
+    {
+      "assetId": "at-grass",
+      "catalogSourceId": "scikit-image.grass",
+      "filename": "sources/asset-tooling-grass.png",
+      "title": "Asset-tooling grass source",
+      "identity": "scikit-image-grass"
+    },
+    {
+      "assetId": "at-gravel",
+      "catalogSourceId": "scikit-image.gravel",
+      "filename": "sources/asset-tooling-gravel.png",
+      "title": "Asset-tooling gravel source",
+      "identity": "scikit-image-gravel"
+    }
+  ],
+  "recipes": [
+    {
+      "id": "crop-resize",
+      "family": "crop-resize",
+      "recipe": {
+        "schemaVersion": 1,
+        "steps": [
+          { "operation": "image.crop", "parameters": { "x": 32, "y": 32, "width": 448, "height": 448 } },
+          { "operation": "image.resize", "parameters": { "width": 512, "height": 512, "filter": "bilinear" } }
+        ]
+      }
+    },
+    {
+      "id": "downscale-upscale",
+      "family": "resample",
+      "recipe": {
+        "schemaVersion": 1,
+        "steps": [
+          { "operation": "image.resize", "parameters": { "width": 160, "height": 160, "filter": "bilinear" } },
+          { "operation": "image.resize", "parameters": { "width": 512, "height": 512, "filter": "bilinear" } }
+        ]
+      }
+    },
+    {
+      "id": "exposure-blur",
+      "family": "photometric-blur",
+      "recipe": {
+        "schemaVersion": 1,
+        "steps": [
+          { "operation": "image.exposure", "parameters": { "numerator": 5, "denominator": 4 } },
+          { "operation": "image.blur", "parameters": { "radius": 1 } }
+        ]
+      }
+    },
+    {
+      "id": "contrast-blur",
+      "family": "photometric-blur",
+      "recipe": {
+        "schemaVersion": 1,
+        "steps": [
+          { "operation": "image.contrast", "parameters": { "numerator": 6, "denominator": 5 } },
+          { "operation": "image.blur", "parameters": { "radius": 1 } }
+        ]
+      }
+    },
+    {
+      "id": "quarter-turn",
+      "family": "rotation",
+      "recipe": {
+        "schemaVersion": 1,
+        "steps": [
+          { "operation": "image.rotate", "parameters": { "quarterTurns": 1 } }
+        ]
+      }
+    },
+    {
+      "id": "border-resample",
+      "family": "border-resample",
+      "recipe": {
+        "schemaVersion": 1,
+        "steps": [
+          { "operation": "image.pad", "parameters": { "left": 24, "right": 24, "top": 24, "bottom": 24, "color": [0, 0, 0, 255] } },
+          { "operation": "image.resize", "parameters": { "width": 512, "height": 512, "filter": "bilinear" } }
+        ]
+      }
+    }
+  ],
+  "queries": [
+    {
+      "assetId": "at-astronaut-crop-resize",
+      "sourceAssetId": "at-astronaut",
+      "recipeId": "crop-resize",
+      "filename": "queries/asset-tooling/astronaut-crop-resize.png",
+      "title": "Astronaut center crop restored to source size",
+      "capability": "deterministic crop and resample robustness"
+    },
+    {
+      "assetId": "at-astronaut-exposure-blur",
+      "sourceAssetId": "at-astronaut",
+      "recipeId": "exposure-blur",
+      "filename": "queries/asset-tooling/astronaut-exposure-blur.png",
+      "title": "Astronaut exposure and blur perturbation",
+      "capability": "deterministic photometric and blur robustness"
+    },
+    {
+      "assetId": "at-camera-crop-resize",
+      "sourceAssetId": "at-camera",
+      "recipeId": "crop-resize",
+      "filename": "queries/asset-tooling/camera-crop-resize.png",
+      "title": "Camera center crop restored to source size",
+      "capability": "deterministic crop and resample robustness"
+    },
+    {
+      "assetId": "at-camera-downscale-upscale",
+      "sourceAssetId": "at-camera",
+      "recipeId": "downscale-upscale",
+      "filename": "queries/asset-tooling/camera-downscale-upscale.png",
+      "title": "Camera downscale and upscale perturbation",
+      "capability": "deterministic resampling robustness"
+    },
+    {
+      "assetId": "at-brick-crop-resize",
+      "sourceAssetId": "at-brick",
+      "recipeId": "crop-resize",
+      "filename": "queries/asset-tooling/brick-crop-resize.png",
+      "title": "Brick center crop restored to source size",
+      "capability": "texture crop robustness"
+    },
+    {
+      "assetId": "at-brick-quarter-turn",
+      "sourceAssetId": "at-brick",
+      "recipeId": "quarter-turn",
+      "filename": "queries/asset-tooling/brick-quarter-turn.png",
+      "title": "Brick quarter-turn perturbation",
+      "capability": "texture rotation robustness"
+    },
+    {
+      "assetId": "at-grass-crop-resize",
+      "sourceAssetId": "at-grass",
+      "recipeId": "crop-resize",
+      "filename": "queries/asset-tooling/grass-crop-resize.png",
+      "title": "Grass center crop restored to source size",
+      "capability": "texture crop robustness"
+    },
+    {
+      "assetId": "at-grass-contrast-blur",
+      "sourceAssetId": "at-grass",
+      "recipeId": "contrast-blur",
+      "filename": "queries/asset-tooling/grass-contrast-blur.png",
+      "title": "Grass contrast and blur perturbation",
+      "capability": "texture photometric robustness"
+    },
+    {
+      "assetId": "at-gravel-crop-resize",
+      "sourceAssetId": "at-gravel",
+      "recipeId": "crop-resize",
+      "filename": "queries/asset-tooling/gravel-crop-resize.png",
+      "title": "Gravel center crop restored to source size",
+      "capability": "texture crop robustness"
+    },
+    {
+      "assetId": "at-gravel-border-resample",
+      "sourceAssetId": "at-gravel",
+      "recipeId": "border-resample",
+      "filename": "queries/asset-tooling/gravel-border-resample.png",
+      "title": "Gravel border and resample perturbation",
+      "capability": "texture border robustness"
+    }
+  ]
+}
