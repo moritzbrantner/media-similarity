@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "metrics": { "recallK": [1, 5], "ndcgK": 5, "hardNegativeK": 5 },
+  "searches": [
+    {
+      "searchId": "barack-obama-face",
+      "family": "face-identity",
+      "queryAssetId": "barack-obama-query",
+      "relevance": [
+        { "assetId": "barack-obama-president", "grade": 3 },
+        { "assetId": "barack-obama-smile", "grade": 2 }
+      ],
+      "hardNegatives": ["grace-hopper-navy", "marie-curie-1900"]
+    },
+    {
+      "searchId": "grace-hopper-face",
+      "family": "face-identity",
+      "queryAssetId": "grace-hopper-query",
+      "relevance": [
+        { "assetId": "grace-hopper-navy", "grade": 3 },
+        { "assetId": "grace-hopper-covered", "grade": 2 }
+      ],
+      "hardNegatives": ["barack-obama-president", "marie-curie-1900"]
+    },
+    {
+      "searchId": "marie-curie-face",
+      "family": "face-identity",
+      "queryAssetId": "marie-curie-query",
+      "relevance": [
+        { "assetId": "marie-curie-1900", "grade": 3 },
+        { "assetId": "marie-curie-1903", "grade": 2 }
+      ],
+      "hardNegatives": ["barack-obama-president", "grace-hopper-navy"]
+    },
+    {
+      "searchId": "at-astronaut-crop-resize-search",
+      "family": "crop-resize",
+      "queryAssetId": "at-astronaut-crop-resize",
+      "relevance": [{ "assetId": "at-astronaut", "grade": 3 }],
+      "hardNegatives": ["at-camera"]
+    },
+    {
+      "searchId": "at-astronaut-exposure-blur-search",
+      "family": "photometric-blur",
+      "queryAssetId": "at-astronaut-exposure-blur",
+      "relevance": [{ "assetId": "at-astronaut", "grade": 3 }],
+      "hardNegatives": ["at-camera"]
+    },
+    {
+      "searchId": "at-camera-crop-resize-search",
+      "family": "crop-resize",
+      "queryAssetId": "at-camera-crop-resize",
+      "relevance": [{ "assetId": "at-camera", "grade": 3 }],
+      "hardNegatives": ["at-astronaut"]
+    },
+    {
+      "searchId": "at-camera-downscale-upscale-search",
+      "family": "resample",
+      "queryAssetId": "at-camera-downscale-upscale",
+      "relevance": [{ "assetId": "at-camera", "grade": 3 }],
+      "hardNegatives": ["at-astronaut"]
+    },
+    {
+      "searchId": "at-brick-crop-resize-search",
+      "family": "crop-resize",
+      "queryAssetId": "at-brick-crop-resize",
+      "relevance": [{ "assetId": "at-brick", "grade": 3 }],
+      "hardNegatives": ["at-grass", "at-gravel"]
+    },
+    {
+      "searchId": "at-brick-quarter-turn-search",
+      "family": "rotation",
+      "queryAssetId": "at-brick-quarter-turn",
+      "relevance": [{ "assetId": "at-brick", "grade": 3 }],
+      "hardNegatives": ["at-grass", "at-gravel"]
+    },
+    {
+      "searchId": "at-grass-crop-resize-search",
+      "family": "crop-resize",
+      "queryAssetId": "at-grass-crop-resize",
+      "relevance": [{ "assetId": "at-grass", "grade": 3 }],
+      "hardNegatives": ["at-gravel", "at-brick"]
+    },
+    {
+      "searchId": "at-grass-contrast-blur-search",
+      "family": "photometric-blur",
+      "queryAssetId": "at-grass-contrast-blur",
+      "relevance": [{ "assetId": "at-grass", "grade": 3 }],
+      "hardNegatives": ["at-gravel", "at-brick"]
+    },
+    {
+      "searchId": "at-gravel-crop-resize-search",
+      "family": "crop-resize",
+      "queryAssetId": "at-gravel-crop-resize",
+      "relevance": [{ "assetId": "at-gravel", "grade": 3 }],
+      "hardNegatives": ["at-grass", "at-brick"]
+    },
+    {
+      "searchId": "at-gravel-border-resample-search",
+      "family": "border-resample",
+      "queryAssetId": "at-gravel-border-resample",
+      "relevance": [{ "assetId": "at-gravel", "grade": 3 }],
+      "hardNegatives": ["at-grass", "at-brick"]
+    }
+  ]
+}
