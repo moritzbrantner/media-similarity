@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "name": "asset-tooling-image-quality-v1",
+  "name": "asset-tooling-media-quality-v1",
   "outputDir": "sample-images/quality",
   "sources": [
     {
@@ -186,6 +186,84 @@
       "filename": "queries/asset-tooling/gravel-border-resample.png",
       "title": "Gravel border and resample perturbation",
       "capability": "texture border robustness"
+    }
+  ],
+  "audioSources": [
+    {
+      "assetId": "at-tone-440",
+      "filename": "sources/asset-tooling-tone-440.wav",
+      "title": "Deterministic 440 Hz square-wave source",
+      "identity": "synthetic-tone-440",
+      "parameters": { "waveform": "square", "sampleRate": 16000, "channels": 1, "frameCount": 64000, "frequencyHz": 440, "amplitude": 12000 }
+    },
+    {
+      "assetId": "at-tone-445",
+      "filename": "sources/asset-tooling-tone-445.wav",
+      "title": "Deterministic 445 Hz square-wave hard negative",
+      "identity": "synthetic-tone-445",
+      "parameters": { "waveform": "square", "sampleRate": 16000, "channels": 1, "frameCount": 64000, "frequencyHz": 445, "amplitude": 12000 }
+    },
+    {
+      "assetId": "at-tone-880",
+      "filename": "sources/asset-tooling-tone-880.wav",
+      "title": "Deterministic 880 Hz square-wave negative",
+      "identity": "synthetic-tone-880",
+      "parameters": { "waveform": "square", "sampleRate": 16000, "channels": 1, "frameCount": 64000, "frequencyHz": 880, "amplitude": 12000 }
+    }
+  ],
+  "audioRecipes": [
+    {
+      "id": "audio-gain-trim",
+      "family": "audio-gain-trim",
+      "steps": [
+        { "operation": "audio.gain", "parameters": { "numerator": 3, "denominator": 4 } },
+        { "operation": "audio.trim", "parameters": { "startFrame": 8000, "endFrame": 56000 } }
+      ]
+    },
+    {
+      "id": "audio-resample-roundtrip",
+      "family": "audio-resample",
+      "steps": [
+        { "operation": "audio.resample", "parameters": { "sampleRate": 8000 } },
+        { "operation": "audio.resample", "parameters": { "sampleRate": 16000 } }
+      ]
+    },
+    {
+      "id": "audio-seeded-noise-mix",
+      "family": "audio-noise-mix",
+      "noise": { "waveform": "noise", "sampleRate": 16000, "channels": 1, "frameCount": 64000, "amplitude": 1200, "seed": "20260912" },
+      "mix": {
+        "tracks": [
+          { "startFrame": 0, "gainNumerator": 1, "gainDenominator": 1 },
+          { "startFrame": 0, "gainNumerator": 1, "gainDenominator": 1 }
+        ]
+      }
+    }
+  ],
+  "audioQueries": [
+    {
+      "assetId": "at-tone-440-gain-trim",
+      "sourceAssetId": "at-tone-440",
+      "recipeId": "audio-gain-trim",
+      "filename": "queries/asset-tooling/tone-440-gain-trim.wav",
+      "title": "440 Hz source with gain and trim perturbation",
+      "capability": "deterministic audio gain and trim robustness"
+    },
+    {
+      "assetId": "at-tone-440-resample-roundtrip",
+      "sourceAssetId": "at-tone-440",
+      "recipeId": "audio-resample-roundtrip",
+      "filename": "queries/asset-tooling/tone-440-resample-roundtrip.wav",
+      "title": "440 Hz source after 16 kHz to 8 kHz to 16 kHz resampling",
+      "capability": "deterministic audio resampling robustness"
+    },
+    {
+      "assetId": "at-tone-440-seeded-noise",
+      "sourceAssetId": "at-tone-440",
+      "recipeId": "audio-seeded-noise-mix",
+      "filename": "queries/asset-tooling/tone-440-seeded-noise.wav",
+      "title": "440 Hz source mixed with deterministic seeded noise",
+      "capability": "deterministic audio noise robustness"
     }
   ]
 }

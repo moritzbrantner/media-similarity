@@ -45,7 +45,7 @@ jobs:
           git -C ../asset-tooling checkout --force FETCH_HEAD
           test "$(git -C ../asset-tooling rev-parse HEAD)" = "$revision"
 
-      - name: Ensure FFmpeg image runtime is available
+      - name: Ensure FFmpeg media runtime is available
         run: |
           set -euo pipefail
           if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
@@ -59,7 +59,7 @@ jobs:
         working-directory: media-similarity
         run: bun run quality:asset-tooling:check
 
-      - name: Materialize reproducible quality fixtures
+      - name: Materialize reproducible image and audio quality fixtures
         working-directory: media-similarity
         env:
           ASSET_TOOLING_ROOT: ${{ github.workspace }}/asset-tooling
@@ -67,9 +67,16 @@ jobs:
           set -euo pipefail
           output=/tmp/media-similarity-asset-tooling-quality
           bun scripts/materialize-asset-tooling-quality.mjs --output "$output"
-          cp "$output/asset-tooling-provenance.json" /tmp/provenance-first.json
+          bun scripts/materialize-asset-tooling-audio-quality.mjs --output "$output"
+          cp "$output/asset-tooling-provenance.json" /tmp/image-provenance-first.json
+          cp "$output/asset-tooling-audio-provenance.json" /tmp/audio-provenance-first.json
+
           bun scripts/materialize-asset-tooling-quality.mjs --output "$output"
-          cmp /tmp/provenance-first.json "$output/asset-tooling-provenance.json"
-          test "$(find "$output/sources" -maxdepth 1 -type f -name 'asset-tooling-*' | wc -l)" -eq 5
+          bun scripts/materialize-asset-tooling-audio-quality.mjs --output "$output"
+          cmp /tmp/image-provenance-first.json "$output/asset-tooling-provenance.json"
+          cmp /tmp/audio-provenance-first.json "$output/asset-tooling-audio-provenance.json"
+
+          test "$(find "$output/sources" -maxdepth 1 -type f -name 'asset-tooling-*' | wc -l)" -eq 8
           test "$(find "$output/queries/asset-tooling" -maxdepth 1 -type f -name '*.png' | wc -l)" -eq 10
+          test "$(find "$output/queries/asset-tooling" -maxdepth 1 -type f -name '*.wav' | wc -l)" -eq 3
           test -f "$output/.asset-tooling-evaluator-root/tests/fixtures/quality-corpus/manifest.json"

@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "metrics": { "recallK": [1, 5], "ndcgK": 5, "hardNegativeK": 5 },
+  "searches": [
+    {
+      "searchId": "at-tone-440-gain-trim-search",
+      "family": "audio-gain-trim",
+      "queryAssetId": "at-tone-440-gain-trim",
+      "relevance": [{ "assetId": "at-tone-440", "grade": 3 }],
+      "hardNegatives": ["at-tone-445", "at-tone-880"]
+    },
+    {
+      "searchId": "at-tone-440-resample-roundtrip-search",
+      "family": "audio-resample",
+      "queryAssetId": "at-tone-440-resample-roundtrip",
+      "relevance": [{ "assetId": "at-tone-440", "grade": 3 }],
+      "hardNegatives": ["at-tone-445", "at-tone-880"]
+    },
+    {
+      "searchId": "at-tone-440-seeded-noise-search",
+      "family": "audio-noise-mix",
+      "queryAssetId": "at-tone-440-seeded-noise",
+      "relevance": [{ "assetId": "at-tone-440", "grade": 3 }],
+      "hardNegatives": ["at-tone-445", "at-tone-880"]
+    }
+  ]
+}
