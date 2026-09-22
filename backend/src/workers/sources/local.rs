@@ -124,17 +124,14 @@ impl LocalFolderSource {
         &self,
         paths: &BTreeSet<PathBuf>,
     ) -> Result<Vec<SourceImage>, SourceUnavailable> {
-        if !self.root.exists() {
-            return Err(SourceUnavailable(format!(
-                "Source directory does not exist: {}",
-                self.root.display()
-            )));
-        }
-
         let normalized_root = self
             .root
             .canonicalize()
             .unwrap_or_else(|_| self.root.clone());
+        if !self.root.exists() {
+            return Ok(Vec::new());
+        }
+
         let mut candidates = BTreeSet::new();
 
         for path in paths {
