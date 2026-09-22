@@ -16,7 +16,25 @@ impl ImageIndexer {
     }
 
     pub async fn index_missing_sources(&self, context: Option<&JobContext>) -> IndexResponse {
-        let plan = match self.plan_sources().await {
+        let plan = self.plan_sources().await;
+        self.index_plan(plan, context).await
+    }
+
+    pub(crate) async fn index_changed_local_sources(
+        &self,
+        changes: &LocalIndexChanges,
+        context: Option<&JobContext>,
+    ) -> IndexResponse {
+        let plan = self.plan_changed_local_sources(changes).await;
+        self.index_plan(plan, context).await
+    }
+
+    async fn index_plan(
+        &self,
+        plan: Result<SourceIndexPlan, String>,
+        context: Option<&JobContext>,
+    ) -> IndexResponse {
+        let plan = match plan {
             Ok(plan) => plan,
             Err(error) => {
                 return IndexResponse {

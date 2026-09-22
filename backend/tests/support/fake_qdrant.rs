@@ -41,6 +41,9 @@ struct FakePoint {
 pub struct FakeQdrantOperationCounts {
     pub upserted_points: usize,
     pub deleted_points: usize,
+    pub scroll_requests: usize,
+    pub filtered_scroll_requests: usize,
+    pub unfiltered_scroll_requests: usize,
 }
 
 #[derive(Deserialize)]
@@ -339,9 +342,15 @@ async fn fake_scroll_points(
     State(state): State<Arc<Mutex<FakeQdrantState>>>,
     Json(request): Json<FakeScrollRequest>,
 ) -> Result<Json<Value>, AxumStatusCode> {
-    let state = state.lock().unwrap();
+    let mut state = state.lock().unwrap();
     if !state.collections.contains_key(&collection) {
         return Err(AxumStatusCode::NOT_FOUND);
+    }
+    state.operation_counts.scroll_requests += 1;
+    if request.filter.is_some() {
+        state.operation_counts.filtered_scroll_requests += 1;
+    } else {
+        state.operation_counts.unfiltered_scroll_requests += 1;
     }
     let offset = request.offset.as_ref().and_then(Value::as_str);
     let mut points = state
