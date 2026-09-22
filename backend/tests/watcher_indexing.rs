@@ -116,8 +116,7 @@ async fn watcher_indexes_and_prunes_a_moved_directory_subtree() {
     wait_for_watcher_idle(&app).await;
     let after_move = app.qdrant_operation_counts();
     assert_eq!(
-        after_move.unfiltered_scroll_requests,
-        before_move.unfiltered_scroll_requests,
+        after_move.unfiltered_scroll_requests, before_move.unfiltered_scroll_requests,
         "directory moves should use source-scoped filtered planning"
     );
     assert_eq!(
@@ -132,8 +131,7 @@ async fn watcher_indexes_and_prunes_a_moved_directory_subtree() {
     wait_for_watcher_idle(&app).await;
     let after_remove = app.qdrant_operation_counts();
     assert_eq!(
-        after_remove.unfiltered_scroll_requests,
-        before_remove.unfiltered_scroll_requests,
+        after_remove.unfiltered_scroll_requests, before_remove.unfiltered_scroll_requests,
         "directory removal should stay source-scoped"
     );
 
