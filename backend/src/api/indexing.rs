@@ -113,9 +113,9 @@ fn run_index_job_with_changes(
         .map_err(job_failed)?;
     let indexer = ImageIndexer::new(settings, store, embedder);
     let response = match changes {
-        Some(changes) => runtime.block_on(
-            indexer.index_changed_local_sources(&changes, Some(&context)),
-        ),
+        Some(changes) => {
+            runtime.block_on(indexer.index_changed_local_sources(&changes, Some(&context)))
+        }
         None => runtime.block_on(indexer.index_missing_sources(Some(&context))),
     };
 
