@@ -33,8 +33,7 @@ async fn watcher_indexes_updates_and_prunes_without_full_collection_scans() {
     wait_for_watcher_idle(&app).await;
     let after_create = app.qdrant_operation_counts();
     assert_eq!(
-        after_create.unfiltered_scroll_requests,
-        before_create.unfiltered_scroll_requests,
+        after_create.unfiltered_scroll_requests, before_create.unfiltered_scroll_requests,
         "watch-triggered create should not scan the full media collection"
     );
     assert!(
@@ -50,8 +49,7 @@ async fn watcher_indexes_updates_and_prunes_without_full_collection_scans() {
     wait_for_watcher_idle(&app).await;
     let after_update = app.qdrant_operation_counts();
     assert_eq!(
-        after_update.unfiltered_scroll_requests,
-        before_update.unfiltered_scroll_requests,
+        after_update.unfiltered_scroll_requests, before_update.unfiltered_scroll_requests,
         "watch-triggered update should stay on the scoped planner"
     );
     assert_eq!(
@@ -67,8 +65,7 @@ async fn watcher_indexes_updates_and_prunes_without_full_collection_scans() {
     wait_for_watcher_idle(&app).await;
     let after_delete = app.qdrant_operation_counts();
     assert_eq!(
-        after_delete.unfiltered_scroll_requests,
-        before_delete.unfiltered_scroll_requests,
+        after_delete.unfiltered_scroll_requests, before_delete.unfiltered_scroll_requests,
         "watch-triggered delete should not fall back to a full collection scan"
     );
     assert!(
@@ -79,8 +76,7 @@ async fn watcher_indexes_updates_and_prunes_without_full_collection_scans() {
     let jobs = app.state.jobs.snapshots().unwrap();
     assert!(
         jobs.iter()
-            .any(|job| job.spec.kind.as_deref() == Some("index.watch")
-                && job.status.is_terminal()),
+            .any(|job| job.spec.kind.as_deref() == Some("index.watch") && job.status.is_terminal()),
         "filesystem changes should be represented by watcher indexing jobs"
     );
 
