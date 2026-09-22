@@ -68,7 +68,7 @@ MinIO/S3 object-store sources are supported through `minio://bucket/prefix` and 
 
    `bun run service:up` starts the Rust API, static web UI, and Qdrant in detached Docker Compose containers. The UI is available at `http://localhost:5173`, and the direct API is available at `http://localhost:8000`. The UI, backend, and Qdrant ports are published on localhost only by default.
 
-6. Click **Index configured sources**, then upload a query image, video, audio file, or PDF and search.
+6. Click **Index configured sources**, then upload a query image, video, audio file, or PDF and search. Local sources continue to be watched recursively after startup; supported file creates, updates, renames, and removals are folded into incremental indexing jobs by default.
 
 For frontend development with Vite hot reload, run:
 
@@ -297,6 +297,8 @@ Set these values in `.env`:
 | `SOURCE_IMAGE_DIR` | `/images` | Legacy fallback path scanned only when `IMAGE_SOURCES` is empty and no media sources file is available. |
 | `IMAGE_SOURCES` | empty | Optional source list override. When set, this takes precedence over `MEDIA_SOURCES_FILE`. Use a JSON array, comma-separated list, semicolon-separated list, or newline-separated list. |
 | `STARTUP_INDEXING_ENABLED` | `false` | Queue an indexing job at service startup. Keep disabled unless required models are already cached. |
+| `SOURCE_WATCHING_ENABLED` | `true` | Watch configured local media sources recursively and queue incremental indexing when supported files change. |
+| `SOURCE_WATCHING_DEBOUNCE_MS` | `1500` | Quiet period used to coalesce filesystem events before an incremental watcher indexing job is queued. |
 | `MINIO_ENDPOINT` | empty | MinIO/S3-compatible endpoint for `minio://` sources. Include a scheme or pair with `MINIO_SECURE`. |
 | `MINIO_ACCESS_KEY` | empty | Access key for `minio://` sources. |
 | `MINIO_SECRET_KEY` | empty | Secret key for `minio://` sources. |
