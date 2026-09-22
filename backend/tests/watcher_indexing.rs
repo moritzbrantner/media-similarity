@@ -87,6 +87,63 @@ async fn watcher_indexes_updates_and_prunes_without_full_collection_scans() {
     watcher.abort();
 }
 
+#[tokio::test]
+async fn watcher_indexes_and_prunes_a_moved_directory_subtree() {
+    let app = TestApp::new(|settings| {
+        settings.image_extensions = parse_extensions(".png").unwrap();
+        settings.duplicate_hash_distance = 0;
+        settings.visual_embedding_backend = "legacy".to_string();
+        settings.visual_embedding_vector_size = 32;
+        settings.face_analysis_enabled = false;
+        settings.ocr_enabled = false;
+        settings.source_watching_enabled = true;
+        settings.source_watching_debounce_ms = 100;
+    })
+    .await;
+    let watcher = spawn_local_source_watcher(app.state.clone()).expect("watcher should be enabled");
+    tokio::time::sleep(Duration::from_millis(250)).await;
+
+    let staged = app.root_path().join("staged-album.2026");
+    fs::create_dir_all(&staged).unwrap();
+    write_pattern_image(
+        &staged.join("nested.png"),
+        72,
+        54,
+        [80, 120, 220],
+        [20, 20, 20],
+    );
+    let target = app.source_path("album.2026");
+    let before_move = app.qdrant_operation_counts();
+    fs::rename(&staged, &target).unwrap();
+
+    wait_for_payload(&app, 72, 54).await;
+    wait_for_watcher_idle(&app).await;
+    let after_move = app.qdrant_operation_counts();
+    assert_eq!(
+        after_move.unfiltered_scroll_requests,
+        before_move.unfiltered_scroll_requests,
+        "directory moves should use source-scoped filtered planning"
+    );
+    assert_eq!(
+        app.stored_media_payloads()[0].relative_path,
+        "album.2026/nested.png"
+    );
+
+    let before_remove = app.qdrant_operation_counts();
+    fs::remove_dir_all(&target).unwrap();
+
+    wait_for_no_payloads(&app).await;
+    wait_for_watcher_idle(&app).await;
+    let after_remove = app.qdrant_operation_counts();
+    assert_eq!(
+        after_remove.unfiltered_scroll_requests,
+        before_remove.unfiltered_scroll_requests,
+        "directory removal should stay source-scoped"
+    );
+
+    watcher.abort();
+}
+
 async fn wait_for_payload(app: &TestApp, width: u32, height: u32) {
     for _ in 0..320 {
         let payloads = app.stored_media_payloads();
