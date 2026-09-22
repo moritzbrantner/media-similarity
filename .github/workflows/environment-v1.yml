@@ -77,3 +77,6 @@ jobs:
 
       - name: Check backend from the cold registry environment
         run: cargo check --manifest-path backend/Cargo.toml --locked
+
+      - name: Build frontend container with repository Bun pin
+        run: docker build --target frontend-builder --tag media-similarity-frontend-env .
