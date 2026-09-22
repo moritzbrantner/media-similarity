@@ -19,8 +19,8 @@ pub use identities::{merge_people, merge_speakers, rename_person, rename_speaker
 pub use indexed_media::{
     delete_indexed_media_route, delete_indexed_sources_route, update_indexed_media_tags_route,
 };
-pub(crate) use indexing::{run_index_job, run_watch_index_job};
 pub use indexing::{index_images, spawn_index_job, spawn_startup_index_job};
+pub(crate) use indexing::{run_index_job, run_watch_index_job};
 pub use inverse_index::inverse_index;
 pub use jobs::{cancel_job, get_job, get_job_events, list_jobs};
 pub use models::{
