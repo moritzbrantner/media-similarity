@@ -78,7 +78,7 @@ services:
         condition: service_started
 
   test:
-    image: rust:1-bookworm
+    image: rust:1-bookworm@sha256:93ce27a88655056a51dbdd8f5f2d7ddc071c7b0070fb288a37b5a285fc83971e
     profiles: ["test"]
     working_dir: /workspace/image-similarity-service/backend
     command: ["cargo", "test"]
@@ -101,7 +101,7 @@ services:
     restart: "no"
 
   qdrant:
-    image: qdrant/qdrant:v1.12.5
+    image: qdrant/qdrant:v1.12.5@sha256:05fecce7dce45d1254e0468bc037e8210e187fd56fa847688b012293d5f08aae
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     ports:
       - "127.0.0.1:6333:6333"
