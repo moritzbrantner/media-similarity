@@ -80,7 +80,7 @@
     "oxfmt": "^0.51.0",
     "oxlint": "1.80.0",
     "oxlint-tsgolint": "7.0.2001",
-    "puppeteer": "^25.1.0",
+    "puppeteer": "25.12.0",
     "storybook": "^10.4.6",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
