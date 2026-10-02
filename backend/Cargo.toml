@@ -56,8 +56,8 @@ image-analysis-embeddings = { package = "moenarch-image-analysis-embeddings", ve
 image-analysis-detection = { package = "moenarch-image-analysis-detection", version = "0.1.0", features = ["onnx"] }
 
 [dev-dependencies]
-criterion = "0.8.2"
-iai-callgrind = "0.16.1"
+criterion = "=0.8.2"
+iai-callgrind = "=0.16.1"
 
 [[bench]]
 name = "media_pipeline"
