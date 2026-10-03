@@ -102,12 +102,14 @@ export function IndexingConfigurationPage({
 }) {
   const [draft, setDraft] = useState<SourceIndexingConfig | null>(null);
 
+  // oxlint-disable react/set-state-in-effect -- Preserve the existing server-config-to-editable-draft reset boundary.
   useEffect(() => {
     if (!config) {
       return;
     }
     setDraft(completeIndexingConfig(config.indexing));
   }, [config]);
+  // oxlint-enable react/set-state-in-effect
 
   function updateDraft<Key extends keyof SourceIndexingConfig>(
     key: Key,

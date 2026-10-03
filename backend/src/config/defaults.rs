@@ -122,6 +122,10 @@ impl Settings {
 }
 
 impl Default for Settings {
+    #[allow(
+        clippy::expect_used,
+        reason = "fixed built-in extension literals are an initialization invariant"
+    )]
     fn default() -> Self {
         Self {
             source_image_dir: PathBuf::from("/images"),

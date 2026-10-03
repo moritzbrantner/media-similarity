@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "providers": [
+    {
+      "schemaVersion": 1,
+      "id": "scikit-image",
+      "label": "scikit-image sample data",
+      "homepage": "https://scikit-image.org/",
+      "distribution": "shared",
+      "acceptedLicenses": ["CC0-1.0", "LicenseRef-PublicDomain"]
+    }
+  ],
+  "sources": [
+    {
+      "schemaVersion": 1,
+      "id": "scikit-image.astronaut",
+      "provider": "scikit-image",
+      "title": "Astronaut Eileen Collins",
+      "kind": "image",
+      "mediaType": "image/png",
+      "source": {
+        "url": "https://raw.githubusercontent.com/scikit-image/scikit-image/b6e9c5ce5a720e139b7e1f247531d069af78db7e/src/_skimage2/data/astronaut.png",
+        "upstreamId": "scikit-image/scikit-image",
+        "revision": "b6e9c5ce5a720e139b7e1f247531d069af78db7e",
+        "path": "src/_skimage2/data/astronaut.png",
+        "sha256": "88431cd9653ccd539741b555fb0a46b61558b301d4110412b5bc28b5e3ea6cb5",
+        "byteLength": 791555
+      },
+      "license": {
+        "spdx": "LicenseRef-PublicDomain",
+        "evidenceUrl": "https://github.com/scikit-image/scikit-image/blob/b6e9c5ce5a720e139b7e1f247531d069af78db7e/src/_skimage2/data/_fetchers.py",
+        "attribution": "NASA Great Images database; public-domain status documented by scikit-image"
+      },
+      "tags": ["human", "quality-corpus"],
+      "metadata": { "expectedWidth": 512, "expectedHeight": 512 }
+    },
+    {
+      "schemaVersion": 1,
+      "id": "scikit-image.camera",
+      "provider": "scikit-image",
+      "title": "Camera sample",
+      "kind": "image",
+      "mediaType": "image/png",
+      "source": {
+        "url": "https://raw.githubusercontent.com/scikit-image/scikit-image/b6e9c5ce5a720e139b7e1f247531d069af78db7e/src/_skimage2/data/camera.png",
+        "upstreamId": "scikit-image/scikit-image",
+        "revision": "b6e9c5ce5a720e139b7e1f247531d069af78db7e",
+        "path": "src/_skimage2/data/camera.png",
+        "sha256": "b0793d2adda0fa6ae899c03989482bff9a42d3d5690fc7e3648f2795d730c23a",
+        "byteLength": 139512
+      },
+      "license": {
+        "spdx": "CC0-1.0",
+        "evidenceUrl": "https://github.com/scikit-image/scikit-image/blob/b6e9c5ce5a720e139b7e1f247531d069af78db7e/src/_skimage2/data/_fetchers.py",
+        "attribution": "Lav Varshney / scikit-image sample data"
+      },
+      "tags": ["human", "quality-corpus"],
+      "metadata": { "expectedWidth": 512, "expectedHeight": 512 }
+    },
+    {
+      "schemaVersion": 1,
+      "id": "scikit-image.brick",
+      "provider": "scikit-image",
+      "title": "Brick texture",
+      "kind": "image",
+      "mediaType": "image/png",
+      "source": {
+        "url": "https://raw.githubusercontent.com/scikit-image/scikit-image/b6e9c5ce5a720e139b7e1f247531d069af78db7e/src/_skimage2/data/brick.png",
+        "upstreamId": "scikit-image/scikit-image",
+        "revision": "b6e9c5ce5a720e139b7e1f247531d069af78db7e",
+        "path": "src/_skimage2/data/brick.png",
+        "sha256": "7966caf324f6ba843118d98f7a07746d22f6a343430add0233eca5f6eaaa8fcf",
+        "byteLength": 106634
+      },
+      "license": {
+        "spdx": "CC0-1.0",
+        "evidenceUrl": "https://github.com/scikit-image/scikit-image/blob/b6e9c5ce5a720e139b7e1f247531d069af78db7e/src/_skimage2/data/_fetchers.py",
+        "attribution": "CC0 texture sample distributed by scikit-image"
+      },
+      "tags": ["quality-corpus", "texture"],
+      "metadata": { "expectedWidth": 512, "expectedHeight": 512 }
+    },
+    {
+      "schemaVersion": 1,
+      "id": "scikit-image.grass",
+      "provider": "scikit-image",
+      "title": "Grass texture",
+      "kind": "image",
+      "mediaType": "image/png",
+      "source": {
+        "url": "https://raw.githubusercontent.com/scikit-image/scikit-image/b6e9c5ce5a720e139b7e1f247531d069af78db7e/src/_skimage2/data/grass.png",
+        "upstreamId": "scikit-image/scikit-image",
+        "revision": "b6e9c5ce5a720e139b7e1f247531d069af78db7e",
+        "path": "src/_skimage2/data/grass.png",
+        "sha256": "b6b6022426b38936c43a4ac09635cd78af074e90f42ffa8227ac8b7452d39f89",
+        "byteLength": 217893
+      },
+      "license": {
+        "spdx": "CC0-1.0",
+        "evidenceUrl": "https://github.com/scikit-image/scikit-image/blob/b6e9c5ce5a720e139b7e1f247531d069af78db7e/src/_skimage2/data/_fetchers.py",
+        "attribution": "linolafett / scikit-image sample data"
+      },
+      "tags": ["quality-corpus", "texture"],
+      "metadata": { "expectedWidth": 512, "expectedHeight": 512 }
+    },
+    {
+      "schemaVersion": 1,
+      "id": "scikit-image.gravel",
+      "provider": "scikit-image",
+      "title": "Gravel texture",
+      "kind": "image",
+      "mediaType": "image/png",
+      "source": {
+        "url": "https://raw.githubusercontent.com/scikit-image/scikit-image/b6e9c5ce5a720e139b7e1f247531d069af78db7e/src/_skimage2/data/gravel.png",
+        "upstreamId": "scikit-image/scikit-image",
+        "revision": "b6e9c5ce5a720e139b7e1f247531d069af78db7e",
+        "path": "src/_skimage2/data/gravel.png",
+        "sha256": "c48615b451bf1e606fbd72c0aa9f8cc0f068ab7111ef7d93bb9b0f2586440c12",
+        "byteLength": 194247
+      },
+      "license": {
+        "spdx": "CC0-1.0",
+        "evidenceUrl": "https://github.com/scikit-image/scikit-image/blob/b6e9c5ce5a720e139b7e1f247531d069af78db7e/src/_skimage2/data/_fetchers.py",
+        "attribution": "CC0 gravel sample distributed by scikit-image"
+      },
+      "tags": ["quality-corpus", "texture"],
+      "metadata": { "expectedWidth": 512, "expectedHeight": 512 }
+    }
+  ]
+}

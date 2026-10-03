@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "registry": "coding-agent-conventions",
+  "modules": [
+    "dependencies",
+    "dockerfile",
+    "environment",
+    "git",
+    "moritzbrantner-ui",
+    "playwright",
+    "react",
+    "rust",
+    "storybook",
+    "tanstack-query",
+    "typescript",
+    "ui",
+    "vite"
+  ]
+}

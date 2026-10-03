@@ -75,6 +75,7 @@ export function SmartAlbumsPage({
   const selectedAlbum = albums.find((album) => album.id === selectedAlbumId) ?? albums[0] ?? null;
   const effectiveAlbumId = selectedAlbumId ?? selectedAlbum?.id ?? null;
 
+  // oxlint-disable react/set-state-in-effect -- Preserve the existing one-shot handoff from the externally supplied album draft into the editor session.
   useEffect(() => {
     if (initialDraft) {
       setDraft(initialDraft);
@@ -84,12 +85,15 @@ export function SmartAlbumsPage({
       onDraftConsumed();
     }
   }, [initialDraft, onDraftConsumed]);
+  // oxlint-enable react/set-state-in-effect
 
+  // oxlint-disable react/set-state-in-effect -- Preserve the existing selection state initialization after asynchronously loaded albums arrive.
   useEffect(() => {
     if (!selectedAlbumId && selectedAlbum) {
       setSelectedAlbumId(selectedAlbum.id);
     }
   }, [selectedAlbum, selectedAlbumId]);
+  // oxlint-enable react/set-state-in-effect
 
   const resultsQuery = useQuery({
     queryKey: ["smart-album-results", effectiveAlbumId, offset, selectedAlbum?.limit],
@@ -108,6 +112,7 @@ export function SmartAlbumsPage({
       setEditingAlbumId(null);
       setSelectedAlbumId(album.id);
       setOffset(0);
+      // oxlint-disable-next-line typescript/no-floating-promises -- Preserve the existing detached cache refresh after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["smart-albums"] });
     },
   });
@@ -120,8 +125,10 @@ export function SmartAlbumsPage({
       setEditingAlbumId(null);
       setSelectedAlbumId(album.id);
       setOffset(0);
+      // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["smart-albums"] });
       queryClient.invalidateQueries({ queryKey: ["smart-album-results", album.id] });
+      // oxlint-enable typescript/no-floating-promises
     },
   });
 
@@ -133,6 +140,7 @@ export function SmartAlbumsPage({
       }
       setDraft(null);
       setOffset(0);
+      // oxlint-disable-next-line typescript/no-floating-promises -- Preserve the existing detached cache refresh after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["smart-albums"] });
     },
   });
@@ -156,9 +164,11 @@ export function SmartAlbumsPage({
   const saving = createMutation.isPending || updateMutation.isPending;
 
   function invalidateAlbumData() {
+    // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refresh helper semantics.
     queryClient.invalidateQueries({ queryKey: ["smart-album-results"] });
     queryClient.invalidateQueries({ queryKey: ["health"] });
     queryClient.invalidateQueries({ queryKey: ["inverse-index"] });
+    // oxlint-enable typescript/no-floating-promises
   }
 
   function startNewAlbum() {

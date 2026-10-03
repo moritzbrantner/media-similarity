@@ -162,6 +162,10 @@ impl EditableIndexingConfig {
         }
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "stored editable indexing configuration has already passed extension validation"
+    )]
     pub fn apply_to_settings(&self, settings: &mut Settings) {
         settings.image_extensions = parse_extensions(&self.image_extensions.join(","))
             .expect("validated indexing config contains image extensions");

@@ -61,6 +61,7 @@ export function WorkflowConfigurationPage({
   const [configTextByNode, setConfigTextByNode] = useState<Record<string, string>>({});
   const [configErrorByNode, setConfigErrorByNode] = useState<Record<string, string>>({});
 
+  // oxlint-disable react/set-state-in-effect -- Preserve the existing atomic reset of the editable workflow session when server configuration changes.
   useEffect(() => {
     if (!config) {
       return;
@@ -71,6 +72,7 @@ export function WorkflowConfigurationPage({
     setConfigTextByNode({});
     setConfigErrorByNode({});
   }, [config]);
+  // oxlint-enable react/set-state-in-effect
 
   async function validateDraft() {
     if (!draft) {

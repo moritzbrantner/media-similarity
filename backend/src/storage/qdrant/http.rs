@@ -103,6 +103,10 @@ fn qdrant_local_fallback(base_url: &str) -> Option<String> {
     Some(url.as_str().trim_end_matches('/').to_string())
 }
 
+#[allow(
+    clippy::expect_used,
+    reason = "the client builder receives only finite durations from validated numeric options"
+)]
 fn qdrant_http_client(options: &QdrantHttpOptions) -> Client {
     Client::builder()
         .timeout(Duration::from_millis(options.request_timeout_ms))

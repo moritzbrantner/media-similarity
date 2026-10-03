@@ -226,17 +226,21 @@ export function RegistryEntryCard({
     ? `${(entry as InverseSpeakerEntry).segment_count} segment(s)`
     : `${(entry as InversePersonEntry).face_count} face(s)`;
 
+  // oxlint-disable react/set-state-in-effect -- Preserve the existing rename-draft reset when an identity enters or changes during editing.
   useEffect(() => {
     if (isEditing) {
       setLabelDraft(displayName);
     }
   }, [displayName, isEditing]);
+  // oxlint-enable react/set-state-in-effect
 
+  // oxlint-disable react/set-state-in-effect -- Preserve the existing merge-selection cleanup when the merge session closes.
   useEffect(() => {
     if (!isMerging) {
       setSelectedSourceIds([]);
     }
   }, [isMerging]);
+  // oxlint-enable react/set-state-in-effect
 
   async function saveRename() {
     try {
