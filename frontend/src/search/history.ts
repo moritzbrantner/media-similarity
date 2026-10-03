@@ -1,4 +1,9 @@
-import type { IdentityMutationResponse, SearchResponse, SearchResult } from "../types";
+import type {
+  FaceSearchResponse,
+  IdentityMutationResponse,
+  SearchResponse,
+  SearchResult,
+} from "../types";
 import {
   DEFAULT_METADATA_FILTERS,
   DEFAULT_RESULT_SORT,
@@ -399,4 +404,53 @@ function isResultSortMode(value: unknown): value is ResultSortMode {
     value === "size_largest" ||
     value === "vector_score"
   );
+}
+
+export function removeResultFromFaceResponse(
+  response: FaceSearchResponse,
+  id: string,
+): FaceSearchResponse {
+  const removed = response.results.filter((match) => match.result.image.id === id);
+  if (removed.length === 0) {
+    return response;
+  }
+  const removedFaceIds = new Set(removed.flatMap((match) => match.matched_face_ids));
+  const people = response.people.flatMap((person) => {
+    const remainingFaceIds = person.matched_face_ids.filter(
+      (faceId) => !removedFaceIds.has(faceId),
+    );
+    if (remainingFaceIds.length === person.matched_face_ids.length) {
+      return [person];
+    }
+    if (remainingFaceIds.length === 0) {
+      return [];
+    }
+    return [
+      {
+        ...person,
+        matched_face_ids: remainingFaceIds,
+        face_count: remainingFaceIds.length,
+        media_count: Math.max(person.media_count - 1, 0),
+      },
+    ];
+  });
+  return {
+    ...response,
+    people,
+    results: response.results.filter((match) => match.result.image.id !== id),
+  };
+}
+
+export function updateMediaInFaceResponse(
+  response: FaceSearchResponse,
+  media: SearchResult["image"],
+): FaceSearchResponse {
+  return {
+    ...response,
+    results: response.results.map((match) =>
+      match.result.image.id === media.id
+        ? { ...match, result: { ...match.result, image: media } }
+        : match,
+    ),
+  };
 }
