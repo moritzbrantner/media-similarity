@@ -4,10 +4,13 @@
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DOMAIN_ROOT = ROOT / "backend" / "src" / "domain"
+CARGO_MANIFEST = ROOT / "backend" / "Cargo.toml"
+DEPENDENCY_TABLES = ("dependencies", "dev-dependencies", "build-dependencies")
 
 FORBIDDEN_IMPORTS = (
     "audio_analysis_",
@@ -22,8 +25,8 @@ FORBIDDEN_IMPORTS = (
 
 # Comments and literals are blanked out before scanning so prose and strings never
 # count as dependencies. Line structure is preserved for accurate reporting.
-RAW_STRING_RE = re.compile(r'b?r(#*)"')
-QUOTED_STRING_RE = re.compile(r'b?"(?:\\.|[^"\\])*"', re.DOTALL)
+RAW_STRING_RE = re.compile(r'[bc]?r(#*)"')
+QUOTED_STRING_RE = re.compile(r'[bc]?"(?:\\.|[^"\\])*"', re.DOTALL)
 CHAR_LITERAL_RE = re.compile(r"b?'(?:\\(?:x[0-9A-Fa-f]{2}|u\{[0-9A-Fa-f_]+\}|.)|[^'\\\n])'")
 
 IDENT_RE = re.compile(r"(?<![A-Za-z0-9_])(?:r#)?([A-Za-z_][A-Za-z0-9_]*)")
@@ -93,8 +96,31 @@ def strip_comments_and_literals(text: str) -> str:
     return "".join(chars)
 
 
-def is_forbidden(name: str) -> bool:
-    return name.startswith(FORBIDDEN_IMPORTS)
+def capability_crate_aliases(manifest: Path = CARGO_MANIFEST) -> frozenset[str]:
+    """Rust names under which Cargo exposes forbidden capability packages.
+
+    A dependency key may rename a package (`rt = { package = "moenarch-runtime-onnx" }`),
+    so the forbidden identifiers are derived from the declared package names.
+    """
+    if not manifest.exists():
+        return frozenset()
+    data = tomllib.loads(manifest.read_text(encoding="utf-8"))
+    tables = [data.get(name, {}) for name in DEPENDENCY_TABLES]
+    for target in data.get("target", {}).values():
+        tables.extend(target.get(name, {}) for name in DEPENDENCY_TABLES)
+
+    aliases: set[str] = set()
+    for table in tables:
+        for key, spec in table.items():
+            package = spec.get("package", key) if isinstance(spec, dict) else key
+            normalized = package.removeprefix("moenarch-").replace("-", "_")
+            if normalized.startswith(FORBIDDEN_IMPORTS):
+                aliases.add(key.replace("-", "_"))
+    return frozenset(aliases)
+
+
+def is_forbidden(name: str, aliases: frozenset[str] = frozenset()) -> bool:
+    return name.startswith(FORBIDDEN_IMPORTS) or name in aliases
 
 
 def preceded_by_relative_path(text: str, start: int) -> bool:
@@ -108,7 +134,7 @@ def preceded_by_relative_path(text: str, start: int) -> bool:
     return segment is not None and segment.group(1) not in NON_PATH_KEYWORDS
 
 
-def violations_in(text: str) -> list[tuple[int, str]]:
+def violations_in(text: str, aliases: frozenset[str] = frozenset()) -> list[tuple[int, str]]:
     code = strip_comments_and_literals(text)
     found: dict[int, tuple[int, str]] = {}
 
@@ -120,7 +146,7 @@ def violations_in(text: str) -> list[tuple[int, str]]:
     # root-qualified `::crate::Item`, and nested/grouped import trees.
     for match in PATH_ROOT_RE.finditer(code):
         name = match.group(1)
-        if is_forbidden(name) and not preceded_by_relative_path(code, match.start(1)):
+        if is_forbidden(name, aliases) and not preceded_by_relative_path(code, match.start(1)):
             record(match.start(1), name)
 
     # Bare crate imports such as `use model_runtime;`, `use {runtime_onnx as rt};`,
@@ -130,7 +156,7 @@ def violations_in(text: str) -> list[tuple[int, str]]:
         for ident in IDENT_RE.finditer(body):
             name = ident.group(1)
             offset = statement.start() + ident.start(1)
-            if is_forbidden(name) and not preceded_by_relative_path(code, offset):
+            if is_forbidden(name, aliases) and not preceded_by_relative_path(code, offset):
                 record(offset, name)
 
     return sorted(found.values())
@@ -138,10 +164,11 @@ def violations_in(text: str) -> list[tuple[int, str]]:
 
 def main() -> int:
     violations: list[str] = []
+    aliases = capability_crate_aliases()
     for path in sorted(DOMAIN_ROOT.rglob("*.rs")):
         text = path.read_text(encoding="utf-8")
         relative = path.relative_to(ROOT)
-        for line_number, crate in violations_in(text):
+        for line_number, crate in violations_in(text, aliases):
             violations.append(f"{relative}:{line_number}: implementation dependency `{crate}`")
 
     if violations:
