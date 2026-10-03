@@ -249,10 +249,10 @@ async fn aggregate_face_matches(
         person.face_ids.insert(face.face_id.clone());
         person.media_ids.insert(face.media_id.clone());
 
-        let media_entry = media.entry(face.media_id.clone()).or_default();
-        media_entry.person_id = face.person_id;
-        media_entry.score = media_entry.score.max(score);
-        media_entry.face_ids.insert(face.face_id);
+        media
+            .entry(face.media_id.clone())
+            .or_default()
+            .record(face.person_id, face.face_id, score);
     }
 
     let mut people = people
@@ -320,6 +320,18 @@ struct MediaAccumulator {
     face_ids: BTreeSet<String>,
 }
 
+impl MediaAccumulator {
+    /// Records a matched face, keeping the reported person paired with the
+    /// best-scoring face so `face_score` and `matched_person_id` agree.
+    fn record(&mut self, person_id: String, face_id: String, score: f32) {
+        if self.face_ids.is_empty() || score > self.score {
+            self.person_id = person_id;
+            self.score = score;
+        }
+        self.face_ids.insert(face_id);
+    }
+}
+
 fn multipart_error(error: axum::extract::multipart::MultipartError) -> ApiError {
     match error.status() {
         axum::http::StatusCode::PAYLOAD_TOO_LARGE => ApiError::payload_too_large(error.body_text()),
@@ -331,7 +343,7 @@ fn multipart_error(error: axum::extract::multipart::MultipartError) -> ApiError 
 mod tests {
     use image_analysis_detection::{FaceBox as SharedFaceBox, FaceDetection};
 
-    use super::{face_selection_score, select_query_face, QueryFaceCandidate};
+    use super::{face_selection_score, select_query_face, MediaAccumulator, QueryFaceCandidate};
     use crate::domain::models::{FaceBoxPayload, FaceDetectionPayload};
 
     #[test]
@@ -344,6 +356,21 @@ mod tests {
 
         assert_eq!(selected.payload.face_id, "large");
         assert!(face_selection_score(selected) > 0.0);
+    }
+
+    #[test]
+    fn media_match_keeps_person_of_best_scoring_face() {
+        let mut media = MediaAccumulator::default();
+        media.record("person-a".to_string(), "face-a".to_string(), 0.92);
+        media.record("person-b".to_string(), "face-b".to_string(), 0.41);
+
+        assert_eq!(media.person_id, "person-a");
+        assert_eq!(media.score, 0.92);
+        assert_eq!(media.face_ids.len(), 2);
+
+        media.record("person-c".to_string(), "face-c".to_string(), 0.97);
+        assert_eq!(media.person_id, "person-c");
+        assert_eq!(media.score, 0.97);
     }
 
     fn candidate(id: &str, confidence: f32, width: f32, height: f32) -> QueryFaceCandidate {

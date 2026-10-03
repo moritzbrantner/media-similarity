@@ -11,7 +11,9 @@ import type {
 import { createQueryPreview } from "../../search/preview";
 import {
   applyIdentityMutationToHistory,
+  removeResultFromFaceResponse,
   removeResultFromResponse,
+  updateMediaInFaceResponse,
   updateMediaInResponse,
   loadSearchHistory,
   saveSearchHistory,
@@ -32,7 +34,7 @@ import {
   updateIndexedMediaTags,
 } from "../../api";
 import { isAudioFile, isPdfFile } from "../../lib/media";
-import type { IdentityMutationResponse, SearchResult } from "../../types";
+import type { FaceSearchResponse, IdentityMutationResponse, SearchResult } from "../../types";
 
 export function useSearchController() {
   const queryClient = useQueryClient();
@@ -90,11 +92,23 @@ export function useSearchController() {
       resultLimit: number;
     }) => searchFaceMedia(queryFile, resultLimit, filters),
   });
+  // Face results are not stored in search history, so delete/tag edits are layered
+  // over the current face search response until the next face search replaces it.
+  const [faceEdits, setFaceEdits] = useState<{
+    source: FaceSearchResponse;
+    response: FaceSearchResponse;
+  } | null>(null);
+  const faceSearchData = faceSearchMutation.data;
+  const faceResponse =
+    faceSearchData && faceEdits?.source === faceSearchData
+      ? faceEdits.response
+      : (faceSearchData ?? null);
 
   const deleteMediaMutation = useMutation({
     mutationFn: deleteIndexedMedia,
     onSuccess: (_response, id) => {
       removeMediaFromSearchHistory(id);
+      updateFaceResponse((response) => removeResultFromFaceResponse(response, id));
       // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["health"] });
       queryClient.invalidateQueries({ queryKey: ["inverse-index"] });
@@ -106,6 +120,7 @@ export function useSearchController() {
     mutationFn: updateIndexedMediaTags,
     onSuccess: (media) => {
       updateMediaInSearchHistory(media);
+      updateFaceResponse((response) => updateMediaInFaceResponse(response, media));
       // oxlint-disable-next-line typescript/no-floating-promises -- Preserve the existing detached cache refresh after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["inverse-index"] });
     },
@@ -247,6 +262,16 @@ export function useSearchController() {
     );
   }
 
+  function updateFaceResponse(updater: (response: FaceSearchResponse) => FaceSearchResponse) {
+    if (!faceSearchData) {
+      return;
+    }
+    setFaceEdits((current) => ({
+      source: faceSearchData,
+      response: updater(current?.source === faceSearchData ? current.response : faceSearchData),
+    }));
+  }
+
   function removeMediaFromSearchHistory(id: string) {
     updateSearchHistory((history) =>
       history.map((item) => ({
@@ -288,7 +313,7 @@ export function useSearchController() {
     queryClient,
     resultSortMode,
     results,
-    faceResponse: faceSearchMutation.data ?? null,
+    faceResponse,
     searchError: faceSearchMutation.error ?? searchMutation.error,
     searchHistory,
     searchHistoryQuery,
