@@ -22,28 +22,75 @@ FORBIDDEN_IMPORTS = (
 
 # Comments and literals are blanked out before scanning so prose and strings never
 # count as dependencies. Line structure is preserved for accurate reporting.
-STRIP_RE = re.compile(
-    r"""
-    //[^\n]*                          # line comment
-    | /\*.*?\*/                       # block comment
-    | r(?P<hashes>\#*)".*?"(?P=hashes) # raw string
-    | b?"(?:\\.|[^"\\])*"             # string / byte string
-    | b?'(?:\\.|[^'\\])'              # char / byte literal
-    """,
-    re.DOTALL | re.VERBOSE,
-)
+RAW_STRING_RE = re.compile(r'b?r(#*)"')
+QUOTED_STRING_RE = re.compile(r'b?"(?:\\.|[^"\\])*"', re.DOTALL)
+CHAR_LITERAL_RE = re.compile(r"b?'(?:\\(?:x[0-9A-Fa-f]{2}|u\{[0-9A-Fa-f_]+\}|.)|[^'\\\n])'")
 
 IDENT_RE = re.compile(r"(?<![A-Za-z0-9_])(?:r#)?([A-Za-z_][A-Za-z0-9_]*)")
 USE_RE = re.compile(r"\b(?:use|extern\s+crate)\b[^;]*;", re.DOTALL)
 PATH_ROOT_RE = re.compile(r"(?<![A-Za-z0-9_])(?:r#)?([A-Za-z_][A-Za-z0-9_]*)\s*::")
-# Keywords that may directly precede a root-qualified `::crate::Item` path.
-PATH_KEYWORDS = frozenset(
-    {"use", "pub", "in", "as", "mut", "dyn", "impl", "where", "for", "let", "return", "type", "const", "static"}
+# Rust keywords other than the path roots `crate`, `self`, `super` and `Self`. A `::`
+# that follows one of these starts a root-qualified (external crate) path.
+NON_PATH_KEYWORDS = frozenset(
+    {
+        "abstract", "as", "async", "await", "become", "box", "break", "const", "continue",
+        "do", "dyn", "else", "enum", "extern", "false", "final", "fn", "for", "gen", "if",
+        "impl", "in", "let", "loop", "macro", "match", "mod", "move", "mut", "override",
+        "priv", "pub", "ref", "return", "static", "struct", "trait", "true", "try", "type",
+        "typeof", "union", "unsafe", "unsized", "use", "virtual", "where", "while", "yield",
+    }
 )
 
 
-def blank(match: re.Match[str]) -> str:
-    return re.sub(r"[^\n]", " ", match.group(0))
+def blank_span(chars: list[str], start: int, end: int) -> None:
+    for index in range(start, end):
+        if chars[index] != "\n":
+            chars[index] = " "
+
+
+def block_comment_end(text: str, start: int) -> int:
+    """Return the index after a (possibly nested) block comment starting at `start`."""
+    depth = 0
+    index = start
+    while index < len(text):
+        if text.startswith("/*", index):
+            depth += 1
+            index += 2
+        elif text.startswith("*/", index):
+            depth -= 1
+            index += 2
+            if depth == 0:
+                return index
+        else:
+            index += 1
+    return len(text)
+
+
+def strip_comments_and_literals(text: str) -> str:
+    chars = list(text)
+    index = 0
+    while index < len(text):
+        previous = text[index - 1] if index else ""
+        identifier_char = previous.isalnum() or previous == "_"
+        if text.startswith("//", index):
+            end = text.find("\n", index)
+            end = len(text) if end == -1 else end
+        elif text.startswith("/*", index):
+            end = block_comment_end(text, index)
+        elif not identifier_char and (raw := RAW_STRING_RE.match(text, index)):
+            closing = '"' + raw.group(1)
+            found = text.find(closing, raw.end())
+            end = len(text) if found == -1 else found + len(closing)
+        elif not identifier_char and (quoted := QUOTED_STRING_RE.match(text, index)):
+            end = quoted.end()
+        elif not identifier_char and (char := CHAR_LITERAL_RE.match(text, index)):
+            end = char.end()
+        else:
+            index += 1
+            continue
+        blank_span(chars, index, end)
+        index = end
+    return "".join(chars)
 
 
 def is_forbidden(name: str) -> bool:
@@ -58,11 +105,11 @@ def preceded_by_relative_path(text: str, start: int) -> bool:
     before = prefix[:-2].rstrip()
     segment = re.search(r"([A-Za-z_][A-Za-z0-9_]*)$", before)
     # Leading `::name` (after punctuation or a keyword) is a root-qualified external crate path.
-    return segment is not None and segment.group(1) not in PATH_KEYWORDS
+    return segment is not None and segment.group(1) not in NON_PATH_KEYWORDS
 
 
 def violations_in(text: str) -> list[tuple[int, str]]:
-    code = STRIP_RE.sub(blank, text)
+    code = strip_comments_and_literals(text)
     found: dict[int, tuple[int, str]] = {}
 
     def record(offset: int, name: str) -> None:
