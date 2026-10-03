@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::config::{parse_extensions, Settings};
+use crate::workers::sources::{SourceCapabilities, SourceDiagnostic};
 
 #[derive(Debug, Serialize)]
 pub struct SourceConfigResponse {
@@ -15,10 +16,14 @@ pub struct SourceConfigResponse {
 
 #[derive(Debug, Serialize)]
 pub struct SourceConfigSource {
+    pub id: String,
     pub spec: String,
+    pub normalized_uri: String,
     pub kind: String,
     pub status: String,
     pub detail: Option<String>,
+    pub diagnostics: Vec<SourceDiagnostic>,
+    pub capabilities: SourceCapabilities,
 }
 
 #[derive(Debug, Serialize)]
@@ -63,6 +68,43 @@ pub struct SourceIndexingConfig {
 pub struct UpdateSourceConfigRequest {
     pub sources: Option<Vec<String>>,
     pub indexing: Option<EditableIndexingConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SourcePreviewRequest {
+    pub sources: Vec<String>,
+    pub limit_per_source: Option<usize>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SourcePreviewResponse {
+    pub sources: Vec<SourcePreview>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SourcePreview {
+    pub source: SourceConfigSource,
+    pub inventory: Option<SourceInventory>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SourceInventory {
+    pub scanned_count: usize,
+    pub truncated: bool,
+    pub media_kind_counts: std::collections::BTreeMap<String, usize>,
+    pub extension_counts: std::collections::BTreeMap<String, usize>,
+    pub sample_items: Vec<SourceInventoryItem>,
+    pub required_model_roles: Vec<String>,
+    pub degraded_model_roles: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SourceInventoryItem {
+    pub item_uri: String,
+    pub relative_path: String,
+    pub media_kind: String,
+    pub size_bytes: u64,
+    pub modified_at: f64,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -120,13 +162,25 @@ impl EditableIndexingConfig {
         }
     }
 
+    #[allow(
+        clippy::expect_used,
+        reason = "stored editable indexing configuration has already passed extension validation"
+    )]
     pub fn apply_to_settings(&self, settings: &mut Settings) {
         settings.image_extensions = parse_extensions(&self.image_extensions.join(","))
             .expect("validated indexing config contains image extensions");
-        settings.audio_extensions = parse_extensions(&self.audio_extensions.join(","))
-            .expect("validated indexing config contains audio extensions");
-        settings.pdf_extensions = parse_extensions(&self.pdf_extensions.join(","))
-            .expect("validated indexing config contains PDF extensions");
+        settings.audio_extensions = if self.audio_extensions.is_empty() {
+            Default::default()
+        } else {
+            parse_extensions(&self.audio_extensions.join(","))
+                .expect("validated indexing config contains audio extensions")
+        };
+        settings.pdf_extensions = if self.pdf_extensions.is_empty() {
+            Default::default()
+        } else {
+            parse_extensions(&self.pdf_extensions.join(","))
+                .expect("validated indexing config contains PDF extensions")
+        };
         settings.visual_embedding_enabled = self.visual_embedding_enabled;
         settings.face_analysis_enabled = self.face_analysis_enabled;
         settings.face_detection_min_confidence = self.face_detection_min_confidence;

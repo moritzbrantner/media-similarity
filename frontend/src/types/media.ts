@@ -143,6 +143,7 @@ export type ImagePayload = {
   scene_start_seconds: number | null;
   scene_end_seconds: number | null;
   source_type: string;
+  source_id: string | null;
   source_item_uri: string | null;
   indexing_profile: string | null;
   source_uri: string | null;

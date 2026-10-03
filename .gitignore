@@ -2,6 +2,7 @@
 .env.local
 .env.*.local
 .dev-data/
+/.cargo/config.toml
 node_modules/
 /dist/
 data/
@@ -10,7 +11,11 @@ uploads/
 thumbnails/
 benchmarks/results/
 backend/target/
+wasm/similarity/target/
+frontend/public/wasm/
 playwright-report/
 test-results/
+storybook-static/
 .unlighthouse/
+.artifacts/
 experiments/**/*.local.json

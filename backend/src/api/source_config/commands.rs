@@ -5,12 +5,16 @@ use axum::extract::State;
 use axum::Json;
 
 use super::contracts::{
-    EditableIndexingConfig, SourceConfigResponse, SourceIndexingConfig, UpdateSourceConfigRequest,
+    EditableIndexingConfig, SourceConfigResponse, SourceIndexingConfig, SourceInventory,
+    SourceInventoryItem, SourcePreview, SourcePreviewRequest, SourcePreviewResponse,
+    UpdateSourceConfigRequest,
 };
 use super::queries::{source_config_source, supported_source_types, video_source_extensions};
 use crate::api::ApiError;
 use crate::api::AppState;
 use crate::config::{parse_extensions, parse_media_sources_file};
+use crate::workers::media::models::{model_status, ModelRole};
+use crate::workers::sources::{build_media_sources, SourceDiagnostic, SourceDiagnosticCode};
 
 pub async fn get_source_config(State(state): State<Arc<AppState>>) -> Json<SourceConfigResponse> {
     Json(source_config_response(&state))
@@ -29,6 +33,52 @@ pub async fn update_source_config(
         state.replace_indexing_config(indexing.validated()?);
     }
     Ok(Json(source_config_response(&state)))
+}
+
+pub async fn preview_source_config(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<SourcePreviewRequest>,
+) -> Result<Json<SourcePreviewResponse>, ApiError> {
+    let sources = normalize_source_specs(&request.sources)?;
+    let mut settings = state.indexing_settings();
+    settings.image_sources = sources.clone();
+    let limit = request.limit_per_source.unwrap_or(25).clamp(1, 500);
+    let mut previews = Vec::new();
+
+    for spec in sources {
+        let mut source = source_config_source(spec.clone(), &settings);
+        let provider_settings = crate::config::Settings {
+            image_sources: vec![spec],
+            ..settings.clone()
+        };
+        let provider = build_media_sources(&provider_settings).into_iter().next();
+        let inventory = match provider {
+            Some(provider) if source.capabilities.enumerates_items => {
+                match provider.iter_items().await {
+                    Ok(items) => Some(source_inventory(&settings, &items, limit, &mut source)),
+                    Err(error) => {
+                        source.diagnostics.push(SourceDiagnostic::error(
+                            SourceDiagnosticCode::EnumerationFailed,
+                            error.0,
+                        ));
+                        source.status = super::queries::source_status(
+                            &source.diagnostics,
+                            &source.capabilities,
+                        );
+                        source.detail = source
+                            .diagnostics
+                            .first()
+                            .map(|diagnostic| diagnostic.message.clone());
+                        None
+                    }
+                }
+            }
+            _ => None,
+        };
+        previews.push(SourcePreview { source, inventory });
+    }
+
+    Ok(Json(SourcePreviewResponse { sources: previews }))
 }
 
 pub fn source_config_response(state: &AppState) -> SourceConfigResponse {
@@ -75,6 +125,84 @@ pub fn source_config_response(state: &AppState) -> SourceConfigResponse {
             ocr_max_frames: settings.ocr_max_frames,
             audio_transcription_enabled: settings.audio_transcription_enabled,
         },
+    }
+}
+
+fn source_inventory(
+    settings: &crate::config::Settings,
+    items: &[crate::workers::sources::SourceImage],
+    limit: usize,
+    source: &mut super::contracts::SourceConfigSource,
+) -> SourceInventory {
+    let scanned_count = items.len();
+    let truncated = scanned_count > limit;
+    let mut media_kind_counts = std::collections::BTreeMap::<String, usize>::new();
+    let mut extension_counts = std::collections::BTreeMap::<String, usize>::new();
+    let mut required_model_roles = std::collections::BTreeSet::<String>::new();
+    let mut sample_items = Vec::new();
+
+    for item in items {
+        let media_kind = item.media_kind().to_string();
+        *media_kind_counts.entry(media_kind.clone()).or_default() += 1;
+        if let Some(extension) = item.extension() {
+            *extension_counts.entry(extension).or_default() += 1;
+        }
+        required_model_roles.insert(ModelRole::VisualEmbedding.as_str().to_string());
+        if settings.face_analysis_enabled {
+            required_model_roles.insert(ModelRole::FaceDetection.as_str().to_string());
+            required_model_roles.insert(ModelRole::FaceEmbedding.as_str().to_string());
+        }
+        if settings.audio_transcription_enabled && (item.is_audio() || item.is_video()) {
+            required_model_roles.insert(ModelRole::AudioTranscription.as_str().to_string());
+        }
+        if sample_items.len() < limit {
+            sample_items.push(SourceInventoryItem {
+                item_uri: item.item_uri.clone(),
+                relative_path: item.relative_path.clone(),
+                media_kind,
+                size_bytes: item.size_bytes,
+                modified_at: item.modified_at,
+            });
+        }
+    }
+
+    if items.is_empty() {
+        source.diagnostics.push(SourceDiagnostic::warning(
+            SourceDiagnosticCode::EmptySource,
+            "No supported source items found in preview",
+        ));
+    }
+
+    let degraded_model_roles = required_model_roles
+        .iter()
+        .filter(|role| {
+            role.parse::<ModelRole>()
+                .ok()
+                .map(|role| !model_status(role, settings).active)
+                .unwrap_or(false)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
+    for role in &degraded_model_roles {
+        source.diagnostics.push(SourceDiagnostic::warning(
+            SourceDiagnosticCode::ModelFeatureUnavailable,
+            format!("Model role `{role}` is not active; related analysis will be degraded"),
+        ));
+    }
+    source.status = super::queries::source_status(&source.diagnostics, &source.capabilities);
+    source.detail = source
+        .diagnostics
+        .first()
+        .map(|diagnostic| diagnostic.message.clone());
+
+    SourceInventory {
+        scanned_count,
+        truncated,
+        media_kind_counts,
+        extension_counts,
+        sample_items,
+        required_model_roles: required_model_roles.into_iter().collect(),
+        degraded_model_roles,
     }
 }
 
@@ -207,7 +335,9 @@ fn write_media_sources_file(path: &std::path::Path, sources: &[String]) -> Resul
         })?;
     }
     let mut content = "# Managed by image-similarity-service.\n".to_string();
-    content.push_str("# One source per line. Supported now: local paths, file://, local://.\n");
+    content.push_str(
+        "# One source per line. Supported now: local paths, file://, local://, s3://, minio://.\n",
+    );
     content.push_str(
         "# Planned source specs can be kept here, but unsupported types will be skipped.\n",
     );

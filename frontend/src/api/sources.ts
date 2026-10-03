@@ -4,6 +4,7 @@ import type {
   ImagePayload,
   SourceConfigResponse,
   SourceIndexingConfig,
+  SourcePreviewResponse,
 } from "../types";
 import type { InverseIndexResponse } from "../types";
 import { parseResponse } from "./client";
@@ -30,6 +31,15 @@ export async function updateSourceConfig(sources: string[]): Promise<SourceConfi
     method: "PUT",
   });
   return parseResponse<SourceConfigResponse>(response);
+}
+
+export async function previewSourceConfig(sources: string[]): Promise<SourcePreviewResponse> {
+  const response = await fetch("/api/source-config/preview", {
+    body: JSON.stringify({ limit_per_source: 25, sources }),
+    headers: { "Content-Type": "application/json" },
+    method: "POST",
+  });
+  return parseResponse<SourcePreviewResponse>(response);
 }
 
 export async function updateIndexingConfig(

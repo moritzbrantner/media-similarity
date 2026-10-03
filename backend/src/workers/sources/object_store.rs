@@ -1,5 +1,5 @@
 impl ObjectStoreSource {
-    fn from_url(url: &Url, settings: &Settings) -> Result<Self, String> {
+    fn from_url(id: impl Into<String>, url: &Url, settings: &Settings) -> Result<Self, String> {
         let scheme = url.scheme().to_string();
         let bucket = url
             .host_str()
@@ -13,6 +13,7 @@ impl ObjectStoreSource {
             _ => object_store_uri(&scheme, &bucket, &prefix),
         };
         Ok(Self {
+            id: id.into(),
             scheme,
             bucket,
             prefix,
@@ -54,6 +55,7 @@ impl ObjectStoreSource {
             };
             let item_uri = object_store_uri(&self.scheme, &self.bucket, &key);
             images.push(SourceImage {
+                source_id: self.id.clone(),
                 source_type: self.scheme.clone(),
                 source_uri: self.uri.clone(),
                 item_uri: item_uri.clone(),
@@ -101,38 +103,45 @@ pub fn build_image_sources(settings: &Settings) -> Vec<ImageSource> {
         .collect()
 }
 
+pub fn build_media_sources(settings: &Settings) -> Vec<ImageSource> {
+    build_image_sources(settings)
+}
+
 fn source_from_spec(spec: &str, settings: &Settings) -> ImageSource {
+    let media_source = parse_media_source_spec(spec);
     match Url::parse(spec) {
         Ok(url) => match url.scheme() {
             "" | "file" | "local" => ImageSource::Local(LocalFolderSource::new(
+                media_source.id,
                 path_from_url(&url),
                 settings.image_extensions.clone(),
                 settings.audio_extensions.clone(),
                 settings.pdf_extensions.clone(),
             )),
-            "minio" | "s3" => match ObjectStoreSource::from_url(&url, settings) {
+            "minio" | "s3" => match ObjectStoreSource::from_url(media_source.id, &url, settings) {
                 Ok(source) => ImageSource::ObjectStore(source),
                 Err(error) => ImageSource::Unavailable(UnavailableSource {
-                    uri: spec.to_string(),
+                    uri: media_source.normalized_uri,
                     error,
                 }),
             },
             "video" => ImageSource::Unavailable(UnavailableSource {
-                uri: spec.to_string(),
+                uri: media_source.normalized_uri,
                 error: "Video sources are not implemented in the native Rust service yet"
                     .to_string(),
             }),
             "camera" => ImageSource::Unavailable(UnavailableSource {
-                uri: spec.to_string(),
+                uri: media_source.normalized_uri,
                 error: "Camera sources are not implemented in the native Rust service yet"
                     .to_string(),
             }),
             _ => ImageSource::Unavailable(UnavailableSource {
-                uri: spec.to_string(),
+                uri: media_source.normalized_uri,
                 error: format!("Unsupported image source: {spec}"),
             }),
         },
         Err(_) => ImageSource::Local(LocalFolderSource::new(
+            media_source.id,
             PathBuf::from(spec),
             settings.image_extensions.clone(),
             settings.audio_extensions.clone(),

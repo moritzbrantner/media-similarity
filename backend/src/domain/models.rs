@@ -241,6 +241,8 @@ pub struct ImagePayload {
     #[serde(default = "default_source_type")]
     pub source_type: String,
     #[serde(default)]
+    pub source_id: Option<String>,
+    #[serde(default)]
     pub source_item_uri: Option<String>,
     #[serde(default)]
     pub indexing_profile: Option<String>,
@@ -409,6 +411,7 @@ mod tests {
         }"#;
         let payload: ImagePayload = serde_json::from_str(json).unwrap();
         assert_eq!(payload.source_type, "local");
+        assert_eq!(payload.source_id, None);
         assert_eq!(payload.relative_path, "cat.jpg");
         assert_eq!(payload.animated_thumbnail_url, None);
         assert_eq!(payload.media_kind, "static_image");
@@ -509,6 +512,7 @@ mod tests {
             scene_start_seconds: None,
             scene_end_seconds: None,
             source_type: "local".to_string(),
+            source_id: None,
             source_item_uri: Some("/images/clip.gif".to_string()),
             indexing_profile: Some("profile".to_string()),
             source_uri: Some("/images".to_string()),
@@ -565,6 +569,7 @@ mod tests {
             scene_start_seconds: Some(1.0),
             scene_end_seconds: Some(2.5),
             source_type: "local".to_string(),
+            source_id: None,
             source_item_uri: Some("/images/clip.mp4".to_string()),
             indexing_profile: Some("profile".to_string()),
             source_uri: Some("/images".to_string()),
@@ -656,6 +661,7 @@ mod tests {
             scene_start_seconds: None,
             scene_end_seconds: None,
             source_type: "local".to_string(),
+            source_id: None,
             source_item_uri: Some("/images/song.mp3".to_string()),
             indexing_profile: Some("profile".to_string()),
             source_uri: Some("/images".to_string()),

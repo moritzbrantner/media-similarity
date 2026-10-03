@@ -39,18 +39,17 @@ impl ImageIndexer {
             &image_id,
             (320, 320),
         )?;
-        let animated_thumbnail_url = if options.animated_thumbnail_enabled
-            && media.kind == MediaKind::AnimatedGif
-        {
-            Some(ensure_animated_thumbnail(
-                &media.preview_frames,
-                &settings.thumbnail_dir,
-                &image_id,
-                (320, 320),
-            )?)
-        } else {
-            None
-        };
+        let animated_thumbnail_url =
+            if options.animated_thumbnail_enabled && media.kind == MediaKind::AnimatedGif {
+                Some(ensure_animated_thumbnail(
+                    &media.preview_frames,
+                    &settings.thumbnail_dir,
+                    &image_id,
+                    (320, 320),
+                )?)
+            } else {
+                None
+            };
         let (width, height) = dimensions(&media.poster);
         let ocr_analysis = options.ocr_override.unwrap_or_else(|| {
             extract_media_ocr(media, settings).unwrap_or_else(|error| {
@@ -167,6 +166,7 @@ impl ImageIndexer {
                 .map(|scene| scene.end.timestamp.seconds())
                 .or_else(|| audio_segment.map(|segment| segment.end_seconds)),
             source_type: source_image.source_type.clone(),
+            source_id: Some(source_image.source_id.clone()),
             source_item_uri: Some(source_image.item_uri.clone()),
             indexing_profile: Some(indexing_profile(settings)),
             source_uri: Some(source_image.source_uri.clone()),

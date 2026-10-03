@@ -54,21 +54,29 @@ MinIO/S3 object-store sources are supported through `minio://bucket/prefix` and 
    bun install
    ```
 
-4. Start the service:
+4. Start the background service stack:
 
    ```bash
-   bun dev
+   bun run service:up
    ```
 
-5. Open the UI:
+5. Open the service-mode UI:
 
    ```txt
    http://localhost:5173
    ```
 
-   `bun dev` starts the Docker Compose app stack in the background, then starts the Vite dev server. The UI, backend, and Qdrant ports are published on localhost only by default. The backend container remains available at `http://localhost:8000`.
+   `bun run service:up` starts the Rust API, static web UI, and Qdrant in detached Docker Compose containers. The UI is available at `http://localhost:5173`, and the direct API is available at `http://localhost:8000`. The UI, backend, and Qdrant ports are published on localhost only by default.
 
 6. Click **Index configured sources**, then upload a query image, video, audio file, or PDF and search.
+
+For frontend development with Vite hot reload, run:
+
+```bash
+bun dev
+```
+
+This starts Qdrant through Docker Compose, runs the Rust API locally with `cargo run`, then serves the React app through Vite at `http://localhost:5173`.
 
 ## Sample Corpus And Showcase Data
 
@@ -226,6 +234,8 @@ curl -X POST http://localhost:8000/api/models/visual_embedding/download \
 
 Model roles are `visual_embedding`, `face_detection`, `face_embedding`, and `audio_transcription`. The service delegates model specs, bundle storage, and native runtime adapters to the sibling `../rust-packages` crates.
 
+Default-enabled model roles are advertised capabilities for local readiness. If `/api/ready` reports a required model as missing, download it from the Models panel or use the role-specific `/api/models/<role>/download` endpoint shown above. Audio transcription is disabled by default, so its missing ASR bundle does not block readiness until transcription is enabled.
+
 ### Delete From Index
 
 ```bash
@@ -234,6 +244,36 @@ curl -X DELETE 'http://localhost:8000/api/indexed-sources?source_uri=/media/pict
 ```
 
 Deletion removes Qdrant media/face points and generated files under `THUMBNAIL_DIR` and `UPLOAD_DIR`. It does not delete original source files.
+
+### Safe Reset And Reindex
+
+Docker Compose mounts the configured source media folders read-only. The app should treat your original media and user-authored configuration as protected data; index records and generated files are rebuildable.
+
+Generated local state lives in these places by default:
+
+- Qdrant vectors: `${QDRANT_DATA_DIR:-./.dev-data/qdrant}`
+- Qdrant snapshots: `${QDRANT_SNAPSHOTS_DIR:-./.dev-data/qdrant-snapshots}`
+- App data, including thumbnails, uploads, model bundles, smart albums, workflows, voice registry, source config, and indexing ledger: `${APP_DATA_DIR:-./.dev-data/app}`
+
+For a safe generated-state reset:
+
+```bash
+bun run service:down
+rm -rf ./.dev-data/qdrant ./.dev-data/qdrant-snapshots ./.dev-data/app
+bun run service:up
+curl -X POST http://localhost:8000/api/index
+```
+
+Use this only when it is acceptable to rebuild the index and generated artifacts from the configured sources. If you have edited smart albums, workflows, recognized voice labels, or source configuration in the UI, copy those JSON/config files out of `APP_DATA_DIR` before deleting it.
+
+For a disposable all-media readiness check against the showcase corpus:
+
+```bash
+bun run showcase:download
+bun run test:service:sample-smoke
+```
+
+The sample smoke starts a temporary Docker service stack, downloads any missing required model bundles through the API, indexes `sample-images/showcase/sources`, searches one query for each supported media kind, checks generated artifact URLs, and removes the temporary data when it exits.
 
 Video query search and source video indexing use the Rust scene detection crates with the content detector defaults from the `vanalyze` CLI. The service writes per-scene MP4 clips under `UPLOAD_DIR`, samples scene frames according to `VIDEO_FRAME_STRIDE` and `VIDEO_MAX_FRAMES`, and searches/indexes each scene independently. The Rust crates are sufficient for this workflow, but their command-backed FFmpeg runtime requires `ffmpeg` and `ffprobe` on `PATH`.
 
@@ -272,8 +312,11 @@ Set these values in `.env`:
 | `QDRANT_CONNECT_TIMEOUT_MS` | `2000` | Timeout for establishing a Qdrant HTTP connection. |
 | `QDRANT_RETRY_ATTEMPTS` | `2` | Additional retry attempts for transient Qdrant HTTP failures. |
 | `QDRANT_RETRY_BACKOFF_MS` | `100` | Initial retry backoff for transient Qdrant HTTP failures. |
+| `API_PORT` | `8000` | Host port for the Docker Compose Rust API service. |
+| `WEB_PORT` | `5173` | Host port for the Docker Compose static web UI service. Use a different value if Vite is already using 5173. |
 | `BIND_ADDR` | `127.0.0.1:8000` | Bind address for direct non-Docker backend runs. Keep the default for local-only use. |
 | `CONTAINER_BIND_ADDR` | `0.0.0.0:8000` | Bind address used inside Docker Compose so the localhost-only host port mapping can reach the app container. |
+| `FRONTEND_SERVING_ENABLED` | `true` | Enables the Rust backend's checked-in static frontend serving for direct backend runs. Docker Compose disables this for the split API/web service stack. |
 | `VECTOR_SIZE` | `512` | Qdrant vector size for the Rust embedder. |
 | `CLIP_MODEL_NAME` | `sentence-transformers/clip-ViT-B-32` | Kept for configuration compatibility; native Rust inference is not CLIP-equivalent yet. |
 | `THUMBNAIL_DIR` | `/app/data/thumbnails` | Generated thumbnail storage. |
@@ -368,10 +411,43 @@ Start the full local app stack and the Vite frontend:
 bun dev
 ```
 
-This runs Docker Compose for the Rust app and Qdrant, then starts Vite. Use this lighter command when only the containers need to be refreshed:
+This runs Qdrant through Docker Compose, starts the Rust API locally with `cargo run`, then starts Vite with hot reload. Use this lighter command when only the container dependency needs to be refreshed:
 
 ```bash
 bun run dev:containers
+```
+
+Start the background service mode when you want the static web UI served by Docker Compose instead of Vite:
+
+```bash
+bun run service:up
+```
+
+Background service mode runs the Rust API, static web UI, and Qdrant in detached containers. Open `http://localhost:5173` for the UI or `http://localhost:8000` for the direct API. Stop it without deleting persistent data volumes:
+
+```bash
+bun run service:down
+```
+
+Inspect or fully clean the background service stack with:
+
+```bash
+bun run service:ps
+bun run service:clean
+```
+
+`bun run service:clean` removes containers, orphans, and volumes, so use it only when disposable local data can be deleted.
+
+Run the service-mode smoke check when changing Docker Compose, web proxying, or service startup behavior:
+
+```bash
+bun run test:service:smoke
+```
+
+The smoke check validates `docker compose config`, starts `api`, `web`, and `qdrant` with trap-based cleanup for services it starts, then checks the web UI at `http://127.0.0.1:${WEB_PORT:-5173}`, proxied backend health at `http://127.0.0.1:${WEB_PORT:-5173}/api/health`, and direct backend health at `http://127.0.0.1:${API_PORT:-8000}/api/health`. It stops only containers it started and keeps persisted app and Qdrant data. Use disposable temporary data directories with:
+
+```bash
+bun run test:service:smoke -- --disposable
 ```
 
 ### Project Commands
@@ -381,6 +457,8 @@ bun run dev:containers
 | `bun run test` | Fast meaningful test path: Rust test suite. |
 | `bun run test:e2e` | Playwright UI tests with mocked API responses. |
 | `bun run test:perf` | Unlighthouse performance audit against the built frontend bundle. |
+| `bun run test:service:smoke` | Docker Compose service-mode smoke check for the web UI, proxied API health, and direct API health. |
+| `bun run test:service:sample-smoke` | Disposable Docker service-mode smoke check that indexes and searches every sample-corpus media kind. |
 | `bun run lint` | TypeScript check, Rust format check, and Clippy with warnings denied. |
 | `bun run format:check` | Frontend formatting check. |
 | `bun run format:check:rust` | Rust formatting check. |
@@ -389,6 +467,12 @@ bun run dev:containers
 | `bun run build` | Build the frontend into `frontend/dist`. |
 | `bun run build:rust` | Build Rust service binaries. |
 | `bun run check:hygiene` | Report dirty status, upstream state, and ignored/generated directory issues. |
+| `bun dev` | Start Qdrant, the local Cargo API, and Vite with hot reload. |
+| `bun run dev:containers` | Start only Qdrant for local development. |
+| `bun run service:up` | Start the background API, static web UI, and Qdrant service stack. |
+| `bun run service:down` | Stop background services without deleting persistent data volumes. |
+| `bun run service:ps` | Inspect background service state. |
+| `bun run service:clean` | Remove service containers, orphans, and disposable volumes. |
 | `bun run sample:check` | Validate the internet sample-corpus manifest. |
 | `bun run sample:download` | Download showcase sample media into `sample-images/showcase`. |
 | `bun run test:sample` | Run sample-corpus tests. |
@@ -481,11 +565,11 @@ Run the React dev server:
 bun run dev
 ```
 
-The dev script starts the Docker Compose app stack first, then starts Vite on `127.0.0.1`. The Vite dev server proxies `/api` and `/thumbnails` to `http://127.0.0.1:8000`.
+The dev script starts Qdrant through Docker Compose, runs the Rust API locally on `127.0.0.1:8000` with `cargo run`, then starts Vite on `127.0.0.1`. The Vite dev server proxies `/api`, `/thumbnails`, and `/uploads` to `http://127.0.0.1:8000`, so browser-facing API and media URLs stay root-relative in development.
 
-The default Docker Compose port mappings bind the Rust app and Qdrant to `127.0.0.1` on the host. To expose them to other machines, opt in deliberately by changing the `ports` mappings or using an override compose file; this service does not include user authentication.
+The default Docker Compose port mappings bind Qdrant to `127.0.0.1` on the host. To expose it to other machines, opt in deliberately by changing the `ports` mappings or using an override compose file; this service does not include user authentication.
 
-Start or refresh only the Docker containers used by the dev server:
+Start or refresh only Qdrant for the local dev server:
 
 ```bash
 bun run dev:containers

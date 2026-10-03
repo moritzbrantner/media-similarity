@@ -7,11 +7,16 @@ import {
   enableModel,
   fetchModels,
   fetchSourceConfig,
+  previewSourceConfig,
   updateIndexingConfig,
   updateSourceConfig,
 } from "../../api";
 
-export function useConfigurationController({ sourceConfigEnabled }: { sourceConfigEnabled: boolean }) {
+export function useConfigurationController({
+  sourceConfigEnabled,
+}: {
+  sourceConfigEnabled: boolean;
+}) {
   const queryClient = useQueryClient();
 
   const sourceConfigQuery = useQuery({
@@ -30,6 +35,7 @@ export function useConfigurationController({ sourceConfigEnabled }: { sourceConf
     mutationFn: updateSourceConfig,
     onSuccess: (response) => {
       queryClient.setQueryData(["source-config"], response);
+      // oxlint-disable-next-line typescript/no-floating-promises -- Preserve the existing detached cache refresh after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["health"] });
     },
   });
@@ -38,28 +44,37 @@ export function useConfigurationController({ sourceConfigEnabled }: { sourceConf
     mutationFn: updateIndexingConfig,
     onSuccess: (response) => {
       queryClient.setQueryData(["source-config"], response);
+      // oxlint-disable-next-line typescript/no-floating-promises -- Preserve the existing detached cache refresh after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["health"] });
     },
+  });
+
+  const sourcePreviewMutation = useMutation({
+    mutationFn: previewSourceConfig,
   });
 
   const downloadModelMutation = useMutation({
     mutationFn: ({ model, role }: { model?: string | null; role: string }) =>
       downloadModel(role, model),
     onSuccess: (_response) => {
+      // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes after a successful model mutation.
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["models"] });
       queryClient.invalidateQueries({ queryKey: ["health"] });
       queryClient.invalidateQueries({ queryKey: ["source-config"] });
+      // oxlint-enable typescript/no-floating-promises
     },
   });
 
   const downloadAllModelsMutation = useMutation({
     mutationFn: downloadAllModels,
     onSuccess: (_response) => {
+      // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes after a successful model mutation.
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["models"] });
       queryClient.invalidateQueries({ queryKey: ["health"] });
       queryClient.invalidateQueries({ queryKey: ["source-config"] });
+      // oxlint-enable typescript/no-floating-promises
     },
   });
 
@@ -67,20 +82,24 @@ export function useConfigurationController({ sourceConfigEnabled }: { sourceConf
     mutationFn: ({ role, model }: { role: string; model?: string | null }) =>
       enableModel(role, model),
     onSuccess: (_response) => {
+      // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes after a successful model mutation.
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["models"] });
       queryClient.invalidateQueries({ queryKey: ["health"] });
       queryClient.invalidateQueries({ queryKey: ["source-config"] });
+      // oxlint-enable typescript/no-floating-promises
     },
   });
 
   const disableModelMutation = useMutation({
     mutationFn: ({ role }: { role: string }) => disableModel(role),
     onSuccess: (_response) => {
+      // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes after a successful model mutation.
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["models"] });
       queryClient.invalidateQueries({ queryKey: ["health"] });
       queryClient.invalidateQueries({ queryKey: ["source-config"] });
+      // oxlint-enable typescript/no-floating-promises
     },
   });
 
@@ -126,6 +145,7 @@ export function useConfigurationController({ sourceConfigEnabled }: { sourceConf
     modelActionPending,
     sourceConfigMutation,
     sourceConfigQuery,
+    sourcePreviewMutation,
     modelError: modelError as Error | null,
   };
 }

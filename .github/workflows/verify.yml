@@ -22,12 +22,11 @@ jobs:
           git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin "$GITHUB_REF"
           git checkout --force FETCH_HEAD
 
-      - name: Set up Bun
-        env:
-          BUN_VERSION: "1.3.14"
+      - name: Set up repository Bun
         run: |
           set -euo pipefail
-          curl -fsSL https://bun.sh/install | bash -s "bun-v${BUN_VERSION}"
+          bun_version="$(node -p "require('./package.json').packageManager.split('@')[1]")"
+          curl -fsSL https://bun.sh/install | bash -s "bun-v${bun_version}"
           echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
 
       - name: Install dependencies
@@ -38,6 +37,9 @@ jobs:
 
       - name: Type-check frontend
         run: bun run typecheck
+
+      - name: Build Storybook
+        run: bun run storybook:build
 
       - name: Build frontend into temporary directory
         run: |
@@ -78,44 +80,21 @@ jobs:
           git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin "$GITHUB_REF"
           git checkout --force FETCH_HEAD
 
-      - name: Check out sibling Rust packages
-        env:
-          RUST_PACKAGES_TOKEN: ${{ secrets.RUST_PACKAGES_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -z "$RUST_PACKAGES_TOKEN" ]; then
-            echo "::error::RUST_PACKAGES_TOKEN is required to fetch the private $GITHUB_REPOSITORY_OWNER/rust-packages repository from main."
-            exit 1
-          fi
-          auth_header="$(printf 'x-access-token:%s' "$RUST_PACKAGES_TOKEN" | base64 -w 0)"
-
-          mkdir -p rust-packages
-          cd rust-packages
-          git init --initial-branch=main .
-          git config --global --add safe.directory "$PWD"
-          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY_OWNER/rust-packages"
-          if ! git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin main; then
-            echo "::error::Could not fetch $GITHUB_REPOSITORY_OWNER/rust-packages from main. Check that RUST_PACKAGES_TOKEN has read access to that repository."
-            exit 1
-          fi
-          git checkout --force -B main FETCH_HEAD
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      - name: Prepare declared repository environment
+        working-directory: image-similarity-service
+        run: bash scripts/codex-environment.sh setup
 
       - name: Check Rust formatting
         working-directory: image-similarity-service
         run: cargo fmt --manifest-path backend/Cargo.toml -- --check
 
-      - name: Run Clippy
+      - name: Run Clippy with committed lockfile
         working-directory: image-similarity-service
-        run: cargo clippy --manifest-path backend/Cargo.toml --all-targets -- -D warnings
+        run: cargo clippy --manifest-path backend/Cargo.toml --all-targets --locked -- -D warnings
 
-      - name: Run Rust tests
+      - name: Run Rust tests with committed lockfile
         working-directory: image-similarity-service
-        run: cargo test --manifest-path backend/Cargo.toml
+        run: cargo test --manifest-path backend/Cargo.toml --locked
 
   qdrant-smoke:
     runs-on: ubuntu-latest
@@ -136,30 +115,9 @@ jobs:
           git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin "$GITHUB_REF"
           git checkout --force FETCH_HEAD
 
-      - name: Check out sibling Rust packages
-        env:
-          RUST_PACKAGES_TOKEN: ${{ secrets.RUST_PACKAGES_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -z "$RUST_PACKAGES_TOKEN" ]; then
-            echo "::error::RUST_PACKAGES_TOKEN is required to fetch the private $GITHUB_REPOSITORY_OWNER/rust-packages repository from main."
-            exit 1
-          fi
-          auth_header="$(printf 'x-access-token:%s' "$RUST_PACKAGES_TOKEN" | base64 -w 0)"
-
-          mkdir -p rust-packages
-          cd rust-packages
-          git init --initial-branch=main .
-          git config --global --add safe.directory "$PWD"
-          git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY_OWNER/rust-packages"
-          if ! git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin main; then
-            echo "::error::Could not fetch $GITHUB_REPOSITORY_OWNER/rust-packages from main. Check that RUST_PACKAGES_TOKEN has read access to that repository."
-            exit 1
-          fi
-          git checkout --force -B main FETCH_HEAD
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Prepare declared repository environment
+        working-directory: image-similarity-service
+        run: bash scripts/codex-environment.sh setup
 
       - name: Run real Qdrant smoke test
         working-directory: image-similarity-service
@@ -167,4 +125,4 @@ jobs:
           COMPOSE_SERVICES: qdrant
           QDRANT_URL: http://127.0.0.1:6333
         run: |
-          bash scripts/run-with-compose-services.sh cargo test --manifest-path backend/Cargo.toml qdrant_smoke -- --ignored --nocapture
+          bash scripts/run-with-compose-services.sh cargo test --manifest-path backend/Cargo.toml --locked qdrant_smoke -- --ignored --nocapture

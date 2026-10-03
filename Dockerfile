@@ -18,15 +18,19 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends cmake \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=rust-packages . /workspace/rust-packages
+COPY rust-toolchain.toml ./rust-toolchain.toml
+RUN toolchain="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' rust-toolchain.toml)" \
+    && test -n "$toolchain" \
+    && rustup toolchain install "$toolchain" --profile minimal \
+    && test "$(rustc --version | awk '{print $2}')" = "$toolchain"
+
 COPY backend ./backend
 
 RUN cargo build --manifest-path backend/Cargo.toml --bins --release
 
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim AS api-runtime
 
 ENV RUST_LOG=info
-ENV FRONTEND_DIST_DIR=/app/frontend/dist
 
 WORKDIR /app
 
@@ -41,8 +45,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=rust-builder /workspace/image-similarity-service/backend/target/release/image-similarity-service /usr/local/bin/image-similarity-service
+COPY --from=rust-builder /workspace/image-similarity-service/backend/target/release/quality_corpus /usr/local/bin/quality_corpus
 COPY --from=rust-builder /workspace/image-similarity-service/backend/target/release/seed_dummy_data /usr/local/bin/seed_dummy_data
-COPY --from=frontend-builder /workspace/frontend/dist ./frontend/dist
 COPY config ./config
 
 RUN mkdir -p /app/data/thumbnails /app/data/uploads /images /media/pictures /media/videos /media/audio
@@ -50,3 +54,14 @@ RUN mkdir -p /app/data/thumbnails /app/data/uploads /images /media/pictures /med
 EXPOSE 8000
 
 CMD ["image-similarity-service"]
+
+FROM nginx:1.27-alpine AS web-runtime
+
+ENV MAX_UPLOAD_MB=20
+
+COPY --from=frontend-builder /workspace/frontend/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/templates/default.conf.template
+
+EXPOSE 80
+
+FROM api-runtime AS app

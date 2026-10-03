@@ -1,8 +1,4 @@
-import type {
-  EditableSmartAlbum,
-  SmartAlbum,
-  SmartAlbumResultsResponse,
-} from "../types";
+import type { EditableSmartAlbum, SmartAlbum, SmartAlbumResultsResponse } from "../types";
 import { parseResponse } from "./client";
 
 export async function fetchSmartAlbums(): Promise<{ albums: SmartAlbum[] }> {

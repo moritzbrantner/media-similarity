@@ -1,4 +1,9 @@
-import type { ValidateWorkflowResponse, WorkflowConfigResponse, WorkflowEditorLibrary, MediaWorkflowNodeData } from "../types";
+import type {
+  ValidateWorkflowResponse,
+  WorkflowConfigResponse,
+  WorkflowEditorLibrary,
+  MediaWorkflowNodeData,
+} from "../types";
 import { parseResponse } from "./client";
 
 export async function fetchWorkflows(): Promise<WorkflowConfigResponse> {

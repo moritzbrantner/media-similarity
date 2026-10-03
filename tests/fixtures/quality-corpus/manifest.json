@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "name": "public-face-quality-corpus",
-  "description": "Publicly available portrait images used to evaluate visual ranking and face/person recognition quality.",
+  "name": "public-all-media-quality-corpus",
+  "description": "Publicly available media used to evaluate parsing, indexing, visual similarity, face/person recognition, OCR, and native ASR quality.",
   "default_output_dir": "sample-images/quality",
   "assets": [
     {
@@ -36,6 +36,8 @@
       "title": "Face query for Barack Obama",
       "identity": "barack-obama",
       "copy_of": "barack-obama-president",
+      "derivation": { "type": "overlay_text", "text": "QUALITY QUERY", "position": "bottom_right" },
+      "expected_top_match": "barack-obama-president",
       "expected_top_k": ["barack-obama-president", "barack-obama-smile"],
       "expected_non_matches": ["grace-hopper-navy", "marie-curie-1900"],
       "capability": "face person search"
@@ -72,6 +74,8 @@
       "title": "Face query for Grace Hopper",
       "identity": "grace-hopper",
       "copy_of": "grace-hopper-navy",
+      "derivation": { "type": "overlay_text", "text": "QUALITY QUERY", "position": "bottom_right" },
+      "expected_top_match": "grace-hopper-navy",
       "expected_top_k": ["grace-hopper-navy", "grace-hopper-covered"],
       "expected_non_matches": ["barack-obama-president", "marie-curie-1900"],
       "capability": "face person search"
@@ -108,9 +112,147 @@
       "title": "Face query for Marie Curie",
       "identity": "marie-curie",
       "copy_of": "marie-curie-1900",
+      "derivation": { "type": "overlay_text", "text": "QUALITY QUERY", "position": "bottom_right" },
+      "expected_top_match": "marie-curie-1900",
       "expected_top_k": ["marie-curie-1900", "marie-curie-1903"],
       "expected_non_matches": ["barack-obama-president", "grace-hopper-navy"],
       "capability": "face person search"
+    },
+    {
+      "id": "wikimedia-example-jpg",
+      "kind": "static_image",
+      "role": "source",
+      "filename": "sources/wikimedia-example.jpg",
+      "title": "Wikimedia Commons Example.jpg",
+      "identity": "wikimedia-example-image",
+      "download_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Example.jpg",
+      "page_url": "https://commons.wikimedia.org/wiki/File:Example.jpg",
+      "license": "Wikimedia Commons file license; see page_url",
+      "attribution": "Wikimedia Commons contributors"
+    },
+    {
+      "id": "wikimedia-example-jpg-query",
+      "kind": "static_image",
+      "role": "query",
+      "filename": "queries/wikimedia-example-query.jpg",
+      "title": "Text-overlay query for Wikimedia Commons Example.jpg",
+      "identity": "wikimedia-example-image",
+      "copy_of": "wikimedia-example-jpg",
+      "derivation": { "type": "overlay_text", "text": "QUALITY QUERY", "position": "bottom_right" },
+      "expected_top_match": "wikimedia-example-jpg",
+      "expected_top_k": ["wikimedia-example-jpg"],
+      "expected_non_matches": ["barack-obama-president", "wikimedia-rotating-earth-gif"],
+      "capability": "static image perturbation search"
+    },
+    {
+      "id": "wikimedia-rotating-earth-gif",
+      "kind": "animated_gif",
+      "role": "source",
+      "filename": "sources/rotating-earth.gif",
+      "title": "Wikimedia Commons Rotating earth (Very small).gif",
+      "identity": "rotating-earth",
+      "download_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Rotating_earth_(Very_small).gif",
+      "page_url": "https://commons.wikimedia.org/wiki/File:Rotating_earth_(Very_small).gif",
+      "license": "CC BY-SA 3.0 / GFDL 1.2 or later",
+      "attribution": "Raman Sethi / Wikimedia Commons contributors"
+    },
+    {
+      "id": "wikimedia-rotating-earth-gif-query",
+      "kind": "animated_gif",
+      "role": "query",
+      "filename": "queries/rotating-earth-query.gif",
+      "title": "Overlay query for Rotating earth GIF",
+      "identity": "rotating-earth",
+      "copy_of": "wikimedia-rotating-earth-gif",
+      "derivation": { "type": "gif_overlay_text", "text": "Q", "position": "bottom_right" },
+      "expected_top_match": "wikimedia-rotating-earth-gif",
+      "expected_top_k": ["wikimedia-rotating-earth-gif"],
+      "expected_non_matches": ["wikimedia-example-jpg", "barack-obama-president"],
+      "capability": "animated GIF frame and motion search"
+    },
+    {
+      "id": "wikimedia-example-ogg",
+      "kind": "audio",
+      "role": "source",
+      "filename": "sources/wikimedia-example.ogg",
+      "title": "Wikimedia Commons Example.ogg",
+      "identity": "wikimedia-example-audio",
+      "download_url": "https://commons.wikimedia.org/wiki/Special:FilePath/Example.ogg",
+      "page_url": "https://commons.wikimedia.org/wiki/File:Example.ogg",
+      "license": "CC BY-SA 3.0 / GFDL 1.2 or later",
+      "attribution": "JesseW / Wikimedia Commons contributors",
+      "expected_transcript_terms": ["example"]
+    },
+    {
+      "id": "wikimedia-example-ogg-query",
+      "kind": "audio",
+      "role": "query",
+      "filename": "queries/wikimedia-example-query.ogg",
+      "title": "Re-encoded query for Wikimedia Commons Example.ogg",
+      "identity": "wikimedia-example-audio",
+      "copy_of": "wikimedia-example-ogg",
+      "derivation": { "type": "audio_reencode", "start_seconds": 0.0, "duration_seconds": 5.0, "volume": 0.95 },
+      "expected_top_match": "wikimedia-example-ogg",
+      "expected_top_k": ["wikimedia-example-ogg"],
+      "expected_non_matches": ["wikimedia-example-jpg", "wikimedia-rotating-earth-gif"],
+      "expected_transcript_terms": ["example"],
+      "capability": "audio ASR transcript search"
+    },
+    {
+      "id": "wikimedia-knowledge-video",
+      "kind": "video",
+      "role": "source",
+      "filename": "sources/wikimedia-knowledge.webm",
+      "title": "How can you join the Wikimedia free knowledge movement - A WIKI MINUTE 16-9.webm",
+      "identity": "wikimedia-knowledge-video",
+      "download_url": "https://commons.wikimedia.org/wiki/Special:FilePath/How_can_you_join_the_Wikimedia_free_knowledge_movement_%E2%80%93_A_WIKI_MINUTE_16-9.webm",
+      "page_url": "https://commons.wikimedia.org/wiki/File:How_can_you_join_the_Wikimedia_free_knowledge_movement_%E2%80%93_A_WIKI_MINUTE_16-9.webm",
+      "license": "Wikimedia Commons file license; see page_url",
+      "attribution": "Wikimedia Foundation / Wikimedia Commons contributors",
+      "expected_transcript_terms": ["wikimedia"]
+    },
+    {
+      "id": "wikimedia-knowledge-video-query",
+      "kind": "video",
+      "role": "query",
+      "filename": "queries/wikimedia-knowledge-query.webm",
+      "title": "Trimmed query for Wikimedia free knowledge movement video",
+      "identity": "wikimedia-knowledge-video",
+      "copy_of": "wikimedia-knowledge-video",
+      "derivation": { "type": "video_reencode", "start_seconds": 0.0, "duration_seconds": 12.0, "scale_width": 320 },
+      "expected_top_match": "wikimedia-knowledge-video",
+      "expected_top_k": ["wikimedia-knowledge-video"],
+      "expected_non_matches": ["wikimedia-example-ogg", "wikimedia-example-jpg"],
+      "expected_transcript_terms": ["wikimedia"],
+      "capability": "video scene and ASR transcript search"
+    },
+    {
+      "id": "w3c-dummy-pdf",
+      "kind": "pdf",
+      "role": "source",
+      "filename": "sources/w3c-dummy.pdf",
+      "title": "W3C WAI dummy PDF",
+      "identity": "w3c-dummy-pdf",
+      "download_url": "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+      "page_url": "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf",
+      "license": "W3C document license; see page_url",
+      "attribution": "W3C Web Accessibility Initiative",
+      "expected_ocr_terms": ["dummy"]
+    },
+    {
+      "id": "w3c-dummy-pdf-query",
+      "kind": "pdf",
+      "role": "query",
+      "filename": "queries/w3c-dummy-query.pdf",
+      "title": "Comment-derived query for W3C dummy PDF",
+      "identity": "w3c-dummy-pdf",
+      "copy_of": "w3c-dummy-pdf",
+      "derivation": { "type": "append_pdf_comment", "comment": "QUALITY QUERY" },
+      "expected_top_match": "w3c-dummy-pdf",
+      "expected_top_k": ["w3c-dummy-pdf"],
+      "expected_non_matches": ["wikimedia-example-jpg", "wikimedia-example-ogg"],
+      "expected_ocr_terms": ["dummy"],
+      "capability": "PDF page and document search"
     }
   ],
   "searches": [
@@ -118,6 +260,7 @@
       "id": "barack-obama-face",
       "query_asset": "barack-obama-query",
       "expected_identity": "barack-obama",
+      "expected_top_match": "barack-obama-president",
       "expected_top_k": ["barack-obama-president", "barack-obama-smile"],
       "expected_non_matches": ["grace-hopper-navy", "marie-curie-1900"],
       "capability": "face person search"
@@ -126,6 +269,7 @@
       "id": "grace-hopper-face",
       "query_asset": "grace-hopper-query",
       "expected_identity": "grace-hopper",
+      "expected_top_match": "grace-hopper-navy",
       "expected_top_k": ["grace-hopper-navy", "grace-hopper-covered"],
       "expected_non_matches": ["barack-obama-president", "marie-curie-1900"],
       "capability": "face person search"
@@ -134,9 +278,49 @@
       "id": "marie-curie-face",
       "query_asset": "marie-curie-query",
       "expected_identity": "marie-curie",
+      "expected_top_match": "marie-curie-1900",
       "expected_top_k": ["marie-curie-1900", "marie-curie-1903"],
       "expected_non_matches": ["barack-obama-president", "grace-hopper-navy"],
       "capability": "face person search"
+    },
+    {
+      "id": "static-image-overlay",
+      "query_asset": "wikimedia-example-jpg-query",
+      "expected_identity": "wikimedia-example-image",
+      "expected_top_match": "wikimedia-example-jpg",
+      "expected_top_k": ["wikimedia-example-jpg"],
+      "expected_non_matches": ["barack-obama-president", "wikimedia-rotating-earth-gif"],
+      "capability": "static image perturbation search"
+    },
+    {
+      "id": "audio-reencoded-asr",
+      "query_asset": "wikimedia-example-ogg-query",
+      "expected_identity": "wikimedia-example-audio",
+      "expected_top_match": "wikimedia-example-ogg",
+      "expected_top_k": ["wikimedia-example-ogg"],
+      "expected_non_matches": ["wikimedia-example-jpg", "wikimedia-rotating-earth-gif"],
+      "expected_transcript_terms": ["example"],
+      "capability": "audio ASR transcript search"
+    },
+    {
+      "id": "video-trimmed-asr",
+      "query_asset": "wikimedia-knowledge-video-query",
+      "expected_identity": "wikimedia-knowledge-video",
+      "expected_top_match": "wikimedia-knowledge-video",
+      "expected_top_k": ["wikimedia-knowledge-video"],
+      "expected_non_matches": ["wikimedia-example-ogg", "wikimedia-example-jpg"],
+      "expected_transcript_terms": ["wikimedia"],
+      "capability": "video scene and ASR transcript search"
+    },
+    {
+      "id": "pdf-comment-derived",
+      "query_asset": "w3c-dummy-pdf-query",
+      "expected_identity": "w3c-dummy-pdf",
+      "expected_top_match": "w3c-dummy-pdf",
+      "expected_top_k": ["w3c-dummy-pdf"],
+      "expected_non_matches": ["wikimedia-example-jpg", "wikimedia-example-ogg"],
+      "expected_ocr_terms": ["dummy"],
+      "capability": "PDF page and document search"
     }
   ]
 }

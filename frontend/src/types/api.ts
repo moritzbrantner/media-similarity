@@ -35,10 +35,74 @@ export type SourceConfigResponse = {
 };
 
 export type SourceConfigSource = {
+  id: string;
   spec: string;
+  normalized_uri: string;
   kind: string;
-  status: "not_implemented" | "ready" | "unavailable" | "unsupported" | string;
+  status:
+    | "degraded"
+    | "empty"
+    | "invalid"
+    | "not_implemented"
+    | "ready"
+    | "unavailable"
+    | "unsupported"
+    | string;
   detail: string | null;
+  diagnostics: SourceDiagnostic[];
+  capabilities: SourceCapabilities;
+};
+
+export type SourceDiagnostic = {
+  code:
+    | "credentials_missing"
+    | "empty_source"
+    | "enumeration_failed"
+    | "indexing_failed"
+    | "model_feature_unavailable"
+    | "parse_error"
+    | "unavailable"
+    | "unsupported_kind"
+    | string;
+  severity: "error" | "info" | "warning" | string;
+  message: string;
+};
+
+export type SourceCapabilities = {
+  enumerates_items: boolean;
+  supports_images: boolean;
+  supports_gifs: boolean;
+  supports_video_files: boolean;
+  supports_audio_files: boolean;
+  supports_pdfs: boolean;
+  requires_credentials: boolean;
+};
+
+export type SourcePreviewResponse = {
+  sources: SourcePreview[];
+};
+
+export type SourcePreview = {
+  source: SourceConfigSource;
+  inventory: SourceInventory | null;
+};
+
+export type SourceInventory = {
+  scanned_count: number;
+  truncated: boolean;
+  media_kind_counts: Record<string, number>;
+  extension_counts: Record<string, number>;
+  sample_items: SourceInventoryItem[];
+  required_model_roles: string[];
+  degraded_model_roles: string[];
+};
+
+export type SourceInventoryItem = {
+  item_uri: string;
+  relative_path: string;
+  media_kind: string;
+  size_bytes: number;
+  modified_at: number;
 };
 
 export type SupportedSourceType = {
@@ -99,6 +163,26 @@ export type ModelRuntimeStatus = {
 
 export type ModelsResponse = {
   models: ModelRuntimeStatus[];
+};
+
+export type AudioTranscriptionModelResponse = {
+  id: string;
+  cached: boolean;
+  configured: boolean;
+};
+
+export type AudioTranscriptionModelsResponse = {
+  enabled: boolean;
+  provider: string;
+  configured_model: string;
+  device: string;
+  compute_type: string;
+  language: string | null;
+  batch_chunks: boolean;
+  max_batch_size: number | null;
+  auto_download: boolean;
+  cache_dir: string | null;
+  models: AudioTranscriptionModelResponse[];
 };
 
 export type IdentityKind = "person" | "speaker";

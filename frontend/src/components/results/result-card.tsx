@@ -2,7 +2,8 @@ import { Button } from "@moritzbrantner/ui";
 import { ImageIcon, Loader2, Trash2 } from "lucide-react";
 import { formatFileSize, formatModifiedAt } from "../../lib/format";
 import type { SearchResult } from "../../types";
-import { AudioLinks, PdfLinks, PhotoMetadataDetails, VideoSceneLinks } from "./media-links";
+import { AudioLinks, PdfLinks, VideoSceneLinks } from "./media-links";
+import { PhotoMetadataDetails } from "./PhotoMetadataDetails";
 import { MediaTagEditor } from "./media-tag-editor";
 import { Metric } from "./metric";
 import {

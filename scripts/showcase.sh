@@ -61,13 +61,6 @@ check_showcase() {
   warn_command pdftoppm
   warn_command pdftotext
 
-  if [[ -d ../rust-packages ]]; then
-    printf 'ok: ../rust-packages is present\n'
-  else
-    printf 'missing: ../rust-packages is required for Rust path dependencies\n' >&2
-    failed=1
-  fi
-
   cargo run --manifest-path backend/Cargo.toml --bin sample_corpus -- check
 
   if [[ -d "$sample_source_dir" && -d "$sample_query_dir" ]]; then

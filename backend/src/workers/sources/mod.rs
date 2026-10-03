@@ -1,3 +1,4 @@
+include!("model.rs");
 include!("types.rs");
 include!("local.rs");
 include!("object_store.rs");

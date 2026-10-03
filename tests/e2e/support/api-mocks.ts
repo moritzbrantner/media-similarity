@@ -52,6 +52,7 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
   const modelEnables: Array<{ model: string | null; role: string }> = [];
   const modelDisables: Array<{ role: string }> = [];
   const sourceConfigPuts: unknown[] = [];
+  const sourceConfigPreviews: unknown[] = [];
   const indexingConfigPuts: unknown[] = [];
   const workflowPuts: unknown[] = [];
   const workflowValidations: unknown[] = [];
@@ -227,6 +228,40 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
     await route.fulfill({ json: completedIndexJob });
   });
 
+  await page.route("**/api/source-config/preview", async (route) => {
+    const request = route.request().postDataJSON() as {
+      limit_per_source?: number;
+      sources?: string[];
+    };
+    sourceConfigPreviews.push(request);
+    await route.fulfill({
+      json: {
+        sources: (request.sources ?? currentSourceConfig.sources.map((source) => source.spec)).map(
+          (spec, index) => ({
+            inventory: {
+              degraded_model_roles: ["visual_embedding"],
+              extension_counts: { ".jpg": 1, ".png": 1 },
+              media_kind_counts: { static_image: 2 },
+              required_model_roles: ["visual_embedding"],
+              sample_items: [
+                {
+                  item_uri: `${spec}/sample.jpg`,
+                  media_kind: "static_image",
+                  modified_at: 1_700_000_000,
+                  relative_path: "sample.jpg",
+                  size_bytes: 1024,
+                },
+              ],
+              scanned_count: 2,
+              truncated: false,
+            },
+            source: completeMockSource(spec, index, "degraded"),
+          }),
+        ),
+      },
+    });
+  });
+
   await page.route("**/api/source-config", async (route) => {
     if (route.request().method() === "PUT") {
       const request = route.request().postDataJSON() as {
@@ -246,13 +281,13 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
         ...currentSourceConfig,
         indexing: request.indexing ?? currentSourceConfig.indexing,
         sources:
-          request.sources?.map((spec) => ({
-            detail: null,
-            kind: spec.includes("://") ? spec.split("://")[0] : "local",
-            spec,
-            status:
+          request.sources?.map((spec, index) =>
+            completeMockSource(
+              spec,
+              index,
               spec.startsWith("video:") || spec.startsWith("camera:") ? "not_implemented" : "ready",
-          })) ?? currentSourceConfig.sources,
+            ),
+          ) ?? currentSourceConfig.sources,
       };
       await route.fulfill({ json: currentSourceConfig });
       return;
@@ -347,6 +382,7 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
     modelDownloads,
     modelEnables,
     sourceConfigPuts,
+    sourceConfigPreviews,
     smartAlbumCreates,
     smartAlbumDeletes,
     smartAlbumUpdates,
@@ -398,6 +434,28 @@ export async function installDefaultApiMocks(page: Page, options: ApiMockOptions
       ),
     });
   }
+}
+
+function completeMockSource(spec: string, index: number, status: string) {
+  const kind = spec.includes("://") ? spec.split("://")[0] : "local";
+  return {
+    capabilities: {
+      enumerates_items: !["camera", "video"].includes(kind),
+      requires_credentials: kind === "s3" || kind === "minio",
+      supports_audio_files: !["camera", "video"].includes(kind),
+      supports_gifs: !["camera", "video"].includes(kind),
+      supports_images: !["camera", "video"].includes(kind),
+      supports_pdfs: !["camera", "video"].includes(kind),
+      supports_video_files: !["camera", "video"].includes(kind),
+    },
+    detail: null,
+    diagnostics: [],
+    id: `src_v1_mock_${index + 1}`,
+    kind,
+    normalized_uri: spec,
+    spec,
+    status,
+  };
 }
 
 export async function mockSearchResponse(page: Page, response: unknown) {

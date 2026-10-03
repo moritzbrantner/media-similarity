@@ -21,6 +21,10 @@ impl ImageSource {
             Self::Unavailable(source) => Err(SourceUnavailable(source.error.clone())),
         }
     }
+
+    pub async fn iter_items(&self) -> Result<Vec<SourceImage>, SourceUnavailable> {
+        self.iter_images().await
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -34,12 +38,14 @@ pub struct UnavailableSource {
 
 #[derive(Clone, Debug)]
 pub struct LocalFolderSource {
+    id: String,
     root: PathBuf,
     extensions: BTreeSet<String>,
 }
 
 #[derive(Clone, Debug)]
 pub struct ObjectStoreSource {
+    id: String,
     scheme: String,
     bucket: String,
     prefix: String,
@@ -65,6 +71,7 @@ enum ObjectSourceKind {
 
 impl LocalFolderSource {
     pub fn new(
+        id: impl Into<String>,
         root: PathBuf,
         image_extensions: BTreeSet<String>,
         audio_extensions: BTreeSet<String>,
@@ -74,7 +81,11 @@ impl LocalFolderSource {
         extensions.extend(video_extensions());
         extensions.extend(audio_extensions);
         extensions.extend(pdf_extensions);
-        Self { root, extensions }
+        Self {
+            id: id.into(),
+            root,
+            extensions,
+        }
     }
 
     pub fn uri(&self) -> String {
@@ -121,6 +132,7 @@ impl LocalFolderSource {
                 .map(|extension| is_pdf_extension(&format!(".{extension}")))
                 .unwrap_or(false);
             images.push(SourceImage {
+                source_id: self.id.clone(),
                 source_type: "local".to_string(),
                 source_uri: self.uri(),
                 item_uri: resolved.to_string_lossy().to_string(),

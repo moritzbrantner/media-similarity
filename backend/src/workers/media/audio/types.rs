@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::thread;
@@ -11,8 +12,9 @@ use audio_analysis_rhythm::{
 use audio_analysis_speakers::{
     EnergyVadConfig, EnergyVoiceActivityDetector, SpeakerAudio, VoiceActivityDetector,
 };
-use text_transcripts::{
-    Transcriber, WhisperCppConfig, WhisperCppModel, WhisperCppModelStore, WhisperCppTranscriber,
+use audio_analysis_transcription::{
+    CandleWhisperOptions, NativeDevicePreference, TranscriptionPipelineRequest,
+    TranscriptionProviderSelection, TranscriptionSource,
 };
 use uuid::Uuid;
 
@@ -23,7 +25,7 @@ use crate::domain::models::{
 };
 use crate::workers::media::image_io::load_image;
 use crate::workers::media::media::{DecodedMedia, MediaFrame, MediaKind};
-use crate::workers::media::models::{audio_transcription_model_store, parse_whisper_cpp_model};
+use crate::workers::media::models::{load_role_bundle, ModelRole};
 use crate::workers::media::voice::{VoiceRegistry, VoiceRegistryMatch};
 
 const SPECTROGRAM_WIDTH: u32 = 512;
@@ -87,6 +89,14 @@ pub fn decode_audio(path: &Path, settings: &Settings) -> Result<DecodedMedia, St
     let duration_ms = audio_duration_ms(path).ok();
     let audio_analysis = analyze_audio(path, settings)?;
     decode_audio_window(path, settings, None, duration_ms, audio_analysis)
+}
+
+pub fn analyze_audio_track_cancellable(
+    path: &Path,
+    settings: &Settings,
+    mut is_cancelled: impl FnMut() -> bool,
+) -> Result<AudioAnalysis, String> {
+    analyze_audio_cancellable(path, settings, &mut is_cancelled)
 }
 
 pub fn decode_audio_segments(

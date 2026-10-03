@@ -1,10 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  fetchWorkflows,
-  resetWorkflows,
-  updateWorkflows,
-  validateWorkflows,
-} from "../../api";
+import { fetchWorkflows, resetWorkflows, updateWorkflows, validateWorkflows } from "../../api";
 import type { WorkflowEditorLibrary, MediaWorkflowNodeData } from "../../types";
 
 export function useWorkflowsController({ workflowsEnabled }: { workflowsEnabled: boolean }) {
@@ -20,8 +15,10 @@ export function useWorkflowsController({ workflowsEnabled }: { workflowsEnabled:
     mutationFn: updateWorkflows,
     onSuccess: (response) => {
       queryClient.setQueryData(["workflows"], response);
+      // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes after a successful workflow mutation.
       queryClient.invalidateQueries({ queryKey: ["health"] });
       queryClient.invalidateQueries({ queryKey: ["source-config"] });
+      // oxlint-enable typescript/no-floating-promises
     },
   });
 
@@ -29,13 +26,16 @@ export function useWorkflowsController({ workflowsEnabled }: { workflowsEnabled:
     mutationFn: resetWorkflows,
     onSuccess: (response) => {
       queryClient.setQueryData(["workflows"], response);
+      // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes after a successful workflow mutation.
       queryClient.invalidateQueries({ queryKey: ["health"] });
       queryClient.invalidateQueries({ queryKey: ["source-config"] });
+      // oxlint-enable typescript/no-floating-promises
     },
   });
 
   const workflowValidateMutation = useMutation({
-    mutationFn: (library: WorkflowEditorLibrary<MediaWorkflowNodeData>) => validateWorkflows(library),
+    mutationFn: (library: WorkflowEditorLibrary<MediaWorkflowNodeData>) =>
+      validateWorkflows(library),
   });
 
   return {

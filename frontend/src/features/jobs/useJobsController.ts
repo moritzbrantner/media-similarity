@@ -1,18 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { cancelJob, fetchJobEvents, fetchJobs, startIndexJob } from "../../api";
 import { jobIsActive, jobIsTerminal, numberFromMetadata, sortJobs } from "../../jobs/job-utils";
 import type { HealthResponse, IndexResponse } from "../../types";
 
-export function useJobsController({
-  healthData,
-}: {
-  healthData?: HealthResponse;
-}) {
+export function useJobsController({ healthData }: { healthData?: HealthResponse }) {
   const queryClient = useQueryClient();
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
-  const [lastIndex, setLastIndex] = useState<IndexResponse | null>(null);
-  const [refreshedModelJobId, setRefreshedModelJobId] = useState<string | null>(null);
+  const refreshedModelJobIdRef = useRef<string | null>(null);
 
   const jobsQuery = useQuery({
     queryKey: ["jobs"],
@@ -29,6 +24,7 @@ export function useJobsController({
     mutationFn: startIndexJob,
     onSuccess: (job) => {
       setSelectedJobId(job.spec.id);
+      // oxlint-disable-next-line typescript/no-floating-promises -- Preserve the existing detached cache refresh after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
     },
   });
@@ -37,8 +33,10 @@ export function useJobsController({
     mutationFn: cancelJob,
     onSuccess: (job) => {
       setSelectedJobId(job.spec.id);
+      // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       queryClient.invalidateQueries({ queryKey: ["job-events", job.spec.id] });
+      // oxlint-enable typescript/no-floating-promises
     },
   });
 
@@ -49,15 +47,9 @@ export function useJobsController({
     refetchInterval: selectedJob && jobIsActive(selectedJob.status) ? 1500 : false,
   });
 
-  useEffect(() => {
-    if (!selectedJobId && jobs.length > 0) {
-      setSelectedJobId(jobs[0].spec.id);
-    }
-  }, [jobs, selectedJobId]);
-
-  useEffect(() => {
+  const lastIndex = useMemo<IndexResponse | null>(() => {
     if (!latestIndexJob || !jobIsTerminal(latestIndexJob.status)) {
-      return;
+      return null;
     }
 
     const indexed = numberFromMetadata(latestIndexJob.metadata.indexed);
@@ -65,10 +57,10 @@ export function useJobsController({
     const skipped = numberFromMetadata(latestIndexJob.metadata.skipped);
     const failed = numberFromMetadata(latestIndexJob.metadata.failed);
     if (indexed === null || skipped === null || failed === null) {
-      return;
+      return null;
     }
 
-    setLastIndex({
+    return {
       collection: latestIndexJob.metadata.collection ?? healthData?.collection ?? "",
       errors: latestIndexJob.logs
         .filter((entry) => entry.level === "Warn" || entry.level === "Error")
@@ -80,28 +72,35 @@ export function useJobsController({
       skipped,
       source_dir: healthData?.source_dir ?? "",
       sources: healthData?.sources ?? [],
-    });
+    };
+  }, [healthData, latestIndexJob]);
 
-    if (latestIndexJob.status === "Succeeded") {
-      queryClient.invalidateQueries({ queryKey: ["health"] });
-      queryClient.invalidateQueries({ queryKey: ["inverse-index"] });
+  useEffect(() => {
+    if (latestIndexJob?.status !== "Succeeded") {
+      return;
     }
-  }, [healthData, latestIndexJob, queryClient]);
+    // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes triggered by terminal job state.
+    queryClient.invalidateQueries({ queryKey: ["health"] });
+    queryClient.invalidateQueries({ queryKey: ["inverse-index"] });
+    // oxlint-enable typescript/no-floating-promises
+  }, [latestIndexJob?.spec.id, latestIndexJob?.status, queryClient]);
 
   useEffect(() => {
     if (
       !latestModelJob ||
       !jobIsTerminal(latestModelJob.status) ||
-      latestModelJob.spec.id === refreshedModelJobId
+      latestModelJob.spec.id === refreshedModelJobIdRef.current
     ) {
       return;
     }
 
-    setRefreshedModelJobId(latestModelJob.spec.id);
+    refreshedModelJobIdRef.current = latestModelJob.spec.id;
+    // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes triggered by terminal model-job state.
     queryClient.invalidateQueries({ queryKey: ["models"] });
     queryClient.invalidateQueries({ queryKey: ["health"] });
     queryClient.invalidateQueries({ queryKey: ["source-config"] });
-  }, [latestModelJob, queryClient, refreshedModelJobId]);
+    // oxlint-enable typescript/no-floating-promises
+  }, [latestModelJob, queryClient]);
 
   const indexActive = Boolean(latestIndexJob && jobIsActive(latestIndexJob.status));
 
@@ -116,7 +115,7 @@ export function useJobsController({
     latestModelJob,
     lastIndex,
     selectedJob,
-    selectedJobId,
+    selectedJobId: selectedJob?.spec.id ?? null,
     setSelectedJobId,
     indexError: indexMutation.error,
   };

@@ -116,7 +116,7 @@ fn generated_artifacts(
 
 fn indexing_profile(settings: &Settings) -> String {
     let profile = IndexingProfile {
-        version: 5,
+        version: 6,
         processing_workflows_hash: settings.processing_workflows_hash.as_deref(),
         photo_metadata_version: "photo-metadata-v1",
         clip_model_name: &settings.clip_model_name,
