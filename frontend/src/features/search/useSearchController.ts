@@ -95,8 +95,10 @@ export function useSearchController() {
     mutationFn: deleteIndexedMedia,
     onSuccess: (_response, id) => {
       removeMediaFromSearchHistory(id);
+      // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["health"] });
       queryClient.invalidateQueries({ queryKey: ["inverse-index"] });
+      // oxlint-enable typescript/no-floating-promises
     },
   });
 
@@ -104,10 +106,12 @@ export function useSearchController() {
     mutationFn: updateIndexedMediaTags,
     onSuccess: (media) => {
       updateMediaInSearchHistory(media);
+      // oxlint-disable-next-line typescript/no-floating-promises -- Preserve the existing detached cache refresh after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["inverse-index"] });
     },
   });
 
+  // oxlint-disable react/set-state-in-effect -- Preview state is synchronized with the browser object-URL lifecycle owned by this effect.
   useEffect(() => {
     if (!file || isPdfFile(file)) {
       setPreviewUrl(null);
@@ -118,6 +122,7 @@ export function useSearchController() {
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [file]);
+  // oxlint-enable react/set-state-in-effect
 
   useEffect(() => {
     saveSearchHistory(searchHistory);

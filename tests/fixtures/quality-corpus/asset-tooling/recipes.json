@@ -1,0 +1,269 @@
+{
+  "version": 1,
+  "name": "asset-tooling-media-quality-v1",
+  "outputDir": "sample-images/quality",
+  "sources": [
+    {
+      "assetId": "at-astronaut",
+      "catalogSourceId": "scikit-image.astronaut",
+      "filename": "sources/asset-tooling-astronaut.png",
+      "title": "Asset-tooling astronaut source",
+      "identity": "scikit-image-astronaut"
+    },
+    {
+      "assetId": "at-camera",
+      "catalogSourceId": "scikit-image.camera",
+      "filename": "sources/asset-tooling-camera.png",
+      "title": "Asset-tooling camera source",
+      "identity": "scikit-image-camera"
+    },
+    {
+      "assetId": "at-brick",
+      "catalogSourceId": "scikit-image.brick",
+      "filename": "sources/asset-tooling-brick.png",
+      "title": "Asset-tooling brick source",
+      "identity": "scikit-image-brick"
+    },
+    {
+      "assetId": "at-grass",
+      "catalogSourceId": "scikit-image.grass",
+      "filename": "sources/asset-tooling-grass.png",
+      "title": "Asset-tooling grass source",
+      "identity": "scikit-image-grass"
+    },
+    {
+      "assetId": "at-gravel",
+      "catalogSourceId": "scikit-image.gravel",
+      "filename": "sources/asset-tooling-gravel.png",
+      "title": "Asset-tooling gravel source",
+      "identity": "scikit-image-gravel"
+    }
+  ],
+  "recipes": [
+    {
+      "id": "crop-resize",
+      "family": "crop-resize",
+      "recipe": {
+        "schemaVersion": 1,
+        "steps": [
+          { "operation": "image.crop", "parameters": { "x": 32, "y": 32, "width": 448, "height": 448 } },
+          { "operation": "image.resize", "parameters": { "width": 512, "height": 512, "filter": "bilinear" } }
+        ]
+      }
+    },
+    {
+      "id": "downscale-upscale",
+      "family": "resample",
+      "recipe": {
+        "schemaVersion": 1,
+        "steps": [
+          { "operation": "image.resize", "parameters": { "width": 160, "height": 160, "filter": "bilinear" } },
+          { "operation": "image.resize", "parameters": { "width": 512, "height": 512, "filter": "bilinear" } }
+        ]
+      }
+    },
+    {
+      "id": "exposure-blur",
+      "family": "photometric-blur",
+      "recipe": {
+        "schemaVersion": 1,
+        "steps": [
+          { "operation": "image.exposure", "parameters": { "numerator": 5, "denominator": 4 } },
+          { "operation": "image.blur", "parameters": { "radius": 1 } }
+        ]
+      }
+    },
+    {
+      "id": "contrast-blur",
+      "family": "photometric-blur",
+      "recipe": {
+        "schemaVersion": 1,
+        "steps": [
+          { "operation": "image.contrast", "parameters": { "numerator": 6, "denominator": 5 } },
+          { "operation": "image.blur", "parameters": { "radius": 1 } }
+        ]
+      }
+    },
+    {
+      "id": "quarter-turn",
+      "family": "rotation",
+      "recipe": {
+        "schemaVersion": 1,
+        "steps": [
+          { "operation": "image.rotate", "parameters": { "quarterTurns": 1 } }
+        ]
+      }
+    },
+    {
+      "id": "border-resample",
+      "family": "border-resample",
+      "recipe": {
+        "schemaVersion": 1,
+        "steps": [
+          { "operation": "image.pad", "parameters": { "left": 24, "right": 24, "top": 24, "bottom": 24, "color": [0, 0, 0, 255] } },
+          { "operation": "image.resize", "parameters": { "width": 512, "height": 512, "filter": "bilinear" } }
+        ]
+      }
+    }
+  ],
+  "queries": [
+    {
+      "assetId": "at-astronaut-crop-resize",
+      "sourceAssetId": "at-astronaut",
+      "recipeId": "crop-resize",
+      "filename": "queries/asset-tooling/astronaut-crop-resize.png",
+      "title": "Astronaut center crop restored to source size",
+      "capability": "deterministic crop and resample robustness"
+    },
+    {
+      "assetId": "at-astronaut-exposure-blur",
+      "sourceAssetId": "at-astronaut",
+      "recipeId": "exposure-blur",
+      "filename": "queries/asset-tooling/astronaut-exposure-blur.png",
+      "title": "Astronaut exposure and blur perturbation",
+      "capability": "deterministic photometric and blur robustness"
+    },
+    {
+      "assetId": "at-camera-crop-resize",
+      "sourceAssetId": "at-camera",
+      "recipeId": "crop-resize",
+      "filename": "queries/asset-tooling/camera-crop-resize.png",
+      "title": "Camera center crop restored to source size",
+      "capability": "deterministic crop and resample robustness"
+    },
+    {
+      "assetId": "at-camera-downscale-upscale",
+      "sourceAssetId": "at-camera",
+      "recipeId": "downscale-upscale",
+      "filename": "queries/asset-tooling/camera-downscale-upscale.png",
+      "title": "Camera downscale and upscale perturbation",
+      "capability": "deterministic resampling robustness"
+    },
+    {
+      "assetId": "at-brick-crop-resize",
+      "sourceAssetId": "at-brick",
+      "recipeId": "crop-resize",
+      "filename": "queries/asset-tooling/brick-crop-resize.png",
+      "title": "Brick center crop restored to source size",
+      "capability": "texture crop robustness"
+    },
+    {
+      "assetId": "at-brick-quarter-turn",
+      "sourceAssetId": "at-brick",
+      "recipeId": "quarter-turn",
+      "filename": "queries/asset-tooling/brick-quarter-turn.png",
+      "title": "Brick quarter-turn perturbation",
+      "capability": "texture rotation robustness"
+    },
+    {
+      "assetId": "at-grass-crop-resize",
+      "sourceAssetId": "at-grass",
+      "recipeId": "crop-resize",
+      "filename": "queries/asset-tooling/grass-crop-resize.png",
+      "title": "Grass center crop restored to source size",
+      "capability": "texture crop robustness"
+    },
+    {
+      "assetId": "at-grass-contrast-blur",
+      "sourceAssetId": "at-grass",
+      "recipeId": "contrast-blur",
+      "filename": "queries/asset-tooling/grass-contrast-blur.png",
+      "title": "Grass contrast and blur perturbation",
+      "capability": "texture photometric robustness"
+    },
+    {
+      "assetId": "at-gravel-crop-resize",
+      "sourceAssetId": "at-gravel",
+      "recipeId": "crop-resize",
+      "filename": "queries/asset-tooling/gravel-crop-resize.png",
+      "title": "Gravel center crop restored to source size",
+      "capability": "texture crop robustness"
+    },
+    {
+      "assetId": "at-gravel-border-resample",
+      "sourceAssetId": "at-gravel",
+      "recipeId": "border-resample",
+      "filename": "queries/asset-tooling/gravel-border-resample.png",
+      "title": "Gravel border and resample perturbation",
+      "capability": "texture border robustness"
+    }
+  ],
+  "audioSources": [
+    {
+      "assetId": "at-tone-440",
+      "filename": "sources/asset-tooling-tone-440.wav",
+      "title": "Deterministic 440 Hz square-wave source",
+      "identity": "synthetic-tone-440",
+      "parameters": { "waveform": "square", "sampleRate": 16000, "channels": 1, "frameCount": 64000, "frequencyHz": 440, "amplitude": 12000 }
+    },
+    {
+      "assetId": "at-tone-445",
+      "filename": "sources/asset-tooling-tone-445.wav",
+      "title": "Deterministic 445 Hz square-wave hard negative",
+      "identity": "synthetic-tone-445",
+      "parameters": { "waveform": "square", "sampleRate": 16000, "channels": 1, "frameCount": 64000, "frequencyHz": 445, "amplitude": 12000 }
+    },
+    {
+      "assetId": "at-tone-880",
+      "filename": "sources/asset-tooling-tone-880.wav",
+      "title": "Deterministic 880 Hz square-wave negative",
+      "identity": "synthetic-tone-880",
+      "parameters": { "waveform": "square", "sampleRate": 16000, "channels": 1, "frameCount": 64000, "frequencyHz": 880, "amplitude": 12000 }
+    }
+  ],
+  "audioRecipes": [
+    {
+      "id": "audio-gain-trim",
+      "family": "audio-gain-trim",
+      "steps": [
+        { "operation": "audio.gain", "parameters": { "numerator": 3, "denominator": 4 } },
+        { "operation": "audio.trim", "parameters": { "startFrame": 8000, "endFrame": 56000 } }
+      ]
+    },
+    {
+      "id": "audio-resample-roundtrip",
+      "family": "audio-resample",
+      "steps": [
+        { "operation": "audio.resample", "parameters": { "sampleRate": 8000 } },
+        { "operation": "audio.resample", "parameters": { "sampleRate": 16000 } }
+      ]
+    },
+    {
+      "id": "audio-seeded-noise-mix",
+      "family": "audio-noise-mix",
+      "noise": { "waveform": "noise", "sampleRate": 16000, "channels": 1, "frameCount": 64000, "amplitude": 1200, "seed": "20260912" },
+      "mix": {
+        "tracks": [
+          { "startFrame": 0, "gainNumerator": 1, "gainDenominator": 1 },
+          { "startFrame": 0, "gainNumerator": 1, "gainDenominator": 1 }
+        ]
+      }
+    }
+  ],
+  "audioQueries": [
+    {
+      "assetId": "at-tone-440-gain-trim",
+      "sourceAssetId": "at-tone-440",
+      "recipeId": "audio-gain-trim",
+      "filename": "queries/asset-tooling/tone-440-gain-trim.wav",
+      "title": "440 Hz source with gain and trim perturbation",
+      "capability": "deterministic audio gain and trim robustness"
+    },
+    {
+      "assetId": "at-tone-440-resample-roundtrip",
+      "sourceAssetId": "at-tone-440",
+      "recipeId": "audio-resample-roundtrip",
+      "filename": "queries/asset-tooling/tone-440-resample-roundtrip.wav",
+      "title": "440 Hz source after 16 kHz to 8 kHz to 16 kHz resampling",
+      "capability": "deterministic audio resampling robustness"
+    },
+    {
+      "assetId": "at-tone-440-seeded-noise",
+      "sourceAssetId": "at-tone-440",
+      "recipeId": "audio-seeded-noise-mix",
+      "filename": "queries/asset-tooling/tone-440-seeded-noise.wav",
+      "title": "440 Hz source mixed with deterministic seeded noise",
+      "capability": "deterministic audio noise robustness"
+    }
+  ]
+}

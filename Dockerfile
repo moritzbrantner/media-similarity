@@ -18,7 +18,12 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends cmake \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=rust-packages . /workspace/rust-packages
+COPY rust-toolchain.toml ./rust-toolchain.toml
+RUN toolchain="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' rust-toolchain.toml)" \
+    && test -n "$toolchain" \
+    && rustup toolchain install "$toolchain" --profile minimal \
+    && test "$(rustc --version | awk '{print $2}')" = "$toolchain"
+
 COPY backend ./backend
 
 RUN cargo build --manifest-path backend/Cargo.toml --bins --release

@@ -2,14 +2,10 @@ name: image-similarity-service
 
 x-api-build: &api-build
   context: .
-  additional_contexts:
-    rust-packages: ../rust-packages
   target: api-runtime
 
 x-web-build: &web-build
   context: .
-  additional_contexts:
-    rust-packages: ../rust-packages
   target: web-runtime
 
 x-api-environment: &api-environment
@@ -88,7 +84,6 @@ services:
     command: ["cargo", "test"]
     volumes:
       - .:/workspace/image-similarity-service
-      - ../rust-packages:/workspace/rust-packages:ro
 
   seed-data:
     profiles: ["seed"]

@@ -88,6 +88,7 @@ export function SourceConfigurationPage({
 }) {
   const [drafts, setDrafts] = useState<SourceDraft[]>([]);
 
+  // oxlint-disable react/set-state-in-effect -- Preserve the existing server-config-to-draft conversion, including fresh local draft identities.
   useEffect(() => {
     if (!config) {
       return;
@@ -101,6 +102,7 @@ export function SourceConfigurationPage({
       })),
     );
   }, [config]);
+  // oxlint-enable react/set-state-in-effect
 
   function updateDraft(id: string, patch: Partial<SourceDraft>) {
     setDrafts((current) =>

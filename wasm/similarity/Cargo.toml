@@ -1,0 +1,12 @@
+[package]
+name = "media-similarity-wasm"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+wasm-bindgen = "0.2"

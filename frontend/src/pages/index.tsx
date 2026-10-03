@@ -38,6 +38,7 @@ export function SearchRoute() {
           ocrTextQuery: searchController.ocrTextQuery,
           sortMode: searchController.resultSortMode,
         });
+        // oxlint-disable-next-line typescript/no-floating-promises -- Preserve the existing fire-and-forget route transition from this UI event.
         navigate("/albums");
       }}
       onSearchSubmit={searchController.handleSubmit}
