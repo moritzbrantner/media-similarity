@@ -109,6 +109,11 @@ export function useSearchController() {
     onSuccess: (_response, id) => {
       removeMediaFromSearchHistory(id);
       updateFaceResponse((response) => removeResultFromFaceResponse(response, id));
+      // Person scores are aggregated server-side from individual faces, so refresh the
+      // face search to replace the locally pruned summaries with recomputed ones.
+      if (faceSearchMutation.variables && faceSearchData) {
+        faceSearchMutation.mutate(faceSearchMutation.variables);
+      }
       // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["health"] });
       queryClient.invalidateQueries({ queryKey: ["inverse-index"] });

@@ -47,6 +47,8 @@ This workspace did not have model bundles cached under `data/models/bundles`, so
 
 ## Results Table
 
+This table is the face-identity subset (the `*-face` searches) of the command's output, recorded in June 2026 against the corpus manifest of that time. The current manifest also contains visual searches such as `static-image-overlay`, so a fresh run emits additional rows; rerun the command for the full, current table.
+
 | pair_id | expected | left | right | active_visual_model | active_visual_degraded | active_visual_cosine | legacy_color_cosine | face_model_cosine | notes |
 | --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | --- |
 | barack-obama-face--same--barack-obama-president | same_person:barack-obama | sample-images/quality/queries/barack-obama-query.jpg | sample-images/quality/sources/barack-obama-president.jpg | legacy-fallback:sentence-transformers/clip-ViT-B-32 | true | 1.000000 | 1.000000 |  | face models inactive |
