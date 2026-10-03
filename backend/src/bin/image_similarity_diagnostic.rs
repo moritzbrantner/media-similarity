@@ -75,6 +75,8 @@ fn run() -> Result<(), String> {
     );
     println!("| --- | --- | --- | --- | --- | --- | ---: | ---: | ---: | --- |");
 
+    let total_pairs = pairs.len();
+    let mut failed_pairs = 0usize;
     for pair in pairs {
         let result = score_pair(
             &pair,
@@ -86,19 +88,27 @@ fn run() -> Result<(), String> {
         );
         match result {
             Ok(row) => println!("{}", row.to_markdown()),
-            Err(error) => println!(
-                "| {} | {} | {} | {} | {} | {} |  |  |  | {} |",
-                escape_table(&pair.id),
-                escape_table(&pair.expected),
-                escape_table(&pair.left.display().to_string()),
-                escape_table(&pair.right.display().to_string()),
-                escape_table(active_visual.model_name()),
-                active_visual.is_degraded(),
-                escape_table(&error)
-            ),
+            Err(error) => {
+                failed_pairs += 1;
+                println!(
+                    "| {} | {} | {} | {} | {} | {} |  |  |  | {} |",
+                    escape_table(&pair.id),
+                    escape_table(&pair.expected),
+                    escape_table(&pair.left.display().to_string()),
+                    escape_table(&pair.right.display().to_string()),
+                    escape_table(active_visual.model_name()),
+                    active_visual.is_degraded(),
+                    escape_table(&error)
+                );
+            }
         }
     }
 
+    if failed_pairs > 0 {
+        return Err(format!(
+            "{failed_pairs} of {total_pairs} diagnostic pairs could not be scored"
+        ));
+    }
     Ok(())
 }
 
