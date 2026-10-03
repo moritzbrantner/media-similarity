@@ -20,7 +20,7 @@ fn main() {
 
 fn run() -> Result<(), String> {
     let args = Args::parse(env::args().skip(1).collect::<Vec<_>>())?;
-    let settings = Settings::from_env().unwrap_or_default();
+    let settings = Settings::from_env()?;
     let pairs = if let Some(path) = &args.pairs {
         load_private_pairs(path)?
     } else {
@@ -176,6 +176,17 @@ struct QualityAsset {
     id: String,
     filename: String,
     identity: String,
+    kind: Option<String>,
+}
+
+impl QualityAsset {
+    /// Only still images and GIFs go through the image decoder this diagnostic scores.
+    fn is_visual(&self) -> bool {
+        matches!(
+            self.kind.as_deref(),
+            None | Some("static_image" | "animated_gif")
+        )
+    }
 }
 
 #[derive(Deserialize)]
@@ -204,10 +215,16 @@ fn load_quality_pairs(
         let query = assets
             .get(&search.query_asset)
             .ok_or_else(|| format!("missing query asset `{}`", search.query_asset))?;
+        if !query.is_visual() {
+            continue;
+        }
         for expected_id in &search.expected_top_k {
             let expected = assets
                 .get(expected_id)
                 .ok_or_else(|| format!("missing expected asset `{expected_id}`"))?;
+            if !expected.is_visual() {
+                continue;
+            }
             pairs.push(DiagnosticPair {
                 id: format!("{}--same--{}", search.id, expected.id),
                 expected: format!("same_person:{}", query.identity),
@@ -219,6 +236,9 @@ fn load_quality_pairs(
             let non_match = assets
                 .get(non_match_id)
                 .ok_or_else(|| format!("missing non-match asset `{non_match_id}`"))?;
+            if !non_match.is_visual() {
+                continue;
+            }
             pairs.push(DiagnosticPair {
                 id: format!("{}--different--{}", search.id, non_match.id),
                 expected: format!(
@@ -321,10 +341,21 @@ fn score_pair(
     })?;
     let mut notes = Vec::new();
 
-    let active_left =
+    let degraded_before = active_visual.is_degraded();
+    let mut active_left =
         active_visual.embed_media(&left.sampled_frames, settings.gif_motion_weight)?;
     let active_right =
         active_visual.embed_media(&right.sampled_frames, settings.gif_motion_weight)?;
+    if active_visual.is_degraded() != degraded_before {
+        // The fallback embedder switched backends mid-pair; a cosine between an ONNX
+        // vector and a legacy color vector is meaningless, so embed both sides again
+        // with the backend that is now active.
+        active_left =
+            active_visual.embed_media(&left.sampled_frames, settings.gif_motion_weight)?;
+        notes.push(
+            "active visual backend degraded during this pair; re-embedded both sides".to_string(),
+        );
+    }
     let legacy_left =
         legacy_visual.embed_media(&left.sampled_frames, settings.gif_motion_weight)?;
     let legacy_right =
