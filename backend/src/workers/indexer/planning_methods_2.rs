@@ -86,11 +86,186 @@ impl ImageIndexer {
         })
     }
 
+    async fn plan_changed_local_sources(
+        &self,
+        changes: &LocalIndexChanges,
+    ) -> Result<SourceIndexPlan, String> {
+        if changes.full_rescan() {
+            return self.plan_sources().await;
+        }
+
+        let sources = build_image_sources(&self.settings);
+        let source_uris = sources
+            .iter()
+            .map(|source| source.uri())
+            .collect::<Vec<_>>();
+
+        self.store.ensure_collection().await?;
+        let indexing_profile = indexing_profile(&self.settings);
+        let ledger = IndexingLedger::load(&self.settings.indexing_ledger_file);
+        let ledger_sources = ledger.active_run.as_ref().map(|run| &run.sources);
+        let normalized_changes = changes
+            .paths()
+            .iter()
+            .map(|path| {
+                (
+                    normalize_local_change_path(path),
+                    changes.is_recursive(path) || path.is_dir(),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let mut pending = Vec::new();
+        let mut already_indexed = 0;
+        let mut skipped = 0;
+        let mut errors = Vec::new();
+        let mut prune_point_ids = Vec::new();
+
+        for source in &sources {
+            let Some(root) = source.local_root() else {
+                continue;
+            };
+            let normalized_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+            let affected = normalized_changes
+                .iter()
+                .filter(|(path, _)| path == &normalized_root || path.starts_with(&normalized_root))
+                .cloned()
+                .collect::<Vec<_>>();
+            if affected.is_empty() {
+                continue;
+            }
+
+            let affected_paths = affected
+                .iter()
+                .map(|(path, _)| path.clone())
+                .collect::<BTreeSet<_>>();
+            let images = match source.iter_local_paths(&affected_paths) {
+                Ok(images) => images,
+                Err(SourceUnavailable(error)) => {
+                    skipped += 1;
+                    errors.push(error);
+                    continue;
+                }
+            };
+            let scanned_source_items = images
+                .iter()
+                .map(|image| image.item_uri.clone())
+                .collect::<BTreeSet<_>>();
+            let recursive_scopes = affected
+                .iter()
+                .filter(|(_, recursive)| *recursive)
+                .map(|(path, _)| path.clone())
+                .collect::<Vec<_>>();
+            let mut indexed_sources = BTreeMap::<String, Vec<IndexedSourceRecord>>::new();
+
+            if !recursive_scopes.is_empty() {
+                let source_uri = source.uri();
+                let records = self.indexed_source_records_from_points(
+                    self.store
+                        .scroll_media_points_by_filter(None, Some(&source_uri), None)
+                        .await?,
+                );
+                indexed_sources.extend(records.into_iter().filter(|(source_item_uri, _)| {
+                    recursive_scopes
+                        .iter()
+                        .any(|scope| source_item_matches_scope(source_item_uri, scope))
+                }));
+            }
+
+            let mut exact_item_uris = images
+                .iter()
+                .map(|image| image.item_uri.clone())
+                .collect::<BTreeSet<_>>();
+            for (path, recursive) in &affected {
+                if !recursive {
+                    exact_item_uris.insert(path.to_string_lossy().to_string());
+                }
+            }
+
+            for source_item_uri in exact_item_uris {
+                if indexed_sources.contains_key(&source_item_uri) {
+                    continue;
+                }
+                let records = self.indexed_source_records_from_points(
+                    self.store
+                        .scroll_media_points_by_filter(None, None, Some(&source_item_uri))
+                        .await?,
+                );
+                if let Some(records) = records.get(&source_item_uri) {
+                    indexed_sources.insert(source_item_uri, records.clone());
+                }
+            }
+
+            for source_image in images {
+                let indexed_records = indexed_sources
+                    .get(&source_image.item_uri)
+                    .cloned()
+                    .unwrap_or_default();
+                let ledger_source = ledger_sources
+                    .and_then(|sources| sources.get(&source_image.item_uri))
+                    .filter(|ledger_source| {
+                        ledger_source.matches_source(&source_image, &indexing_profile)
+                    });
+                let is_current = source_current_for_plan(
+                    ledger_source,
+                    &indexed_records,
+                    &source_image,
+                    &indexing_profile,
+                );
+                if is_current {
+                    already_indexed += 1;
+                    prune_point_ids.extend(
+                        indexed_records
+                            .iter()
+                            .filter(|record| {
+                                !record_is_current(record, &source_image, &indexing_profile)
+                            })
+                            .map(|record| record.point_id.clone()),
+                    );
+                } else {
+                    pending.push(PendingSource {
+                        source_image,
+                        indexed_point_ids: indexed_records
+                            .iter()
+                            .map(|record| record.point_id.clone())
+                            .collect(),
+                    });
+                }
+            }
+
+            prune_point_ids.extend(
+                indexed_sources
+                    .iter()
+                    .filter(|(source_item_uri, _)| !scanned_source_items.contains(*source_item_uri))
+                    .flat_map(|(_, records)| records.iter().map(|record| record.point_id.clone())),
+            );
+        }
+
+        prune_point_ids.sort();
+        prune_point_ids.dedup();
+        errors.truncate(50);
+        Ok(SourceIndexPlan {
+            source_uris,
+            pending,
+            already_indexed,
+            skipped,
+            prune_point_ids,
+            errors,
+        })
+    }
+
     async fn indexed_source_records(
         &self,
     ) -> Result<BTreeMap<String, Vec<IndexedSourceRecord>>, String> {
+        Ok(self.indexed_source_records_from_points(self.store.scroll_media_points().await?))
+    }
+
+    fn indexed_source_records_from_points(
+        &self,
+        points: Vec<crate::storage::StoredPoint>,
+    ) -> BTreeMap<String, Vec<IndexedSourceRecord>> {
         let mut records = BTreeMap::<String, Vec<IndexedSourceRecord>>::new();
-        for point in self.store.scroll_media_points().await? {
+        for point in points {
             let Some(payload) = point.payload else {
                 continue;
             };
@@ -115,7 +290,7 @@ impl ImageIndexer {
                     analysis_complete: payload_analysis_complete(&payload, &self.settings),
                 });
         }
-        Ok(records)
+        records
     }
 
     async fn index_one(
@@ -320,6 +495,15 @@ impl ImageIndexer {
         }
         Ok(outcome)
     }
+}
+
+fn normalize_local_change_path(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn source_item_matches_scope(source_item_uri: &str, scope: &Path) -> bool {
+    let source_item_path = Path::new(source_item_uri);
+    source_item_path == scope || source_item_path.starts_with(scope)
 }
 
 fn source_current_for_plan(

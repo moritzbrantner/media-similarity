@@ -10,8 +10,9 @@ use tokio::sync::mpsc;
 use tokio::time::{self, Instant, MissedTickBehavior};
 use uuid::Uuid;
 
-use crate::api::{run_index_job, AppState};
+use crate::api::{run_watch_index_job, AppState};
 use crate::config::Settings;
+use crate::workers::indexer::LocalIndexChanges;
 use crate::workers::sources::{build_image_sources, video_extensions};
 
 const WATCH_RESCAN_INTERVAL: Duration = Duration::from_secs(5);
@@ -48,7 +49,7 @@ async fn watch_local_sources(state: Arc<AppState>) -> Result<(), String> {
     let mut debounce_tick = time::interval(DEBOUNCE_POLL_INTERVAL);
     debounce_tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
-    let mut pending_paths = BTreeSet::new();
+    let mut pending_changes = LocalIndexChanges::default();
     let mut last_event_at: Option<Instant> = None;
 
     loop {
@@ -61,11 +62,13 @@ async fn watch_local_sources(state: Arc<AppState>) -> Result<(), String> {
                     Ok(event) => {
                         let settings = state.indexing_settings();
                         if event_may_affect_index(&event, &settings) {
-                            for path in event.paths {
-                                pending_paths.insert(path);
-                            }
-                            if pending_paths.is_empty() {
-                                pending_paths.insert(PathBuf::from("<unknown>"));
+                            if event.paths.is_empty() {
+                                pending_changes.require_full_rescan();
+                            } else {
+                                let recursive = event_requires_recursive_scope(event.kind);
+                                for path in event.paths {
+                                    pending_changes.record(path, recursive);
+                                }
                             }
                             last_event_at = Some(Instant::now());
                         }
@@ -85,7 +88,7 @@ async fn watch_local_sources(state: Arc<AppState>) -> Result<(), String> {
                 if last_event.elapsed() < debounce {
                     continue;
                 }
-                if pending_paths.is_empty() {
+                if pending_changes.is_empty() {
                     last_event_at = None;
                     continue;
                 }
@@ -95,14 +98,15 @@ async fn watch_local_sources(state: Arc<AppState>) -> Result<(), String> {
                     continue;
                 }
 
-                match spawn_watch_index_job(&state, &pending_paths) {
+                match spawn_watch_index_job(&state, &pending_changes) {
                     Ok(snapshot) => {
                         tracing::info!(
                             job_id = %snapshot.spec.id,
-                            changed_paths = pending_paths.len(),
+                            changed_paths = pending_changes.len(),
+                            full_rescan = pending_changes.full_rescan(),
                             "queued file watcher indexing job"
                         );
-                        pending_paths.clear();
+                        pending_changes = LocalIndexChanges::default();
                         last_event_at = None;
                     }
                     Err(error) => {
@@ -207,10 +211,11 @@ fn index_job_is_active(state: &AppState) -> bool {
 
 fn spawn_watch_index_job(
     state: &Arc<AppState>,
-    changed_paths: &BTreeSet<PathBuf>,
+    changes: &LocalIndexChanges,
 ) -> Result<JobSnapshot, String> {
     let settings = state.indexing_settings();
-    let sample_paths = changed_paths
+    let sample_paths = changes
+        .paths()
         .iter()
         .take(MAX_SAMPLE_PATHS)
         .map(|path| path.to_string_lossy())
@@ -223,15 +228,17 @@ fn spawn_watch_index_job(
     .and_then(|spec| spec.with_kind("index.watch"))
     .and_then(|spec| spec.with_metadata("collection", settings.qdrant_collection.clone()))
     .and_then(|spec| spec.with_metadata("trigger", "file_watch"))
-    .and_then(|spec| spec.with_metadata("changed_paths", changed_paths.len().to_string()))
+    .and_then(|spec| spec.with_metadata("changed_paths", changes.len().to_string()))
+    .and_then(|spec| spec.with_metadata("full_rescan", changes.full_rescan().to_string()))
     .and_then(|spec| spec.with_metadata("sample_paths", sample_paths))
     .map_err(|error| error.to_string())?;
     let jobs = state.jobs.clone();
     let store = state.store.clone();
     let embedder = state.embedder.clone();
+    let changes = changes.clone();
 
     jobs.spawn(spec, move |context| {
-        run_index_job(context, settings, store, embedder)
+        run_watch_index_job(context, settings, store, embedder, changes)
     })
     .map_err(|error| error.to_string())
 }
@@ -273,10 +280,21 @@ fn path_may_affect_index(path: &Path, kind: EventKind, extensions: &BTreeSet<Str
 
     matches!(
         kind,
-        EventKind::Create(CreateKind::Any | CreateKind::Folder)
+        EventKind::Any
+            | EventKind::Create(CreateKind::Any | CreateKind::Folder)
             | EventKind::Remove(RemoveKind::Any | RemoveKind::Folder)
             | EventKind::Modify(ModifyKind::Name(_))
-    ) && path.extension().is_none()
+    )
+}
+
+fn event_requires_recursive_scope(kind: EventKind) -> bool {
+    matches!(
+        kind,
+        EventKind::Any
+            | EventKind::Create(CreateKind::Any | CreateKind::Folder)
+            | EventKind::Remove(RemoveKind::Any | RemoveKind::Folder)
+            | EventKind::Modify(ModifyKind::Name(_))
+    )
 }
 
 fn path_has_indexable_extension(path: &Path, extensions: &BTreeSet<String>) -> bool {
@@ -343,7 +361,7 @@ mod tests {
         };
         let directory_rename = notify::Event {
             kind: EventKind::Modify(ModifyKind::Name(RenameMode::Both)),
-            paths: vec![PathBuf::from("/images/album")],
+            paths: vec![PathBuf::from("/images/album.2026")],
             attrs: Default::default(),
         };
 

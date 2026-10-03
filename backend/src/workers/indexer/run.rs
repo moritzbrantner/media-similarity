@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::Future;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -36,6 +37,46 @@ use crate::workers::workflows::{
     compile_media_workflow, default_media_workflow_library, load_media_workflow_library,
     validate_media_workflow_library, CompiledMediaWorkflow, MediaFileKind, WorkflowMode,
 };
+
+#[derive(Clone, Debug, Default)]
+pub(crate) struct LocalIndexChanges {
+    paths: BTreeSet<PathBuf>,
+    recursive_paths: BTreeSet<PathBuf>,
+    full_rescan: bool,
+}
+
+impl LocalIndexChanges {
+    pub(crate) fn record(&mut self, path: PathBuf, recursive: bool) {
+        if recursive {
+            self.recursive_paths.insert(path.clone());
+        }
+        self.paths.insert(path);
+    }
+
+    pub(crate) fn require_full_rescan(&mut self) {
+        self.full_rescan = true;
+    }
+
+    pub(crate) fn paths(&self) -> &BTreeSet<PathBuf> {
+        &self.paths
+    }
+
+    pub(crate) fn is_recursive(&self, path: &Path) -> bool {
+        self.recursive_paths.contains(path)
+    }
+
+    pub(crate) fn full_rescan(&self) -> bool {
+        self.full_rescan
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.paths.len()
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.paths.is_empty() && !self.full_rescan
+    }
+}
 
 #[derive(Clone)]
 pub struct ImageIndexer {

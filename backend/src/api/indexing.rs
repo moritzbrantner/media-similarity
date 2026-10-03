@@ -10,7 +10,7 @@ use super::{ApiError, AppState};
 use crate::config::Settings;
 use crate::domain::models::IndexResponse;
 use crate::storage::MediaVectorStore;
-use crate::workers::indexer::ImageIndexer;
+use crate::workers::indexer::{ImageIndexer, LocalIndexChanges};
 use crate::workers::media::models::model_statuses;
 use crate::workers::media::visual_embedding::VisualEmbeddingBackend;
 
@@ -73,7 +73,31 @@ pub(crate) fn run_index_job(
     store: Arc<dyn MediaVectorStore>,
     embedder: Arc<dyn VisualEmbeddingBackend>,
 ) -> jobs_core::Result<()> {
-    context.info("checking indexed media sources")?;
+    run_index_job_with_changes(context, settings, store, embedder, None)
+}
+
+pub(crate) fn run_watch_index_job(
+    context: JobContext,
+    settings: Settings,
+    store: Arc<dyn MediaVectorStore>,
+    embedder: Arc<dyn VisualEmbeddingBackend>,
+    changes: LocalIndexChanges,
+) -> jobs_core::Result<()> {
+    run_index_job_with_changes(context, settings, store, embedder, Some(changes))
+}
+
+fn run_index_job_with_changes(
+    context: JobContext,
+    settings: Settings,
+    store: Arc<dyn MediaVectorStore>,
+    embedder: Arc<dyn VisualEmbeddingBackend>,
+    changes: Option<LocalIndexChanges>,
+) -> jobs_core::Result<()> {
+    if changes.is_some() {
+        context.info("checking changed local media source items")?;
+    } else {
+        context.info("checking indexed media sources")?;
+    }
     for status in model_statuses(&settings)
         .into_iter()
         .filter(|status| status.blocking)
@@ -88,7 +112,12 @@ pub(crate) fn run_index_job(
         .build()
         .map_err(job_failed)?;
     let indexer = ImageIndexer::new(settings, store, embedder);
-    let response = runtime.block_on(indexer.index_missing_sources(Some(&context)));
+    let response = match changes {
+        Some(changes) => {
+            runtime.block_on(indexer.index_changed_local_sources(&changes, Some(&context)))
+        }
+        None => runtime.block_on(indexer.index_missing_sources(Some(&context))),
+    };
 
     for error in &response.errors {
         context.warn(error.clone())?;
