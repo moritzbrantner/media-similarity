@@ -18,10 +18,17 @@ FORBIDDEN_IMPORTS = (
     "video_analysis_",
     "text_transcripts",
     "text_analysis_core",
+    "text_model_runtime",
     "model_runtime",
+    "runtime_core",
     "runtime_onnx",
     "vector_analysis_core",
 )
+
+# Every first-party `moenarch-*` package is a capability or runtime implementation
+# unless explicitly listed here as a platform primitive the domain may use.
+CAPABILITY_PACKAGE_PREFIX = "moenarch-"
+DOMAIN_ALLOWED_PACKAGES = frozenset({"moenarch-jobs-core"})
 
 # Comments and literals are blanked out before scanning so prose and strings never
 # count as dependencies. Line structure is preserved for accurate reporting.
@@ -96,11 +103,19 @@ def strip_comments_and_literals(text: str) -> str:
     return "".join(chars)
 
 
+def is_capability_package(package: str) -> bool:
+    if package in DOMAIN_ALLOWED_PACKAGES:
+        return False
+    normalized = package.removeprefix(CAPABILITY_PACKAGE_PREFIX).replace("-", "_")
+    return package.startswith(CAPABILITY_PACKAGE_PREFIX) or normalized.startswith(FORBIDDEN_IMPORTS)
+
+
 def capability_crate_aliases(manifest: Path = CARGO_MANIFEST) -> frozenset[str]:
     """Rust names under which Cargo exposes forbidden capability packages.
 
     A dependency key may rename a package (`rt = { package = "moenarch-runtime-onnx" }`),
-    so the forbidden identifiers are derived from the declared package names.
+    so the forbidden identifiers are derived from the declared package names: every
+    `moenarch-*` package outside DOMAIN_ALLOWED_PACKAGES, plus the known capability names.
     """
     if not manifest.exists():
         return frozenset()
@@ -113,8 +128,7 @@ def capability_crate_aliases(manifest: Path = CARGO_MANIFEST) -> frozenset[str]:
     for table in tables:
         for key, spec in table.items():
             package = spec.get("package", key) if isinstance(spec, dict) else key
-            normalized = package.removeprefix("moenarch-").replace("-", "_")
-            if normalized.startswith(FORBIDDEN_IMPORTS):
+            if is_capability_package(package):
                 aliases.add(key.replace("-", "_"))
     return frozenset(aliases)
 

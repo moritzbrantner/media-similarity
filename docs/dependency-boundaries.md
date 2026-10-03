@@ -36,4 +36,4 @@ Run:
 python3 scripts/check_dependency_boundaries.py
 ```
 
-The guard blocks direct capability implementation imports from the domain layer. It is intentionally about dependency direction, not a raw dependency-count limit.
+The guard blocks direct capability implementation imports from the domain layer. It treats every `moenarch-*` dependency declared in `backend/Cargo.toml` as a capability implementation (under whatever Rust name the dependency key gives it) unless the script's `DOMAIN_ALLOWED_PACKAGES` lists it as a platform primitive. It is intentionally about dependency direction, not a raw dependency-count limit.
