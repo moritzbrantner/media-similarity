@@ -7,6 +7,7 @@ import {
 } from "./support/api-mocks";
 import {
   audioUpload,
+  faceSearchResponse,
   gifUpload,
   historyStorageKey,
   imageUpload,
@@ -236,4 +237,34 @@ test("handles all query media preview types", async ({ page }) => {
 
   await page.locator("#query-image").setInputFiles(pdfUpload);
   await expect(page.getByText("PDF query selected")).toBeVisible();
+});
+
+test("keeps face matches current after tag edits and deletion", async ({ page }) => {
+  const mocks = await resetApiMocks(page);
+  let faceSearches = 0;
+  await page.route("**/api/search/face?**", async (route) => {
+    faceSearches += 1;
+    await route.fulfill({
+      json:
+        mocks.deletedMediaIds.length === 0
+          ? faceSearchResponse
+          : { ...faceSearchResponse, people: [], results: [] },
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Face" }).click();
+  await page.locator("#query-image").setInputFiles(imageUpload);
+  await page.getByRole("button", { name: "Search" }).click();
+  const card = resultCard(page, "portrait.png");
+  await expect(card).toBeVisible();
+  await card.getByRole("textbox", { name: "Tags for portrait.png" }).fill("identity-match");
+  await card.getByRole("button", { name: "Save tags for portrait.png" }).click();
+  await expect(card.getByText("identity-match", { exact: true })).toBeVisible();
+  page.on("dialog", (dialog) => dialog.accept());
+  await card.getByRole("button", { name: /Delete portrait\.png/ }).click();
+  await expect.poll(() => mocks.deletedMediaIds).toEqual(["import-portrait"]);
+  await expect.poll(() => faceSearches).toBe(2);
+  await expect(page.getByRole("heading", { name: "portrait.png" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Ada" })).toHaveCount(0);
+  await expect(page.getByText("0 people, 0 media match(es)")).toBeVisible();
 });

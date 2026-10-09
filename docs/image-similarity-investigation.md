@@ -65,7 +65,7 @@ This scheme has no face detection, face crop, learned identity representation, o
 
 The configured visual model is a general image embedding model. Defaults set `clip_model_name` to `sentence-transformers/clip-ViT-B-32`, visual backend to `onnx`, and visual vector size to 512 at [backend/src/config/defaults.rs:128](../backend/src/config/defaults.rs). The active model bundle spec uses `ImageEmbeddingPreset::XenovaClipVitBasePatch32Onnx` at [backend/src/workers/media/models.rs:122](../backend/src/workers/media/models.rs).
 
-The sibling image embedding crate identifies that preset as Xenova CLIP ViT-B/32 and selects `onnx/vision_model_quantized.onnx` or `onnx/vision_model.onnx` from `Xenova/clip-vit-base-patch32` in `../../rust-packages/t3code-0ed65866/crates/image/image-analysis-embeddings/src/lib.rs:68`.
+The sibling image embedding crate identifies that preset as Xenova CLIP ViT-B/32 and selects `onnx/vision_model_quantized.onnx` or `onnx/vision_model.onnx` from `Xenova/clip-vit-base-patch32` in [the pinned visual capability source](https://github.com/moritzbrantner/visual-analysis/blob/d341c668f1baa14cd3d4e99c8ce8f5d39e43a974/crates/image/image-analysis-embeddings/src/lib.rs#L88).
 
 CLIP-style image embeddings are useful for broad visual/contextual similarity, but they are not face-identity embeddings. They embed the full frame as loaded by `ImageSearchService`, with no face detection or crop in the ordinary media upload path at [backend/src/workers/search.rs:105](../backend/src/workers/search.rs).
 
@@ -85,7 +85,7 @@ Qdrant uses cosine distance for both named vectors at [backend/src/storage/qdran
 
 Legacy visual vectors are L2-normalized in `ImageEmbedder::encode` and multi-frame media encoding at [backend/src/workers/media/embedder.rs:81](../backend/src/workers/media/embedder.rs). The trait-level multi-frame ONNX path also normalizes after weighted averaging at [backend/src/workers/media/visual_embedding.rs:57](../backend/src/workers/media/visual_embedding.rs).
 
-The sibling crate's current `OnnxImageEmbedder` default also normalizes single-image outputs: `OnnxImageEmbeddingOptions::default` sets `normalize: true`, and `embed_image` calls `normalize_vector` before returning the embedding in `../../rust-packages/t3code-0ed65866/crates/image/image-analysis-embeddings/src/lib.rs:380` and `../../rust-packages/t3code-0ed65866/crates/image/image-analysis-embeddings/src/lib.rs:546`.
+The sibling crate's current `OnnxImageEmbedder` default also normalizes single-image outputs: `OnnxImageEmbeddingOptions::default` sets `normalize: true`, and `embed_image` calls `normalize_vector` before returning the embedding in [the default normalization options](https://github.com/moritzbrantner/visual-analysis/blob/d341c668f1baa14cd3d4e99c8ce8f5d39e43a974/crates/image/image-analysis-embeddings/src/lib.rs#L392) and [the single-image embedding path](https://github.com/moritzbrantner/visual-analysis/blob/d341c668f1baa14cd3d4e99c8ce8f5d39e43a974/crates/image/image-analysis-embeddings/src/lib.rs#L552).
 
 The service itself does not assert or record vector norms at storage/query boundaries, so a future dependency or config change could regress normalization without a local guard.
 
