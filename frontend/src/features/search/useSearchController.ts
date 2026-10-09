@@ -106,6 +106,13 @@ export function useSearchController() {
       : (faceSearchData ?? faceEdits?.response ?? null);
 
   const [deleteWarning, setDeleteWarning] = useState<Error | null>(null);
+  // Clear only after the observer response has committed, so callbacks in the same
+  // settlement batch still refresh after tag writes against the previous source.
+  useEffect(() => {
+    if (!faceSearchMutation.isPending) {
+      faceRefreshPending.current = false;
+    }
+  }, [faceSearchMutation.data, faceSearchMutation.isPending]);
   const deleteMediaMutation = useMutation({
     mutationFn: async (id: string) => {
       const response = await deleteIndexedMedia(id);
@@ -297,11 +304,7 @@ export function useSearchController() {
       return;
     }
     faceRefreshPending.current = true;
-    faceSearchMutation.mutate(faceSearchMutation.variables, {
-      onSettled: () => {
-        faceRefreshPending.current = false;
-      },
-    });
+    faceSearchMutation.mutate(faceSearchMutation.variables);
   }
 
   function resetDeletionFeedback() {
