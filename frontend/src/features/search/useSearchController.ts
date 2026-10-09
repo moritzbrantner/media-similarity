@@ -36,6 +36,12 @@ import {
 import { isAudioFile, isPdfFile } from "../../lib/media";
 import type { FaceSearchResponse, IdentityMutationResponse, SearchResult } from "../../types";
 
+type FaceSearchVariables = {
+  filters: MetadataFilters;
+  queryFile: File;
+  resultLimit: number;
+};
+
 export function useSearchController() {
   const queryClient = useQueryClient();
 
@@ -43,6 +49,7 @@ export function useSearchController() {
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [metadataFilters, setMetadataFilters] = useState<MetadataFilters>(DEFAULT_METADATA_FILTERS);
   const [ocrTextQuery, setOcrTextQuery] = useState("");
+  const activeFaceQuery = useRef<FaceSearchVariables | null>(null);
   const faceRefreshPending = useRef(false);
   const faceQueryGeneration = useRef(0);
   const [searchMode, setSearchMode] = useState<SearchMode>("media");
@@ -84,15 +91,8 @@ export function useSearchController() {
   });
 
   const faceSearchMutation = useMutation({
-    mutationFn: ({
-      filters,
-      queryFile,
-      resultLimit,
-    }: {
-      filters: MetadataFilters;
-      queryFile: File;
-      resultLimit: number;
-    }) => searchFaceMedia(queryFile, resultLimit, filters),
+    mutationFn: ({ filters, queryFile, resultLimit }: FaceSearchVariables) =>
+      searchFaceMedia(queryFile, resultLimit, filters),
   });
   // Face results are not stored in search history, so delete/tag edits are layered
   // over the current face search response until the next face search replaces it.
@@ -135,6 +135,9 @@ export function useSearchController() {
         if (faceSearchMutation.variables && faceResponse) {
           refreshFaceResults();
         }
+      } else {
+        // The write is global; reconcile the current query without restoring the old one.
+        refreshFaceResults();
       }
       // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["health"] });
@@ -154,6 +157,9 @@ export function useSearchController() {
         if (faceRefreshPending.current && faceSearchMutation.variables && faceResponse) {
           refreshFaceResults();
         }
+      } else {
+        // The write is global; reconcile the current query without restoring the old one.
+        refreshFaceResults();
       }
       // oxlint-disable-next-line typescript/no-floating-promises -- Preserve the existing detached cache refresh after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["inverse-index"] });
@@ -214,11 +220,9 @@ export function useSearchController() {
       searchMutation.reset();
       faceRefreshPending.current = false;
       setFaceEdits(null);
-      faceSearchMutation.mutate({
-        filters: metadataFilters,
-        queryFile: file,
-        resultLimit: limit,
-      });
+      const variables = { filters: metadataFilters, queryFile: file, resultLimit: limit };
+      activeFaceQuery.current = variables;
+      faceSearchMutation.mutate(variables);
       return;
     }
 
@@ -308,15 +312,17 @@ export function useSearchController() {
   }
 
   function refreshFaceResults() {
-    if (!faceSearchMutation.variables) {
+    const variables = activeFaceQuery.current;
+    if (!variables) {
       return;
     }
     faceRefreshPending.current = true;
-    faceSearchMutation.mutate(faceSearchMutation.variables);
+    faceSearchMutation.mutate(variables);
   }
 
   function resetDeletionFeedback() {
     faceQueryGeneration.current += 1;
+    activeFaceQuery.current = null;
     deleteMediaMutation.reset();
     setDeleteWarning(null);
   }

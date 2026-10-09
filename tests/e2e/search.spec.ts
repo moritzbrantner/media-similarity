@@ -518,17 +518,28 @@ test("prunes successfully deleted face media while surfacing cleanup errors", as
 });
 
 for (const mutation of ["delete", "tag"] as const) {
-  for (const interaction of ["new query", "same mode"] as const) {
+  for (const interaction of ["new query", "same mode", "submitted query"] as const) {
     test(`handles ${interaction} during a pending face ${mutation}`, async ({ page }) => {
       await resetApiMocks(page);
       let searches = 0;
+      let writeCompleted = false;
       await page.route("**/api/search/face?**", async (route) => {
         searches += 1;
         await route.fulfill({
-          json:
-            searches === 1
-              ? faceSearchResponse
-              : { ...faceSearchResponse, people: [], results: [] },
+          json: !writeCompleted
+            ? faceSearchResponse
+            : mutation === "delete"
+              ? { ...faceSearchResponse, people: [], results: [] }
+              : {
+                  ...faceSearchResponse,
+                  results: faceSearchResponse.results.map((match) => ({
+                    ...match,
+                    result: {
+                      ...match.result,
+                      image: { ...match.result.image, tags: ["old-query-edit"] },
+                    },
+                  })),
+                },
         });
       });
       let release = () => {};
@@ -546,6 +557,7 @@ for (const mutation of ["delete", "tag"] as const) {
       await page.route(endpoint, async (route) => {
         requestStarted();
         await gate;
+        writeCompleted = true;
         await route.fulfill({
           json:
             mutation === "delete"
@@ -572,8 +584,13 @@ for (const mutation of ["delete", "tag"] as const) {
         await card.getByRole("button", { name: "Save tags for portrait.png" }).click();
       }
       await started;
-      if (interaction === "new query") {
+      if (interaction !== "same mode") {
         await page.locator("#query-image").setInputFiles(gifUpload);
+        if (interaction === "submitted query") {
+          await page.getByRole("button", { name: "Search", exact: true }).click();
+          await expect.poll(() => searches).toBe(2);
+          await expect(card).toBeVisible();
+        }
       } else {
         await page.getByRole("button", { name: "Face", exact: true }).click();
       }
@@ -590,7 +607,7 @@ for (const mutation of ["delete", "tag"] as const) {
             requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
           ),
       );
-      if (interaction === "same mode" && mutation === "tag") {
+      if (interaction !== "new query" && mutation === "tag") {
         await expect(card.getByText("old-query-edit", { exact: true })).toBeVisible();
       } else {
         await expect(page.getByRole("heading", { name: "portrait.png" })).toHaveCount(0);
@@ -598,7 +615,13 @@ for (const mutation of ["delete", "tag"] as const) {
       await expect(page.getByRole("button", { name: "Search", exact: true })).toBeEnabled();
       await expect
         .poll(() => searches)
-        .toBe(interaction === "same mode" && mutation === "delete" ? 2 : 1);
+        .toBe(
+          interaction === "submitted query"
+            ? 3
+            : interaction === "same mode" && mutation === "delete"
+              ? 2
+              : 1,
+        );
     });
   }
 }
