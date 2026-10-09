@@ -404,7 +404,8 @@ export function useSearchController() {
     searchHistoryQuery,
     searchMutation,
     searchMode,
-    searchPending: searchMutation.isPending || faceSearchMutation.isPending,
+    searchPending:
+      searchMutation.isPending || (faceSearchMutation.isPending && faceResponse === null),
     selectedQuerySceneIndex,
     setSelectedQuerySceneIndex,
     setOcrTextQuery,

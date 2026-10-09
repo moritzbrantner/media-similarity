@@ -676,3 +676,56 @@ for (const mutation of ["delete", "tag"] as const) {
     });
   }
 }
+
+test("preserves an unsaved tag draft throughout background face refresh", async ({ page }) => {
+  await resetApiMocks(page);
+  const survivors = faceSearchResponse.results.map((match) => ({
+    ...match,
+    matched_face_ids: ["face-2"],
+    result: {
+      ...match.result,
+      image: { ...match.result.image, id: "survivor", filename: "survivor.png" },
+    },
+  }));
+  let searches = 0;
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let refreshStarted = () => {};
+  const started = new Promise<void>((resolve) => {
+    refreshStarted = resolve;
+  });
+  await page.route("**/api/search/face?**", async (route) => {
+    searches += 1;
+    if (searches === 2) {
+      refreshStarted();
+      await gate;
+    }
+    await route.fulfill({
+      json: {
+        ...faceSearchResponse,
+        results: searches === 1 ? [...faceSearchResponse.results, ...survivors] : survivors,
+      },
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Face" }).click();
+  await page.locator("#query-image").setInputFiles(imageUpload);
+  await page.getByRole("button", { name: "Search" }).click();
+  const draft = resultCard(page, "survivor.png").getByRole("textbox", {
+    name: "Tags for survivor.png",
+  });
+  await draft.fill("unsaved-draft");
+  page.on("dialog", (dialog) => dialog.accept());
+  await resultCard(page, "portrait.png")
+    .getByRole("button", { name: /Delete portrait\.png/ })
+    .click();
+  await started;
+  await expect(draft).toHaveValue("unsaved-draft");
+  await expect(page.getByRole("heading", { name: "Ada", exact: true })).toHaveCount(0);
+  release();
+  await expect(page.getByRole("heading", { name: "Ada", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "portrait.png" })).toHaveCount(0);
+  await expect(draft).toHaveValue("unsaved-draft");
+});
