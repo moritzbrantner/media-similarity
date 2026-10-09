@@ -385,6 +385,9 @@ test("keeps face results when deletion reports storage errors", async ({ page })
   await expect(page.getByText("Qdrant unavailable")).toBeVisible();
   await expect(card).toBeVisible();
   expect(faceSearches).toBe(1);
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect.poll(() => faceSearches).toBe(2);
+  await expect(page.getByText("Qdrant unavailable")).toHaveCount(0);
 });
 
 test("refreshes again when a tag write finishes during a deletion refresh", async ({ page }) => {
@@ -463,4 +466,37 @@ test("refreshes again when a tag write finishes during a deletion refresh", asyn
   await expect(second.getByText("latest-tag", { exact: true })).toBeVisible();
   releaseStale();
   await expect(second.getByText("latest-tag", { exact: true })).toBeVisible();
+});
+
+test("prunes successfully deleted face media while surfacing cleanup errors", async ({ page }) => {
+  await resetApiMocks(page);
+  let searches = 0;
+  await page.route("**/api/search/face?**", async (route) => {
+    searches += 1;
+    await route.fulfill({
+      json:
+        searches === 1 ? faceSearchResponse : { ...faceSearchResponse, people: [], results: [] },
+    });
+  });
+  await page.route("**/api/indexed-media/*", (route) =>
+    route.fulfill({
+      json: {
+        deleted_points: 1,
+        deleted_faces: 0,
+        deleted_artifacts: 0,
+        errors: ["Artifact cleanup failed"],
+      },
+    }),
+  );
+  await page.goto("/");
+  await page.getByRole("button", { name: "Face" }).click();
+  await page.locator("#query-image").setInputFiles(imageUpload);
+  await page.getByRole("button", { name: "Search" }).click();
+  const card = resultCard(page, "portrait.png");
+  await expect(card).toBeVisible();
+  page.on("dialog", (dialog) => dialog.accept());
+  await card.getByRole("button", { name: /Delete portrait\.png/ }).click();
+  await expect.poll(() => searches).toBe(2);
+  await expect(page.getByRole("heading", { name: "portrait.png" })).toHaveCount(0);
+  await expect(page.getByText("Artifact cleanup failed")).toBeVisible();
 });

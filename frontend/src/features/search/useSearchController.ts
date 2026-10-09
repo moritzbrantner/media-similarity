@@ -104,15 +104,18 @@ export function useSearchController() {
       ? faceEdits.response
       : (faceSearchData ?? faceEdits?.response ?? null);
 
+  const [deleteWarning, setDeleteWarning] = useState<Error | null>(null);
   const deleteMediaMutation = useMutation({
     mutationFn: async (id: string) => {
       const response = await deleteIndexedMedia(id);
-      if (response.errors.length > 0) {
+      if (response.deleted_points === 0 && response.errors.length > 0) {
         throw new Error(response.errors.join("; "));
       }
       return response;
     },
-    onSuccess: (_response, id) => {
+    onMutate: () => setDeleteWarning(null),
+    onSuccess: (result, id) => {
+      setDeleteWarning(result.errors.length > 0 ? new Error(result.errors.join("; ")) : null);
       removeMediaFromSearchHistory(id);
       updateFaceResponse((response) => removeResultFromFaceResponse(response, id));
       // Person scores are aggregated server-side from individual faces, so refresh the
@@ -185,6 +188,7 @@ export function useSearchController() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    resetDeletionFeedback();
 
     if (searchMode === "face") {
       if (!file) {
@@ -225,6 +229,7 @@ export function useSearchController() {
   }
 
   function handleFileChange(nextFile: File | null) {
+    resetDeletionFeedback();
     setFile(nextFile);
     setActiveSearchId(null);
     setSelectedQuerySceneIndex(null);
@@ -250,6 +255,7 @@ export function useSearchController() {
   }
 
   function handleHistorySelect(item: SearchHistoryItem) {
+    resetDeletionFeedback();
     setActiveSearchId(item.id);
     setLimit(item.limit);
     setMetadataFilters(item.filters);
@@ -279,6 +285,11 @@ export function useSearchController() {
     updateSearchHistory((history) =>
       history.map((item) => (item.id === activeSearchId ? updater(item) : item)),
     );
+  }
+
+  function resetDeletionFeedback() {
+    deleteMediaMutation.reset();
+    setDeleteWarning(null);
   }
 
   function updateFaceResponse(updater: (response: FaceSearchResponse) => FaceSearchResponse) {
@@ -334,7 +345,11 @@ export function useSearchController() {
     resultSortMode,
     results,
     faceResponse,
-    searchError: faceSearchMutation.error ?? searchMutation.error ?? deleteMediaMutation.error,
+    searchError:
+      faceSearchMutation.error ??
+      searchMutation.error ??
+      deleteMediaMutation.error ??
+      deleteWarning,
     searchHistory,
     searchHistoryQuery,
     searchMutation,
@@ -344,7 +359,10 @@ export function useSearchController() {
     setSelectedQuerySceneIndex,
     setOcrTextQuery,
     setResultSortMode,
-    setSearchMode,
+    setSearchMode: (mode: SearchMode) => {
+      resetDeletionFeedback();
+      setSearchMode(mode);
+    },
     setLimit,
     setMetadataFilters,
     setActiveSearchId,
