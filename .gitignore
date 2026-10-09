@@ -18,3 +18,4 @@ test-results/
 storybook-static/
 .unlighthouse/
 .artifacts/
+experiments/**/*.local.json

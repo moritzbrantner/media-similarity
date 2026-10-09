@@ -1,5 +1,5 @@
 import type { FormEvent } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   SearchHistoryItem,
@@ -11,7 +11,9 @@ import type {
 import { createQueryPreview } from "../../search/preview";
 import {
   applyIdentityMutationToHistory,
+  removeResultFromFaceResponse,
   removeResultFromResponse,
+  updateMediaInFaceResponse,
   updateMediaInResponse,
   loadSearchHistory,
   saveSearchHistory,
@@ -32,7 +34,13 @@ import {
   updateIndexedMediaTags,
 } from "../../api";
 import { isAudioFile, isPdfFile } from "../../lib/media";
-import type { IdentityMutationResponse, SearchResult } from "../../types";
+import type { FaceSearchResponse, IdentityMutationResponse, SearchResult } from "../../types";
+
+type FaceSearchVariables = {
+  filters: MetadataFilters;
+  queryFile: File;
+  resultLimit: number;
+};
 
 export function useSearchController() {
   const queryClient = useQueryClient();
@@ -41,6 +49,13 @@ export function useSearchController() {
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [metadataFilters, setMetadataFilters] = useState<MetadataFilters>(DEFAULT_METADATA_FILTERS);
   const [ocrTextQuery, setOcrTextQuery] = useState("");
+  const activeFaceQuery = useRef<FaceSearchVariables | null>(null);
+  const currentFaceSnapshot = useRef<{
+    source: FaceSearchResponse;
+    response: FaceSearchResponse;
+  } | null>(null);
+  const faceRefreshPending = useRef(false);
+  const faceQueryGeneration = useRef(0);
   const [searchMode, setSearchMode] = useState<SearchMode>("media");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [resultSortMode, setResultSortMode] = useState<ResultSortMode>(DEFAULT_RESULT_SORT);
@@ -80,21 +95,63 @@ export function useSearchController() {
   });
 
   const faceSearchMutation = useMutation({
-    mutationFn: ({
-      filters,
-      queryFile,
-      resultLimit,
-    }: {
-      filters: MetadataFilters;
-      queryFile: File;
-      resultLimit: number;
-    }) => searchFaceMedia(queryFile, resultLimit, filters),
+    mutationFn: ({ filters, queryFile, resultLimit }: FaceSearchVariables) =>
+      searchFaceMedia(queryFile, resultLimit, filters),
   });
+  // Face results are not stored in search history, so delete/tag edits are layered
+  // over the current face search response until the next face search replaces it.
+  const [faceEdits, setFaceEdits] = useState<{
+    source: FaceSearchResponse;
+    response: FaceSearchResponse;
+  } | null>(null);
+  const faceSearchData = faceSearchMutation.data;
+  const faceResponse =
+    faceSearchData && faceEdits?.source === faceSearchData
+      ? faceEdits.response
+      : (faceSearchData ?? faceEdits?.response ?? null);
 
+  useEffect(() => {
+    currentFaceSnapshot.current = faceResponse
+      ? {
+          source: faceSearchData ?? faceEdits?.source ?? faceResponse,
+          response: faceResponse,
+        }
+      : null;
+  }, [faceResponse, faceSearchData, faceEdits?.source]);
+
+  const [deleteWarning, setDeleteWarning] = useState<Error | null>(null);
+  // Clear only after the observer response has committed, so callbacks in the same
+  // settlement batch still refresh after tag writes against the previous source.
+  useEffect(() => {
+    if (!faceSearchMutation.isPending) {
+      faceRefreshPending.current = false;
+    }
+  }, [faceSearchMutation.data, faceSearchMutation.isPending]);
   const deleteMediaMutation = useMutation({
-    mutationFn: deleteIndexedMedia,
-    onSuccess: (_response, id) => {
+    mutationFn: async (id: string) => {
+      const response = await deleteIndexedMedia(id);
+      if (response.deleted_points === 0 && response.errors.length > 0) {
+        throw new Error(response.errors.join("; "));
+      }
+      return response;
+    },
+    onMutate: () => {
+      setDeleteWarning(null);
+      return { faceGeneration: faceQueryGeneration.current };
+    },
+    onSuccess: (result, id, context) => {
       removeMediaFromSearchHistory(id);
+      updateFaceResponse((response) => removeResultFromFaceResponse(response, id));
+      if (context?.faceGeneration === faceQueryGeneration.current) {
+        setDeleteWarning(result.errors.length > 0 ? new Error(result.errors.join("; ")) : null);
+        // Person scores are aggregated server-side from individual faces.
+        if (faceSearchMutation.variables && faceResponse) {
+          refreshFaceResults();
+        }
+      } else {
+        // The write is global; reconcile the current query without restoring the old one.
+        refreshFaceResults();
+      }
       // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["health"] });
       queryClient.invalidateQueries({ queryKey: ["inverse-index"] });
@@ -104,8 +161,19 @@ export function useSearchController() {
 
   const updateMediaTagsMutation = useMutation({
     mutationFn: updateIndexedMediaTags,
-    onSuccess: (media) => {
+    onMutate: () => ({ faceGeneration: faceQueryGeneration.current }),
+    onSuccess: (media, _variables, context) => {
       updateMediaInSearchHistory(media);
+      updateFaceResponse((response) => updateMediaInFaceResponse(response, media));
+      if (context?.faceGeneration === faceQueryGeneration.current) {
+        // A pending refresh may have read the index before this tag write completed.
+        if (faceRefreshPending.current && faceSearchMutation.variables && faceResponse) {
+          refreshFaceResults();
+        }
+      } else {
+        // The write is global; reconcile the current query without restoring the old one.
+        refreshFaceResults();
+      }
       // oxlint-disable-next-line typescript/no-floating-promises -- Preserve the existing detached cache refresh after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["inverse-index"] });
     },
@@ -155,6 +223,7 @@ export function useSearchController() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    resetDeletionFeedback();
 
     if (searchMode === "face") {
       if (!file) {
@@ -162,11 +231,11 @@ export function useSearchController() {
       }
       setActiveSearchId(null);
       searchMutation.reset();
-      faceSearchMutation.mutate({
-        filters: metadataFilters,
-        queryFile: file,
-        resultLimit: limit,
-      });
+      faceRefreshPending.current = false;
+      setFaceEdits(null);
+      const variables = { filters: metadataFilters, queryFile: file, resultLimit: limit };
+      activeFaceQuery.current = variables;
+      faceSearchMutation.mutate(variables);
       return;
     }
 
@@ -175,6 +244,8 @@ export function useSearchController() {
     }
 
     setActiveSearchId(null);
+    faceRefreshPending.current = false;
+    setFaceEdits(null);
     faceSearchMutation.reset();
     const queryImageUrl = file
       ? file.type.startsWith("video/") || isAudioFile(file) || isPdfFile(file)
@@ -193,10 +264,13 @@ export function useSearchController() {
   }
 
   function handleFileChange(nextFile: File | null) {
+    resetDeletionFeedback();
     setFile(nextFile);
     setActiveSearchId(null);
     setSelectedQuerySceneIndex(null);
     searchMutation.reset();
+    faceRefreshPending.current = false;
+    setFaceEdits(null);
     faceSearchMutation.reset();
   }
 
@@ -217,6 +291,7 @@ export function useSearchController() {
   }
 
   function handleHistorySelect(item: SearchHistoryItem) {
+    resetDeletionFeedback();
     setActiveSearchId(item.id);
     setLimit(item.limit);
     setMetadataFilters(item.filters);
@@ -224,6 +299,8 @@ export function useSearchController() {
     setResultSortMode(item.sortMode);
     setSelectedQuerySceneIndex(item.response.scenes[0]?.scene_index ?? null);
     searchMutation.reset();
+    faceRefreshPending.current = false;
+    setFaceEdits(null);
     faceSearchMutation.reset();
   }
 
@@ -245,6 +322,35 @@ export function useSearchController() {
     updateSearchHistory((history) =>
       history.map((item) => (item.id === activeSearchId ? updater(item) : item)),
     );
+  }
+
+  function refreshFaceResults() {
+    const variables = activeFaceQuery.current;
+    if (!variables) {
+      return;
+    }
+    updateFaceResponse((response) => response);
+    faceRefreshPending.current = true;
+    faceSearchMutation.mutate(variables);
+  }
+
+  function resetDeletionFeedback() {
+    faceQueryGeneration.current += 1;
+    activeFaceQuery.current = null;
+    currentFaceSnapshot.current = null;
+    deleteMediaMutation.reset();
+    setDeleteWarning(null);
+  }
+
+  function updateFaceResponse(updater: (response: FaceSearchResponse) => FaceSearchResponse) {
+    const snapshot = currentFaceSnapshot.current;
+    if (!snapshot) {
+      return;
+    }
+    setFaceEdits((current) => ({
+      source: snapshot.source,
+      response: updater(current?.source === snapshot.source ? current.response : snapshot.response),
+    }));
   }
 
   function removeMediaFromSearchHistory(id: string) {
@@ -288,18 +394,32 @@ export function useSearchController() {
     queryClient,
     resultSortMode,
     results,
-    faceResponse: faceSearchMutation.data ?? null,
-    searchError: faceSearchMutation.error ?? searchMutation.error,
+    faceResponse,
+    searchError:
+      deleteMediaMutation.error ??
+      deleteWarning ??
+      faceSearchMutation.error ??
+      searchMutation.error,
     searchHistory,
     searchHistoryQuery,
     searchMutation,
     searchMode,
-    searchPending: searchMutation.isPending || faceSearchMutation.isPending,
+    searchPending:
+      searchMutation.isPending || (faceSearchMutation.isPending && faceResponse === null),
     selectedQuerySceneIndex,
     setSelectedQuerySceneIndex,
     setOcrTextQuery,
     setResultSortMode,
-    setSearchMode,
+    setSearchMode: (mode: SearchMode) => {
+      if (mode === searchMode) {
+        return;
+      }
+      resetDeletionFeedback();
+      faceRefreshPending.current = false;
+      setFaceEdits(null);
+      faceSearchMutation.reset();
+      setSearchMode(mode);
+    },
     setLimit,
     setMetadataFilters,
     setActiveSearchId,
