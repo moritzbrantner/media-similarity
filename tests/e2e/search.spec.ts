@@ -268,3 +268,42 @@ test("keeps face matches current after tag edits and deletion", async ({ page })
   await expect(page.getByRole("heading", { name: "Ada" })).toHaveCount(0);
   await expect(page.getByText("0 people, 0 media match(es)")).toBeVisible();
 });
+
+test("preserves surviving face matches when the post-delete refresh fails", async ({ page }) => {
+  const mocks = await resetApiMocks(page);
+  let faceSearches = 0;
+  const survivingResults = faceSearchResponse.results.map((match) => ({
+    ...match,
+    result: {
+      ...match.result,
+      image: { ...match.result.image, id: "survivor", filename: "survivor.png" },
+    },
+  }));
+  await page.route("**/api/search/face?**", async (route) => {
+    faceSearches += 1;
+    if (faceSearches > 1) {
+      await route.fulfill({ status: 503, json: { error: "refresh unavailable" } });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        ...faceSearchResponse,
+        results: [...faceSearchResponse.results, ...survivingResults],
+      },
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Face" }).click();
+  await page.locator("#query-image").setInputFiles(imageUpload);
+  await page.getByRole("button", { name: "Search" }).click();
+  await expect(resultCard(page, "survivor.png")).toBeVisible();
+  page.on("dialog", (dialog) => dialog.accept());
+  await resultCard(page, "portrait.png")
+    .getByRole("button", { name: /Delete portrait\.png/ })
+    .click();
+  await expect.poll(() => mocks.deletedMediaIds).toEqual(["import-portrait"]);
+  await expect.poll(() => faceSearches).toBe(2);
+  await expect(page.getByText("refresh unavailable")).toBeVisible();
+  await expect(resultCard(page, "survivor.png")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "portrait.png" })).toHaveCount(0);
+});

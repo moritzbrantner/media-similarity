@@ -102,7 +102,7 @@ export function useSearchController() {
   const faceResponse =
     faceSearchData && faceEdits?.source === faceSearchData
       ? faceEdits.response
-      : (faceSearchData ?? null);
+      : (faceSearchData ?? faceEdits?.response ?? null);
 
   const deleteMediaMutation = useMutation({
     mutationFn: deleteIndexedMedia,
@@ -111,7 +111,7 @@ export function useSearchController() {
       updateFaceResponse((response) => removeResultFromFaceResponse(response, id));
       // Person scores are aggregated server-side from individual faces, so refresh the
       // face search to replace the locally pruned summaries with recomputed ones.
-      if (faceSearchMutation.variables && faceSearchData) {
+      if (faceSearchMutation.variables && faceResponse) {
         faceSearchMutation.mutate(faceSearchMutation.variables);
       }
       // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes after a successful mutation.
@@ -182,6 +182,7 @@ export function useSearchController() {
       }
       setActiveSearchId(null);
       searchMutation.reset();
+      setFaceEdits(null);
       faceSearchMutation.mutate({
         filters: metadataFilters,
         queryFile: file,
@@ -195,6 +196,7 @@ export function useSearchController() {
     }
 
     setActiveSearchId(null);
+    setFaceEdits(null);
     faceSearchMutation.reset();
     const queryImageUrl = file
       ? file.type.startsWith("video/") || isAudioFile(file) || isPdfFile(file)
@@ -217,6 +219,7 @@ export function useSearchController() {
     setActiveSearchId(null);
     setSelectedQuerySceneIndex(null);
     searchMutation.reset();
+    setFaceEdits(null);
     faceSearchMutation.reset();
   }
 
@@ -244,6 +247,7 @@ export function useSearchController() {
     setResultSortMode(item.sortMode);
     setSelectedQuerySceneIndex(item.response.scenes[0]?.scene_index ?? null);
     searchMutation.reset();
+    setFaceEdits(null);
     faceSearchMutation.reset();
   }
 
@@ -268,13 +272,13 @@ export function useSearchController() {
   }
 
   function updateFaceResponse(updater: (response: FaceSearchResponse) => FaceSearchResponse) {
-    if (!faceSearchData) {
+    if (!faceResponse) {
       return;
     }
-    setFaceEdits((current) => ({
-      source: faceSearchData,
-      response: updater(current?.source === faceSearchData ? current.response : faceSearchData),
-    }));
+    setFaceEdits({
+      source: faceSearchData ?? faceEdits?.source ?? faceResponse,
+      response: updater(faceResponse),
+    });
   }
 
   function removeMediaFromSearchHistory(id: string) {

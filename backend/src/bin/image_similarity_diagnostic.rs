@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 use std::env;
 use std::path::{Path, PathBuf};
+use std::sync::{mpsc, Arc};
+use std::time::Duration;
 
 use image_similarity_service::config::Settings;
 use image_similarity_service::workers::media::faces::{
@@ -37,6 +39,10 @@ fn run() -> Result<(), String> {
         load_quality_pairs(manifest, image_root)?
     };
 
+    if pairs.is_empty() {
+        return Err("no scoreable diagnostic pairs".to_string());
+    }
+
     let active_visual = build_visual_embedder(&settings);
     let legacy_visual = LegacyColorEmbedder::new(
         format!("legacy-diagnostic:{}", settings.clip_model_name),
@@ -45,7 +51,7 @@ fn run() -> Result<(), String> {
     let face_detection_status = model_status(ModelRole::FaceDetection, &settings);
     let face_embedding_status = model_status(ModelRole::FaceEmbedding, &settings);
     let face_active = face_detection_status.active && face_embedding_status.active;
-    let face_scorers = face_active.then(|| FaceScorers::new(&settings));
+    let face_scorers = face_active.then(|| Arc::new(FaceScorers::new(&settings)));
 
     println!("# Image Similarity Diagnostic");
     println!();
@@ -338,7 +344,7 @@ fn score_pair(
     settings: &Settings,
     active_visual: &dyn VisualEmbeddingBackend,
     legacy_visual: &LegacyColorEmbedder,
-    face_scorers: Option<&FaceScorers>,
+    face_scorers: Option<&Arc<FaceScorers>>,
 ) -> Result<PairRow, String> {
     let left = load_media(&pair.left, settings)
         .map_err(|error| format!("could not load left image {}: {error}", pair.left.display()))?;
@@ -370,13 +376,17 @@ fn score_pair(
     let legacy_right =
         legacy_visual.embed_media(&right.sampled_frames, settings.gif_motion_weight)?;
     let face_model_cosine = if let Some(scorers) = face_scorers {
-        let query_face = selected_face_embedding(&scorers.detector, &scorers.embedder, &left)
-            .map_err(|error| format!("face model error on query: {error}"))?;
-        let target_faces = scorers
-            .target_analyzer
-            .analyze(&right, "diagnostic-target")
-            .map_err(|error| format!("face model error on target: {error}"))?;
-        match best_target_face_score(query_face.as_deref(), &target_faces) {
+        let scorers = Arc::clone(scorers);
+        let comparison = bounded_face_score(Duration::from_secs(30), move || {
+            let query_face = selected_face_embedding(&scorers.detector, &scorers.embedder, &left)
+                .map_err(|error| format!("face model error on query: {error}"))?;
+            let target_faces = scorers
+                .target_analyzer
+                .analyze(&right, "diagnostic-target")
+                .map_err(|error| format!("face model error on target: {error}"))?;
+            Ok(best_target_face_score(query_face.as_deref(), &target_faces))
+        })?;
+        match comparison {
             FaceComparison::Score(score) => Some(score),
             FaceComparison::NoQueryFace => {
                 notes.push("left face not detected".to_string());
@@ -404,6 +414,27 @@ fn score_pair(
         face_model_cosine,
         notes,
     })
+}
+
+fn bounded_face_score(
+    timeout: Duration,
+    score: impl FnOnce() -> Result<FaceComparison, String> + Send + 'static,
+) -> Result<FaceComparison, String> {
+    let (sender, receiver) = mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = sender.send(score());
+    });
+    receiver
+        .recv_timeout(timeout)
+        .map_err(|error| match error {
+            mpsc::RecvTimeoutError::Timeout => format!(
+                "face model analysis timed out after {} seconds",
+                timeout.as_secs()
+            ),
+            mpsc::RecvTimeoutError::Disconnected => {
+                "face model analysis worker disconnected".to_string()
+            }
+        })?
 }
 
 struct FaceScorers {
@@ -509,6 +540,15 @@ mod tests {
             person_id: None,
             person_label: None,
         }
+    }
+
+    #[test]
+    fn face_scoring_timeout_returns_without_waiting_for_stalled_worker() {
+        let result = super::bounded_face_score(std::time::Duration::from_millis(1), || {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            Ok(super::FaceComparison::NoQueryFace)
+        });
+        assert!(result.unwrap_err().contains("timed out"));
     }
 
     #[test]

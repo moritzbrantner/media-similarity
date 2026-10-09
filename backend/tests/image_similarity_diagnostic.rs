@@ -102,3 +102,19 @@ fn diagnostic_fails_when_active_face_inference_configuration_cannot_run() {
         .unwrap()
         .contains("face model error"));
 }
+
+#[test]
+fn diagnostic_rejects_an_empty_corpus() {
+    let fixture = DiagnosticFixture::new();
+    fs::write(fixture.root.join("empty.json"), b"{\"pairs\":[]}").unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_image_similarity_diagnostic"))
+        .current_dir(&fixture.root)
+        .env_clear()
+        .args(["--pairs", "empty.json"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8(output.stderr)
+        .unwrap()
+        .contains("no scoreable diagnostic pairs"));
+}
