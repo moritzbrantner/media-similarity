@@ -105,7 +105,13 @@ export function useSearchController() {
       : (faceSearchData ?? faceEdits?.response ?? null);
 
   const deleteMediaMutation = useMutation({
-    mutationFn: deleteIndexedMedia,
+    mutationFn: async (id: string) => {
+      const response = await deleteIndexedMedia(id);
+      if (response.errors.length > 0) {
+        throw new Error(response.errors.join("; "));
+      }
+      return response;
+    },
     onSuccess: (_response, id) => {
       removeMediaFromSearchHistory(id);
       updateFaceResponse((response) => removeResultFromFaceResponse(response, id));
@@ -126,6 +132,10 @@ export function useSearchController() {
     onSuccess: (media) => {
       updateMediaInSearchHistory(media);
       updateFaceResponse((response) => updateMediaInFaceResponse(response, media));
+      // A pending refresh may have read the index before this tag write completed.
+      if (faceSearchMutation.isPending && faceSearchMutation.variables && faceResponse) {
+        faceSearchMutation.mutate(faceSearchMutation.variables);
+      }
       // oxlint-disable-next-line typescript/no-floating-promises -- Preserve the existing detached cache refresh after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["inverse-index"] });
     },
@@ -324,7 +334,7 @@ export function useSearchController() {
     resultSortMode,
     results,
     faceResponse,
-    searchError: faceSearchMutation.error ?? searchMutation.error,
+    searchError: faceSearchMutation.error ?? searchMutation.error ?? deleteMediaMutation.error,
     searchHistory,
     searchHistoryQuery,
     searchMutation,

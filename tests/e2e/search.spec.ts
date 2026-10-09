@@ -356,3 +356,111 @@ test("keeps both face-result edits when tag saves finish together", async ({ pag
   await expect(first.getByText("first-edited", { exact: true })).toBeVisible();
   await expect(second.getByText("second-edited", { exact: true })).toBeVisible();
 });
+
+test("keeps face results when deletion reports storage errors", async ({ page }) => {
+  await resetApiMocks(page);
+  let faceSearches = 0;
+  await page.route("**/api/search/face?**", async (route) => {
+    faceSearches += 1;
+    await route.fulfill({ json: faceSearchResponse });
+  });
+  await page.route("**/api/indexed-media/*", (route) =>
+    route.fulfill({
+      json: {
+        deleted_points: 0,
+        deleted_faces: 0,
+        deleted_artifacts: 0,
+        errors: ["Qdrant unavailable"],
+      },
+    }),
+  );
+  await page.goto("/");
+  await page.getByRole("button", { name: "Face" }).click();
+  await page.locator("#query-image").setInputFiles(imageUpload);
+  await page.getByRole("button", { name: "Search" }).click();
+  const card = resultCard(page, "portrait.png");
+  await expect(card).toBeVisible();
+  page.on("dialog", (dialog) => dialog.accept());
+  await card.getByRole("button", { name: /Delete portrait\.png/ }).click();
+  await expect(page.getByText("Qdrant unavailable")).toBeVisible();
+  await expect(card).toBeVisible();
+  expect(faceSearches).toBe(1);
+});
+
+test("refreshes again when a tag write finishes during a deletion refresh", async ({ page }) => {
+  await resetApiMocks(page);
+  const matches = [
+    ...faceSearchResponse.results,
+    ...faceSearchResponse.results.map((match) => ({
+      ...match,
+      result: {
+        ...match.result,
+        image: { ...match.result.image, id: "second", filename: "second.png" },
+      },
+    })),
+  ];
+  let searches = 0;
+  let releaseTag = () => {};
+  const tagGate = new Promise<void>((resolve) => {
+    releaseTag = resolve;
+  });
+  let refreshStarted = () => {};
+  const refreshGate = new Promise<void>((resolve) => {
+    refreshStarted = resolve;
+  });
+  let releaseStale = () => {};
+  const staleGate = new Promise<void>((resolve) => {
+    releaseStale = resolve;
+  });
+  await page.route("**/api/search/face?**", async (route) => {
+    searches += 1;
+    const request = searches;
+    if (request === 2) {
+      refreshStarted();
+      await staleGate;
+    }
+    await route.fulfill({
+      json: {
+        ...faceSearchResponse,
+        results:
+          request === 1
+            ? matches
+            : matches
+                .filter((match) => match.result.image.id === "second")
+                .map((match) => ({
+                  ...match,
+                  result: {
+                    ...match.result,
+                    image: { ...match.result.image, tags: request === 2 ? [] : ["latest-tag"] },
+                  },
+                })),
+      },
+    });
+  });
+  await page.route("**/api/indexed-media/second/tags", async (route) => {
+    await tagGate;
+    await route.fulfill({
+      json: {
+        ...matches.find((match) => match.result.image.id === "second")?.result.image,
+        tags: ["latest-tag"],
+      },
+    });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Face" }).click();
+  await page.locator("#query-image").setInputFiles(imageUpload);
+  await page.getByRole("button", { name: "Search" }).click();
+  const second = resultCard(page, "second.png");
+  await second.getByRole("textbox", { name: "Tags for second.png" }).fill("latest-tag");
+  await second.getByRole("button", { name: "Save tags for second.png" }).click();
+  page.on("dialog", (dialog) => dialog.accept());
+  await resultCard(page, "portrait.png")
+    .getByRole("button", { name: /Delete portrait\.png/ })
+    .click();
+  await refreshGate;
+  releaseTag();
+  await expect.poll(() => searches).toBe(3);
+  await expect(second.getByText("latest-tag", { exact: true })).toBeVisible();
+  releaseStale();
+  await expect(second.getByText("latest-tag", { exact: true })).toBeVisible();
+});
