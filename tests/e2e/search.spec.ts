@@ -523,16 +523,43 @@ for (const mutation of ["delete", "tag"] as const) {
     "same mode",
     "submitted query",
     "mode round trip",
+    "failed reconciliation",
   ] as const) {
     test(`handles ${interaction} during a pending face ${mutation}`, async ({ page }) => {
       await resetApiMocks(page);
       let searches = 0;
       let writeCompleted = false;
+      const baseResponse =
+        interaction === "failed reconciliation"
+          ? {
+              ...faceSearchResponse,
+              results: [
+                ...faceSearchResponse.results,
+                ...faceSearchResponse.results.map((match) => ({
+                  ...match,
+                  face_score: 0.45,
+                  matched_face_ids: ["face-2"],
+                  result: {
+                    ...match.result,
+                    image: {
+                      ...match.result.image,
+                      id: "query-b-survivor",
+                      filename: "survivor.png",
+                    },
+                  },
+                })),
+              ],
+            }
+          : faceSearchResponse;
       await page.route("**/api/search/face?**", async (route) => {
         searches += 1;
+        if (interaction === "failed reconciliation" && searches === 3) {
+          await route.fulfill({ status: 503, json: { error: "reconciliation unavailable" } });
+          return;
+        }
         await route.fulfill({
           json: !writeCompleted
-            ? faceSearchResponse
+            ? baseResponse
             : mutation === "delete"
               ? { ...faceSearchResponse, people: [], results: [] }
               : {
@@ -589,9 +616,13 @@ for (const mutation of ["delete", "tag"] as const) {
         await card.getByRole("button", { name: "Save tags for portrait.png" }).click();
       }
       await started;
-      if (interaction === "new query" || interaction === "submitted query") {
+      if (
+        interaction === "new query" ||
+        interaction === "submitted query" ||
+        interaction === "failed reconciliation"
+      ) {
         await page.locator("#query-image").setInputFiles(gifUpload);
-        if (interaction === "submitted query") {
+        if (interaction === "submitted query" || interaction === "failed reconciliation") {
           await page.getByRole("button", { name: "Search", exact: true }).click();
           await expect.poll(() => searches).toBe(2);
           await expect(card).toBeVisible();
@@ -616,18 +647,27 @@ for (const mutation of ["delete", "tag"] as const) {
           ),
       );
       if (
-        (interaction === "same mode" || interaction === "submitted query") &&
+        (interaction === "same mode" ||
+          interaction === "submitted query" ||
+          interaction === "failed reconciliation") &&
         mutation === "tag"
       ) {
         await expect(card.getByText("old-query-edit", { exact: true })).toBeVisible();
       } else {
         await expect(page.getByRole("heading", { name: "portrait.png" })).toHaveCount(0);
       }
+      if (interaction === "failed reconciliation") {
+        await expect(page.getByText("reconciliation unavailable")).toBeVisible();
+        await expect(resultCard(page, "survivor.png")).toBeVisible();
+        if (mutation === "delete") {
+          await expect(page.getByRole("heading", { name: "Ada", exact: true })).toHaveCount(0);
+        }
+      }
       await expect(page.getByRole("button", { name: "Search", exact: true })).toBeEnabled();
       await expect
         .poll(() => searches)
         .toBe(
-          interaction === "submitted query"
+          interaction === "submitted query" || interaction === "failed reconciliation"
             ? 3
             : interaction === "same mode" && mutation === "delete"
               ? 2

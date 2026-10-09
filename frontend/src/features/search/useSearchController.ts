@@ -50,6 +50,10 @@ export function useSearchController() {
   const [metadataFilters, setMetadataFilters] = useState<MetadataFilters>(DEFAULT_METADATA_FILTERS);
   const [ocrTextQuery, setOcrTextQuery] = useState("");
   const activeFaceQuery = useRef<FaceSearchVariables | null>(null);
+  const currentFaceSnapshot = useRef<{
+    source: FaceSearchResponse;
+    response: FaceSearchResponse;
+  } | null>(null);
   const faceRefreshPending = useRef(false);
   const faceQueryGeneration = useRef(0);
   const [searchMode, setSearchMode] = useState<SearchMode>("media");
@@ -106,6 +110,15 @@ export function useSearchController() {
       ? faceEdits.response
       : (faceSearchData ?? faceEdits?.response ?? null);
 
+  useEffect(() => {
+    currentFaceSnapshot.current = faceResponse
+      ? {
+          source: faceSearchData ?? faceEdits?.source ?? faceResponse,
+          response: faceResponse,
+        }
+      : null;
+  }, [faceResponse, faceSearchData, faceEdits?.source]);
+
   const [deleteWarning, setDeleteWarning] = useState<Error | null>(null);
   // Clear only after the observer response has committed, so callbacks in the same
   // settlement batch still refresh after tag writes against the previous source.
@@ -128,9 +141,9 @@ export function useSearchController() {
     },
     onSuccess: (result, id, context) => {
       removeMediaFromSearchHistory(id);
+      updateFaceResponse((response) => removeResultFromFaceResponse(response, id));
       if (context?.faceGeneration === faceQueryGeneration.current) {
         setDeleteWarning(result.errors.length > 0 ? new Error(result.errors.join("; ")) : null);
-        updateFaceResponse((response) => removeResultFromFaceResponse(response, id));
         // Person scores are aggregated server-side from individual faces.
         if (faceSearchMutation.variables && faceResponse) {
           refreshFaceResults();
@@ -151,8 +164,8 @@ export function useSearchController() {
     onMutate: () => ({ faceGeneration: faceQueryGeneration.current }),
     onSuccess: (media, _variables, context) => {
       updateMediaInSearchHistory(media);
+      updateFaceResponse((response) => updateMediaInFaceResponse(response, media));
       if (context?.faceGeneration === faceQueryGeneration.current) {
-        updateFaceResponse((response) => updateMediaInFaceResponse(response, media));
         // A pending refresh may have read the index before this tag write completed.
         if (faceRefreshPending.current && faceSearchMutation.variables && faceResponse) {
           refreshFaceResults();
@@ -316,6 +329,7 @@ export function useSearchController() {
     if (!variables) {
       return;
     }
+    updateFaceResponse((response) => response);
     faceRefreshPending.current = true;
     faceSearchMutation.mutate(variables);
   }
@@ -323,18 +337,19 @@ export function useSearchController() {
   function resetDeletionFeedback() {
     faceQueryGeneration.current += 1;
     activeFaceQuery.current = null;
+    currentFaceSnapshot.current = null;
     deleteMediaMutation.reset();
     setDeleteWarning(null);
   }
 
   function updateFaceResponse(updater: (response: FaceSearchResponse) => FaceSearchResponse) {
-    if (!faceResponse) {
+    const snapshot = currentFaceSnapshot.current;
+    if (!snapshot) {
       return;
     }
-    const source = faceSearchData ?? faceEdits?.source ?? faceResponse;
     setFaceEdits((current) => ({
-      source,
-      response: updater(current?.source === source ? current.response : faceResponse),
+      source: snapshot.source,
+      response: updater(current?.source === snapshot.source ? current.response : snapshot.response),
     }));
   }
 

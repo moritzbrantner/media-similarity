@@ -415,25 +415,11 @@ export function removeResultFromFaceResponse(
     return response;
   }
   const removedFaceIds = new Set(removed.flatMap((match) => match.matched_face_ids));
-  const people = response.people.flatMap((person) => {
-    const remainingFaceIds = person.matched_face_ids.filter(
-      (faceId) => !removedFaceIds.has(faceId),
-    );
-    if (remainingFaceIds.length === person.matched_face_ids.length) {
-      return [person];
-    }
-    if (remainingFaceIds.length === 0) {
-      return [];
-    }
-    return [
-      {
-        ...person,
-        matched_face_ids: remainingFaceIds,
-        face_count: remainingFaceIds.length,
-        media_count: Math.max(person.media_count - 1, 0),
-      },
-    ];
-  });
+  // Media-level maxima cannot recover a person's per-face aggregate score. Omit
+  // affected summaries until a successful server refresh replaces them.
+  const people = response.people.filter((person) =>
+    person.matched_face_ids.every((faceId) => !removedFaceIds.has(faceId)),
+  );
   return {
     ...response,
     people,
