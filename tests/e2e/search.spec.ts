@@ -292,6 +292,16 @@ test("preserves surviving face matches when the post-delete refresh fails", asyn
       },
     });
   });
+  await page.route("**/api/indexed-media/survivor", (route) =>
+    route.fulfill({
+      json: {
+        deleted_points: 0,
+        deleted_faces: 0,
+        deleted_artifacts: 0,
+        errors: ["Current deletion failure"],
+      },
+    }),
+  );
   await page.goto("/");
   await page.getByRole("button", { name: "Face" }).click();
   await page.locator("#query-image").setInputFiles(imageUpload);
@@ -306,6 +316,12 @@ test("preserves surviving face matches when the post-delete refresh fails", asyn
   await expect(page.getByText("refresh unavailable")).toBeVisible();
   await expect(resultCard(page, "survivor.png")).toBeVisible();
   await expect(page.getByRole("heading", { name: "portrait.png" })).toHaveCount(0);
+  await resultCard(page, "survivor.png")
+    .getByRole("button", { name: /Delete survivor\.png/ })
+    .click();
+  await expect(page.getByText("Current deletion failure")).toBeVisible();
+  await expect(page.getByText("refresh unavailable")).toHaveCount(0);
+  await expect(resultCard(page, "survivor.png")).toBeVisible();
 });
 
 test("keeps both face-result edits when tag saves finish together", async ({ page }) => {

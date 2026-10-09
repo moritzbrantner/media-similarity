@@ -1,5 +1,5 @@
 import type { FormEvent } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   SearchHistoryItem,
@@ -43,6 +43,7 @@ export function useSearchController() {
   const [limit, setLimit] = useState(DEFAULT_LIMIT);
   const [metadataFilters, setMetadataFilters] = useState<MetadataFilters>(DEFAULT_METADATA_FILTERS);
   const [ocrTextQuery, setOcrTextQuery] = useState("");
+  const faceRefreshPending = useRef(false);
   const [searchMode, setSearchMode] = useState<SearchMode>("media");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [resultSortMode, setResultSortMode] = useState<ResultSortMode>(DEFAULT_RESULT_SORT);
@@ -121,7 +122,7 @@ export function useSearchController() {
       // Person scores are aggregated server-side from individual faces, so refresh the
       // face search to replace the locally pruned summaries with recomputed ones.
       if (faceSearchMutation.variables && faceResponse) {
-        faceSearchMutation.mutate(faceSearchMutation.variables);
+        refreshFaceResults();
       }
       // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["health"] });
@@ -136,8 +137,8 @@ export function useSearchController() {
       updateMediaInSearchHistory(media);
       updateFaceResponse((response) => updateMediaInFaceResponse(response, media));
       // A pending refresh may have read the index before this tag write completed.
-      if (faceSearchMutation.isPending && faceSearchMutation.variables && faceResponse) {
-        faceSearchMutation.mutate(faceSearchMutation.variables);
+      if (faceRefreshPending.current && faceSearchMutation.variables && faceResponse) {
+        refreshFaceResults();
       }
       // oxlint-disable-next-line typescript/no-floating-promises -- Preserve the existing detached cache refresh after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["inverse-index"] });
@@ -196,6 +197,7 @@ export function useSearchController() {
       }
       setActiveSearchId(null);
       searchMutation.reset();
+      faceRefreshPending.current = false;
       setFaceEdits(null);
       faceSearchMutation.mutate({
         filters: metadataFilters,
@@ -210,6 +212,7 @@ export function useSearchController() {
     }
 
     setActiveSearchId(null);
+    faceRefreshPending.current = false;
     setFaceEdits(null);
     faceSearchMutation.reset();
     const queryImageUrl = file
@@ -234,6 +237,7 @@ export function useSearchController() {
     setActiveSearchId(null);
     setSelectedQuerySceneIndex(null);
     searchMutation.reset();
+    faceRefreshPending.current = false;
     setFaceEdits(null);
     faceSearchMutation.reset();
   }
@@ -263,6 +267,7 @@ export function useSearchController() {
     setResultSortMode(item.sortMode);
     setSelectedQuerySceneIndex(item.response.scenes[0]?.scene_index ?? null);
     searchMutation.reset();
+    faceRefreshPending.current = false;
     setFaceEdits(null);
     faceSearchMutation.reset();
   }
@@ -285,6 +290,18 @@ export function useSearchController() {
     updateSearchHistory((history) =>
       history.map((item) => (item.id === activeSearchId ? updater(item) : item)),
     );
+  }
+
+  function refreshFaceResults() {
+    if (!faceSearchMutation.variables) {
+      return;
+    }
+    faceRefreshPending.current = true;
+    faceSearchMutation.mutate(faceSearchMutation.variables, {
+      onSettled: () => {
+        faceRefreshPending.current = false;
+      },
+    });
   }
 
   function resetDeletionFeedback() {
@@ -346,10 +363,10 @@ export function useSearchController() {
     results,
     faceResponse,
     searchError:
-      faceSearchMutation.error ??
-      searchMutation.error ??
       deleteMediaMutation.error ??
-      deleteWarning,
+      deleteWarning ??
+      faceSearchMutation.error ??
+      searchMutation.error,
     searchHistory,
     searchHistoryQuery,
     searchMutation,
