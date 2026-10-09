@@ -389,6 +389,9 @@ export function useSearchController() {
     setOcrTextQuery,
     setResultSortMode,
     setSearchMode: (mode: SearchMode) => {
+      if (mode === searchMode) {
+        return;
+      }
       resetDeletionFeedback();
       setSearchMode(mode);
     },

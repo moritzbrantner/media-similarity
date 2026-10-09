@@ -518,70 +518,87 @@ test("prunes successfully deleted face media while surfacing cleanup errors", as
 });
 
 for (const mutation of ["delete", "tag"] as const) {
-  test(`does not restore an old face query after a pending ${mutation}`, async ({ page }) => {
-    await resetApiMocks(page);
-    let searches = 0;
-    await page.route("**/api/search/face?**", async (route) => {
-      searches += 1;
-      await route.fulfill({ json: faceSearchResponse });
-    });
-    let release = () => {};
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    let requestStarted = () => {};
-    const started = new Promise<void>((resolve) => {
-      requestStarted = resolve;
-    });
-    const endpoint =
-      mutation === "delete"
-        ? "**/api/indexed-media/import-portrait"
-        : "**/api/indexed-media/import-portrait/tags";
-    await page.route(endpoint, async (route) => {
-      requestStarted();
-      await gate;
-      await route.fulfill({
-        json:
-          mutation === "delete"
-            ? { deleted_points: 1, deleted_faces: 1, deleted_artifacts: 1, errors: [] }
-            : {
-                ...faceSearchResponse.results.find(
-                  (match) => match.result.image.id === "import-portrait",
-                )?.result.image,
-                tags: ["old-query-edit"],
-              },
+  for (const interaction of ["new query", "same mode"] as const) {
+    test(`handles ${interaction} during a pending face ${mutation}`, async ({ page }) => {
+      await resetApiMocks(page);
+      let searches = 0;
+      await page.route("**/api/search/face?**", async (route) => {
+        searches += 1;
+        await route.fulfill({
+          json:
+            searches === 1
+              ? faceSearchResponse
+              : { ...faceSearchResponse, people: [], results: [] },
+        });
       });
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let requestStarted = () => {};
+      const started = new Promise<void>((resolve) => {
+        requestStarted = resolve;
+      });
+      const endpoint =
+        mutation === "delete"
+          ? "**/api/indexed-media/import-portrait"
+          : "**/api/indexed-media/import-portrait/tags";
+      await page.route(endpoint, async (route) => {
+        requestStarted();
+        await gate;
+        await route.fulfill({
+          json:
+            mutation === "delete"
+              ? { deleted_points: 1, deleted_faces: 1, deleted_artifacts: 1, errors: [] }
+              : {
+                  ...faceSearchResponse.results.find(
+                    (match) => match.result.image.id === "import-portrait",
+                  )?.result.image,
+                  tags: ["old-query-edit"],
+                },
+        });
+      });
+      await page.goto("/");
+      await page.getByRole("button", { name: "Face" }).click();
+      await page.locator("#query-image").setInputFiles(imageUpload);
+      await page.getByRole("button", { name: "Search" }).click();
+      const card = resultCard(page, "portrait.png");
+      await expect(card).toBeVisible();
+      if (mutation === "delete") {
+        page.on("dialog", (dialog) => dialog.accept());
+        await card.getByRole("button", { name: /Delete portrait\.png/ }).click();
+      } else {
+        await card.getByRole("textbox", { name: "Tags for portrait.png" }).fill("old-query-edit");
+        await card.getByRole("button", { name: "Save tags for portrait.png" }).click();
+      }
+      await started;
+      if (interaction === "new query") {
+        await page.locator("#query-image").setInputFiles(gifUpload);
+      } else {
+        await page.getByRole("button", { name: "Face", exact: true }).click();
+      }
+      const completed = page.waitForResponse((response) =>
+        response
+          .url()
+          .includes(`/api/indexed-media/import-portrait${mutation === "tag" ? "/tags" : ""}`),
+      );
+      release();
+      await completed;
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      if (interaction === "same mode" && mutation === "tag") {
+        await expect(card.getByText("old-query-edit", { exact: true })).toBeVisible();
+      } else {
+        await expect(page.getByRole("heading", { name: "portrait.png" })).toHaveCount(0);
+      }
+      await expect(page.getByRole("button", { name: "Search", exact: true })).toBeEnabled();
+      await expect
+        .poll(() => searches)
+        .toBe(interaction === "same mode" && mutation === "delete" ? 2 : 1);
     });
-    await page.goto("/");
-    await page.getByRole("button", { name: "Face" }).click();
-    await page.locator("#query-image").setInputFiles(imageUpload);
-    await page.getByRole("button", { name: "Search" }).click();
-    const card = resultCard(page, "portrait.png");
-    await expect(card).toBeVisible();
-    if (mutation === "delete") {
-      page.on("dialog", (dialog) => dialog.accept());
-      await card.getByRole("button", { name: /Delete portrait\.png/ }).click();
-    } else {
-      await card.getByRole("textbox", { name: "Tags for portrait.png" }).fill("old-query-edit");
-      await card.getByRole("button", { name: "Save tags for portrait.png" }).click();
-    }
-    await started;
-    await page.locator("#query-image").setInputFiles(gifUpload);
-    const completed = page.waitForResponse((response) =>
-      response
-        .url()
-        .includes(`/api/indexed-media/import-portrait${mutation === "tag" ? "/tags" : ""}`),
-    );
-    release();
-    await completed;
-    await page.evaluate(
-      () =>
-        new Promise<void>((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-        ),
-    );
-    await expect(page.getByRole("heading", { name: "portrait.png" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Search", exact: true })).toBeEnabled();
-    expect(searches).toBe(1);
-  });
+  }
 }
