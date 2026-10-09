@@ -3,7 +3,9 @@ use std::env;
 use std::path::{Path, PathBuf};
 
 use image_similarity_service::config::Settings;
-use image_similarity_service::workers::media::faces::{FaceBox, FaceDetector, FaceEmbedder};
+use image_similarity_service::workers::media::faces::{
+    DetectedFace, FaceAnalyzer, FaceBox, FaceDetector, FaceEmbedder,
+};
 use image_similarity_service::workers::media::image_io::load_media;
 use image_similarity_service::workers::media::models::{model_status, ModelRole};
 use image_similarity_service::workers::media::visual_embedding::{
@@ -43,8 +45,7 @@ fn run() -> Result<(), String> {
     let face_detection_status = model_status(ModelRole::FaceDetection, &settings);
     let face_embedding_status = model_status(ModelRole::FaceEmbedding, &settings);
     let face_active = face_detection_status.active && face_embedding_status.active;
-    let face_detector = face_active.then(|| FaceDetector::new(&settings));
-    let face_embedder = face_active.then(|| FaceEmbedder::new(&settings));
+    let face_scorers = face_active.then(|| FaceScorers::new(&settings));
 
     println!("# Image Similarity Diagnostic");
     println!();
@@ -83,8 +84,7 @@ fn run() -> Result<(), String> {
             &settings,
             active_visual.as_ref(),
             &legacy_visual,
-            face_detector.as_ref(),
-            face_embedder.as_ref(),
+            face_scorers.as_ref(),
         );
         match result {
             Ok(row) => println!("{}", row.to_markdown()),
@@ -338,8 +338,7 @@ fn score_pair(
     settings: &Settings,
     active_visual: &dyn VisualEmbeddingBackend,
     legacy_visual: &LegacyColorEmbedder,
-    face_detector: Option<&FaceDetector>,
-    face_embedder: Option<&FaceEmbedder>,
+    face_scorers: Option<&FaceScorers>,
 ) -> Result<PairRow, String> {
     let left = load_media(&pair.left, settings)
         .map_err(|error| format!("could not load left image {}: {error}", pair.left.display()))?;
@@ -370,33 +369,27 @@ fn score_pair(
         legacy_visual.embed_media(&left.sampled_frames, settings.gif_motion_weight)?;
     let legacy_right =
         legacy_visual.embed_media(&right.sampled_frames, settings.gif_motion_weight)?;
-    let face_model_cosine = match (face_detector, face_embedder) {
-        (Some(detector), Some(embedder)) => {
-            match (
-                selected_face_embedding(detector, embedder, &left),
-                selected_face_embedding(detector, embedder, &right),
-            ) {
-                (Ok(Some(left_face)), Ok(Some(right_face))) => {
-                    Some(cosine(&left_face, &right_face))
-                }
-                (Ok(None), _) => {
-                    notes.push("left face not detected".to_string());
-                    None
-                }
-                (_, Ok(None)) => {
-                    notes.push("right face not detected".to_string());
-                    None
-                }
-                (Err(error), _) | (_, Err(error)) => {
-                    notes.push(format!("face model error: {error}"));
-                    None
-                }
+    let face_model_cosine = if let Some(scorers) = face_scorers {
+        let query_face = selected_face_embedding(&scorers.detector, &scorers.embedder, &left)
+            .map_err(|error| format!("face model error on query: {error}"))?;
+        let target_faces = scorers
+            .target_analyzer
+            .analyze(&right, "diagnostic-target")
+            .map_err(|error| format!("face model error on target: {error}"))?;
+        match best_target_face_score(query_face.as_deref(), &target_faces) {
+            FaceComparison::Score(score) => Some(score),
+            FaceComparison::NoQueryFace => {
+                notes.push("left face not detected".to_string());
+                None
+            }
+            FaceComparison::NoTargetFace => {
+                notes.push("right face not detected".to_string());
+                None
             }
         }
-        _ => {
-            notes.push("face models inactive".to_string());
-            None
-        }
+    } else {
+        notes.push("face models inactive".to_string());
+        None
     };
 
     Ok(PairRow {
@@ -411,6 +404,44 @@ fn score_pair(
         face_model_cosine,
         notes,
     })
+}
+
+struct FaceScorers {
+    detector: FaceDetector,
+    embedder: FaceEmbedder,
+    target_analyzer: FaceAnalyzer,
+}
+
+impl FaceScorers {
+    fn new(settings: &Settings) -> Self {
+        Self {
+            detector: FaceDetector::new(settings),
+            embedder: FaceEmbedder::new(settings),
+            target_analyzer: FaceAnalyzer::new(
+                FaceDetector::new(settings),
+                FaceEmbedder::new(settings),
+            ),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum FaceComparison {
+    Score(f32),
+    NoQueryFace,
+    NoTargetFace,
+}
+
+fn best_target_face_score(query: Option<&[f32]>, targets: &[DetectedFace]) -> FaceComparison {
+    let Some(query) = query else {
+        return FaceComparison::NoQueryFace;
+    };
+    targets
+        .iter()
+        .map(|target| cosine(query, &target.embedding))
+        .reduce(f32::max)
+        .map(FaceComparison::Score)
+        .unwrap_or(FaceComparison::NoTargetFace)
 }
 
 fn selected_face_embedding(
@@ -457,4 +488,47 @@ fn format_score(score: Option<f32>) -> String {
 
 fn escape_table(value: &str) -> String {
     value.replace('|', "\\|").replace('\n', " ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{best_target_face_score, DetectedFace, FaceBox, FaceComparison};
+
+    fn target(embedding: Vec<f32>, size: f32) -> DetectedFace {
+        DetectedFace {
+            face_id: "target-face".to_string(),
+            frame_index: 0,
+            bbox: FaceBox {
+                x: 0.0,
+                y: 0.0,
+                width: size,
+                height: size,
+            },
+            confidence: 1.0,
+            embedding,
+            person_id: None,
+            person_label: None,
+        }
+    }
+
+    #[test]
+    fn face_comparison_scores_every_target_instead_of_the_largest_bystander() {
+        let targets = [target(vec![0.0, 1.0], 0.8), target(vec![1.0, 0.0], 0.2)];
+        assert_eq!(
+            best_target_face_score(Some(&[1.0, 0.0]), &targets),
+            FaceComparison::Score(1.0)
+        );
+    }
+
+    #[test]
+    fn face_comparison_keeps_missing_faces_nonfatal() {
+        assert_eq!(
+            best_target_face_score(None, &[]),
+            FaceComparison::NoQueryFace
+        );
+        assert_eq!(
+            best_target_face_score(Some(&[1.0, 0.0]), &[]),
+            FaceComparison::NoTargetFace
+        );
+    }
 }
