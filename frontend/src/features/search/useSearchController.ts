@@ -399,6 +399,9 @@ export function useSearchController() {
         return;
       }
       resetDeletionFeedback();
+      faceRefreshPending.current = false;
+      setFaceEdits(null);
+      faceSearchMutation.reset();
       setSearchMode(mode);
     },
     setLimit,

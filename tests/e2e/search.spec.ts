@@ -518,7 +518,12 @@ test("prunes successfully deleted face media while surfacing cleanup errors", as
 });
 
 for (const mutation of ["delete", "tag"] as const) {
-  for (const interaction of ["new query", "same mode", "submitted query"] as const) {
+  for (const interaction of [
+    "new query",
+    "same mode",
+    "submitted query",
+    "mode round trip",
+  ] as const) {
     test(`handles ${interaction} during a pending face ${mutation}`, async ({ page }) => {
       await resetApiMocks(page);
       let searches = 0;
@@ -584,7 +589,7 @@ for (const mutation of ["delete", "tag"] as const) {
         await card.getByRole("button", { name: "Save tags for portrait.png" }).click();
       }
       await started;
-      if (interaction !== "same mode") {
+      if (interaction === "new query" || interaction === "submitted query") {
         await page.locator("#query-image").setInputFiles(gifUpload);
         if (interaction === "submitted query") {
           await page.getByRole("button", { name: "Search", exact: true }).click();
@@ -592,6 +597,9 @@ for (const mutation of ["delete", "tag"] as const) {
           await expect(card).toBeVisible();
         }
       } else {
+        if (interaction === "mode round trip") {
+          await page.getByRole("button", { name: "Media", exact: true }).click();
+        }
         await page.getByRole("button", { name: "Face", exact: true }).click();
       }
       const completed = page.waitForResponse((response) =>
@@ -607,7 +615,10 @@ for (const mutation of ["delete", "tag"] as const) {
             requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
           ),
       );
-      if (interaction !== "new query" && mutation === "tag") {
+      if (
+        (interaction === "same mode" || interaction === "submitted query") &&
+        mutation === "tag"
+      ) {
         await expect(card.getByText("old-query-edit", { exact: true })).toBeVisible();
       } else {
         await expect(page.getByRole("heading", { name: "portrait.png" })).toHaveCount(0);
