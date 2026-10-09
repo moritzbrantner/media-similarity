@@ -275,10 +275,11 @@ export function useSearchController() {
     if (!faceResponse) {
       return;
     }
-    setFaceEdits({
-      source: faceSearchData ?? faceEdits?.source ?? faceResponse,
-      response: updater(faceResponse),
-    });
+    const source = faceSearchData ?? faceEdits?.source ?? faceResponse;
+    setFaceEdits((current) => ({
+      source,
+      response: updater(current?.source === source ? current.response : faceResponse),
+    }));
   }
 
   function removeMediaFromSearchHistory(id: string) {

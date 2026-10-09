@@ -245,7 +245,7 @@ async fn aggregate_face_matches(
         }
         let person = people.entry(face.person_id.clone()).or_default();
         person.label = person.label.clone().or(face.person_label.clone());
-        person.score = person.score.max(score);
+        person.record_score(score);
         person.face_ids.insert(face.face_id.clone());
         person.media_ids.insert(face.media_id.clone());
 
@@ -313,6 +313,14 @@ struct PersonAccumulator {
     media_ids: BTreeSet<String>,
 }
 
+impl PersonAccumulator {
+    fn record_score(&mut self, score: f32) {
+        if self.face_ids.is_empty() || score > self.score {
+            self.score = score;
+        }
+    }
+}
+
 #[derive(Default)]
 struct MediaAccumulator {
     person_id: String,
@@ -345,6 +353,19 @@ mod tests {
 
     use super::{face_selection_score, select_query_face, MediaAccumulator, QueryFaceCandidate};
     use crate::domain::models::{FaceBoxPayload, FaceDetectionPayload};
+
+    #[test]
+    fn person_and_media_keep_the_best_negative_match_score() {
+        let mut person = super::PersonAccumulator::default();
+        let mut media = MediaAccumulator::default();
+        for (face, score) in [("first", -0.8), ("better", -0.2), ("worse", -0.5)] {
+            person.record_score(score);
+            person.face_ids.insert(face.to_string());
+            media.record("person".to_string(), face.to_string(), score);
+        }
+        assert_eq!(person.score, -0.2);
+        assert_eq!(media.score, person.score);
+    }
 
     #[test]
     fn face_query_selects_largest_confident_face() {

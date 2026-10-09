@@ -307,3 +307,52 @@ test("preserves surviving face matches when the post-delete refresh fails", asyn
   await expect(resultCard(page, "survivor.png")).toBeVisible();
   await expect(page.getByRole("heading", { name: "portrait.png" })).toHaveCount(0);
 });
+
+test("keeps both face-result edits when tag saves finish together", async ({ page }) => {
+  await resetApiMocks(page);
+  const matches = [
+    ...faceSearchResponse.results,
+    ...faceSearchResponse.results.map((match) => ({
+      ...match,
+      result: {
+        ...match.result,
+        image: { ...match.result.image, id: "second", filename: "second.png" },
+      },
+    })),
+  ];
+  await page.route("**/api/search/face?**", (route) =>
+    route.fulfill({ json: { ...faceSearchResponse, results: matches } }),
+  );
+  let received = 0;
+  let release = () => {};
+  const bothRequests = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/indexed-media/*/tags", async (route) => {
+    const id = new URL(route.request().url()).pathname.split("/").at(-2);
+    const image = matches.find((match) => match.result.image.id === id)?.result.image;
+    if (!image) {
+      throw new Error("Unexpected tag target");
+    }
+    const body: unknown = route.request().postDataJSON();
+    const tags = typeof body === "object" && body !== null && "tags" in body ? body.tags : [];
+    received += 1;
+    if (received === 2) {
+      release();
+    }
+    await bothRequests;
+    await route.fulfill({ json: { ...image, tags } });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Face" }).click();
+  await page.locator("#query-image").setInputFiles(imageUpload);
+  await page.getByRole("button", { name: "Search" }).click();
+  const first = resultCard(page, "portrait.png");
+  const second = resultCard(page, "second.png");
+  await first.getByRole("textbox", { name: "Tags for portrait.png" }).fill("first-edited");
+  await second.getByRole("textbox", { name: "Tags for second.png" }).fill("second-edited");
+  await first.getByRole("button", { name: "Save tags for portrait.png" }).click();
+  await second.getByRole("button", { name: "Save tags for second.png" }).click();
+  await expect(first.getByText("first-edited", { exact: true })).toBeVisible();
+  await expect(second.getByText("second-edited", { exact: true })).toBeVisible();
+});

@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::env;
 use std::path::{Path, PathBuf};
-use std::sync::{mpsc, Arc};
+use std::sync::mpsc;
 use std::time::Duration;
 
 use image_similarity_service::config::Settings;
@@ -51,7 +51,6 @@ fn run() -> Result<(), String> {
     let face_detection_status = model_status(ModelRole::FaceDetection, &settings);
     let face_embedding_status = model_status(ModelRole::FaceEmbedding, &settings);
     let face_active = face_detection_status.active && face_embedding_status.active;
-    let face_scorers = face_active.then(|| Arc::new(FaceScorers::new(&settings)));
 
     println!("# Image Similarity Diagnostic");
     println!();
@@ -90,10 +89,13 @@ fn run() -> Result<(), String> {
             &settings,
             active_visual.as_ref(),
             &legacy_visual,
-            face_scorers.as_ref(),
+            face_active,
         );
         match result {
-            Ok(row) => println!("{}", row.to_markdown()),
+            Ok(row) => {
+                failed_pairs += usize::from(row.failed);
+                println!("{}", row.to_markdown());
+            }
             Err(error) => {
                 failed_pairs += 1;
                 println!(
@@ -319,6 +321,7 @@ struct PairRow {
     legacy_color_cosine: Option<f32>,
     face_model_cosine: Option<f32>,
     notes: Vec<String>,
+    failed: bool,
 }
 
 impl PairRow {
@@ -344,7 +347,7 @@ fn score_pair(
     settings: &Settings,
     active_visual: &dyn VisualEmbeddingBackend,
     legacy_visual: &LegacyColorEmbedder,
-    face_scorers: Option<&Arc<FaceScorers>>,
+    face_active: bool,
 ) -> Result<PairRow, String> {
     let left = load_media(&pair.left, settings)
         .map_err(|error| format!("could not load left image {}: {error}", pair.left.display()))?;
@@ -375,9 +378,12 @@ fn score_pair(
         legacy_visual.embed_media(&left.sampled_frames, settings.gif_motion_weight)?;
     let legacy_right =
         legacy_visual.embed_media(&right.sampled_frames, settings.gif_motion_weight)?;
-    let face_model_cosine = if let Some(scorers) = face_scorers {
-        let scorers = Arc::clone(scorers);
+    let mut failed = false;
+    let face_model_cosine = if face_active {
+        let settings = settings.clone();
         let comparison = bounded_face_score(Duration::from_secs(30), move || {
+            // Each pair owns its runners: a timed-out worker cannot hold the next pair's locks.
+            let scorers = FaceScorers::new(&settings);
             let query_face = selected_face_embedding(&scorers.detector, &scorers.embedder, &left)
                 .map_err(|error| format!("face model error on query: {error}"))?;
             let target_faces = scorers
@@ -385,15 +391,20 @@ fn score_pair(
                 .analyze(&right, "diagnostic-target")
                 .map_err(|error| format!("face model error on target: {error}"))?;
             Ok(best_target_face_score(query_face.as_deref(), &target_faces))
-        })?;
+        });
         match comparison {
-            FaceComparison::Score(score) => Some(score),
-            FaceComparison::NoQueryFace => {
+            Ok(FaceComparison::Score(score)) => Some(score),
+            Ok(FaceComparison::NoQueryFace) => {
                 notes.push("left face not detected".to_string());
                 None
             }
-            FaceComparison::NoTargetFace => {
+            Ok(FaceComparison::NoTargetFace) => {
                 notes.push("right face not detected".to_string());
+                None
+            }
+            Err(error) => {
+                failed = true;
+                notes.push(error);
                 None
             }
         }
@@ -413,6 +424,7 @@ fn score_pair(
         legacy_color_cosine: Some(cosine(&legacy_left, &legacy_right)),
         face_model_cosine,
         notes,
+        failed,
     })
 }
 
@@ -549,6 +561,10 @@ mod tests {
             Ok(super::FaceComparison::NoQueryFace)
         });
         assert!(result.unwrap_err().contains("timed out"));
+        let next = super::bounded_face_score(std::time::Duration::from_secs(1), || {
+            Ok(super::FaceComparison::Score(0.9))
+        });
+        assert_eq!(next.unwrap(), super::FaceComparison::Score(0.9));
     }
 
     #[test]

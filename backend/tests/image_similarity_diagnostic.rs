@@ -98,9 +98,9 @@ fn diagnostic_fails_when_active_face_inference_configuration_cannot_run() {
     assert!(String::from_utf8(output.stderr)
         .unwrap()
         .contains("1 of 1 diagnostic pairs could not be scored"));
-    assert!(String::from_utf8(output.stdout)
-        .unwrap()
-        .contains("face model error"));
+    let report = String::from_utf8(output.stdout).unwrap();
+    assert!(report.contains("face model error"));
+    assert!(report.contains("| 1.000000 | 1.000000 |  |"));
 }
 
 #[test]
