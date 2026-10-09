@@ -210,6 +210,7 @@ impl QualityAsset {
 #[derive(Deserialize)]
 struct QualitySearch {
     id: String,
+    capability: Option<String>,
     query_asset: String,
     expected_top_k: Vec<String>,
     expected_non_matches: Vec<String>,
@@ -245,7 +246,11 @@ fn load_quality_pairs(
             }
             pairs.push(DiagnosticPair {
                 id: format!("{}--same--{}", search.id, expected.id),
-                expected: format!("same_person:{}", query.identity),
+                expected: if search.capability.as_deref() == Some("face person search") {
+                    format!("same_person:{}", query.identity)
+                } else {
+                    "match".to_string()
+                },
                 left: image_root.join(&query.filename),
                 right: image_root.join(&expected.filename),
             });
@@ -259,10 +264,14 @@ fn load_quality_pairs(
             }
             pairs.push(DiagnosticPair {
                 id: format!("{}--different--{}", search.id, non_match.id),
-                expected: format!(
-                    "different_person:{}!={}",
-                    query.identity, non_match.identity
-                ),
+                expected: if search.capability.as_deref() == Some("face person search") {
+                    format!(
+                        "different_person:{}!={}",
+                        query.identity, non_match.identity
+                    )
+                } else {
+                    "non_match".to_string()
+                },
                 left: image_root.join(&query.filename),
                 right: image_root.join(&non_match.filename),
             });
@@ -552,6 +561,32 @@ mod tests {
             person_id: None,
             person_label: None,
         }
+    }
+
+    #[test]
+    fn quality_pair_labels_distinguish_visual_matches_from_face_identity() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap();
+        let pairs = super::load_quality_pairs(
+            &root.join("tests/fixtures/quality-corpus/manifest.json"),
+            &root.join("sample-images/quality"),
+        )
+        .unwrap();
+        let visual = pairs
+            .iter()
+            .filter(|pair| pair.id.starts_with("static-image-overlay"))
+            .map(|pair| pair.expected.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(visual, ["match", "non_match", "non_match"]);
+        assert!(pairs
+            .iter()
+            .any(|pair| pair.id.starts_with("barack-obama-face--same")
+                && pair.expected == "same_person:barack-obama"));
+        assert!(pairs
+            .iter()
+            .any(|pair| pair.id.starts_with("barack-obama-face--different")
+                && pair.expected.starts_with("different_person:")));
     }
 
     #[test]
