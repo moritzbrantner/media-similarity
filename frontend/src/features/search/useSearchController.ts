@@ -44,6 +44,7 @@ export function useSearchController() {
   const [metadataFilters, setMetadataFilters] = useState<MetadataFilters>(DEFAULT_METADATA_FILTERS);
   const [ocrTextQuery, setOcrTextQuery] = useState("");
   const faceRefreshPending = useRef(false);
+  const faceQueryGeneration = useRef(0);
   const [searchMode, setSearchMode] = useState<SearchMode>("media");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [resultSortMode, setResultSortMode] = useState<ResultSortMode>(DEFAULT_RESULT_SORT);
@@ -121,15 +122,19 @@ export function useSearchController() {
       }
       return response;
     },
-    onMutate: () => setDeleteWarning(null),
-    onSuccess: (result, id) => {
-      setDeleteWarning(result.errors.length > 0 ? new Error(result.errors.join("; ")) : null);
+    onMutate: () => {
+      setDeleteWarning(null);
+      return { faceGeneration: faceQueryGeneration.current };
+    },
+    onSuccess: (result, id, context) => {
       removeMediaFromSearchHistory(id);
-      updateFaceResponse((response) => removeResultFromFaceResponse(response, id));
-      // Person scores are aggregated server-side from individual faces, so refresh the
-      // face search to replace the locally pruned summaries with recomputed ones.
-      if (faceSearchMutation.variables && faceResponse) {
-        refreshFaceResults();
+      if (context?.faceGeneration === faceQueryGeneration.current) {
+        setDeleteWarning(result.errors.length > 0 ? new Error(result.errors.join("; ")) : null);
+        updateFaceResponse((response) => removeResultFromFaceResponse(response, id));
+        // Person scores are aggregated server-side from individual faces.
+        if (faceSearchMutation.variables && faceResponse) {
+          refreshFaceResults();
+        }
       }
       // oxlint-disable typescript/no-floating-promises -- Preserve the existing detached cache refreshes after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["health"] });
@@ -140,12 +145,15 @@ export function useSearchController() {
 
   const updateMediaTagsMutation = useMutation({
     mutationFn: updateIndexedMediaTags,
-    onSuccess: (media) => {
+    onMutate: () => ({ faceGeneration: faceQueryGeneration.current }),
+    onSuccess: (media, _variables, context) => {
       updateMediaInSearchHistory(media);
-      updateFaceResponse((response) => updateMediaInFaceResponse(response, media));
-      // A pending refresh may have read the index before this tag write completed.
-      if (faceRefreshPending.current && faceSearchMutation.variables && faceResponse) {
-        refreshFaceResults();
+      if (context?.faceGeneration === faceQueryGeneration.current) {
+        updateFaceResponse((response) => updateMediaInFaceResponse(response, media));
+        // A pending refresh may have read the index before this tag write completed.
+        if (faceRefreshPending.current && faceSearchMutation.variables && faceResponse) {
+          refreshFaceResults();
+        }
       }
       // oxlint-disable-next-line typescript/no-floating-promises -- Preserve the existing detached cache refresh after a successful mutation.
       queryClient.invalidateQueries({ queryKey: ["inverse-index"] });
@@ -308,6 +316,7 @@ export function useSearchController() {
   }
 
   function resetDeletionFeedback() {
+    faceQueryGeneration.current += 1;
     deleteMediaMutation.reset();
     setDeleteWarning(null);
   }
