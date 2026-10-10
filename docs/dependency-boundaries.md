@@ -37,3 +37,7 @@ python3 scripts/check_dependency_boundaries.py
 ```
 
 The guard blocks direct capability implementation imports from the domain layer. It treats every `moenarch-*` dependency declared in `backend/Cargo.toml` as a capability implementation (under whatever Rust name the dependency key gives it) unless the script's `DOMAIN_ALLOWED_PACKAGES` lists it as a platform primitive. It is intentionally about dependency direction, not a raw dependency-count limit.
+
+## Declared repository graph
+
+The `graph` in `.coding-tooling.dependencies.json` records the repository edges that `backend/Cargo.lock` actually resolves, not the intended star topology. The released capability crates currently reach across repositories (for example `moenarch-audio-analysis-core` and several foundation crates depend on `moenarch-video-analysis-core`, `moenarch-text-transcripts` depends on audio and visual packages, and `moenarch-image-analysis-ocr` depends on `moenarch-text-core`), so `coding-tooling dependencies audit` reports those cycles. They are owned by the upstream repositories; update the graph from the lockfile when upstream releases remove or add an edge rather than idealizing it here.

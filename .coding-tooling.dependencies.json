@@ -38,9 +38,20 @@
       "moritzbrantner/visual-analysis",
       "moritzbrantner/nlp-stack"
     ],
-    "moritzbrantner/audio-analysis": ["moritzbrantner/moenarch-foundation"],
-    "moritzbrantner/visual-analysis": ["moritzbrantner/moenarch-foundation"],
-    "moritzbrantner/nlp-stack": ["moritzbrantner/moenarch-foundation"],
-    "moritzbrantner/moenarch-foundation": []
+    "moritzbrantner/audio-analysis": [
+      "moritzbrantner/moenarch-foundation",
+      "moritzbrantner/visual-analysis",
+      "moritzbrantner/nlp-stack"
+    ],
+    "moritzbrantner/visual-analysis": [
+      "moritzbrantner/moenarch-foundation",
+      "moritzbrantner/nlp-stack"
+    ],
+    "moritzbrantner/nlp-stack": [
+      "moritzbrantner/moenarch-foundation",
+      "moritzbrantner/audio-analysis",
+      "moritzbrantner/visual-analysis"
+    ],
+    "moritzbrantner/moenarch-foundation": ["moritzbrantner/visual-analysis"]
   }
 }
