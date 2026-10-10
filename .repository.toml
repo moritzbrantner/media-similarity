@@ -44,6 +44,12 @@ timeout_seconds = 600
 # Browser-local WASM showcase; build output goes to the ignored .artifacts/pages directory.
 [pages]
 status = "enabled"
-command = ["bun", "run", "build:pages"]
+# wasm-pack and the wasm32 target are build prerequisites (pages.yml installs the same pinned
+# wasm-pack); an existing wasm-pack is kept.
+command = [
+  "sh",
+  "-c",
+  "(command -v wasm-pack >/dev/null || cargo install wasm-pack --locked --version 0.15.0) && rustup target add wasm32-unknown-unknown && bun run build:pages",
+]
 check = ["sh", "-c", "cargo test --manifest-path wasm/similarity/Cargo.toml --locked && grep -q '/media-similarity/assets/' .artifacts/pages/index.html"]
 timeout_seconds = 1800
