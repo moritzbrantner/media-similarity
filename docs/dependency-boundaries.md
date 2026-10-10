@@ -40,4 +40,12 @@ The guard blocks direct capability implementation imports from the domain layer.
 
 ## Declared repository graph
 
-The `graph` in `.coding-tooling.dependencies.json` records the repository edges that `backend/Cargo.lock` actually resolves, not the intended star topology. The released capability crates currently reach across repositories (for example `moenarch-audio-analysis-core` and several foundation crates depend on `moenarch-video-analysis-core`, `moenarch-text-transcripts` depends on audio and visual packages, and `moenarch-image-analysis-ocr` depends on `moenarch-text-core`), so `coding-tooling dependencies audit` reports those cycles. They are owned by the upstream repositories; update the graph from the lockfile when upstream releases remove or add an edge rather than idealizing it here.
+The `graph` in `.coding-tooling.dependencies.json` declares the intended capability topology (#44): each capability repository builds on the foundation only, and the generic `coding-tooling dependencies audit` checks this application against it. The released crates in `backend/Cargo.lock` currently deviate from that topology, and those deviations are upstream debt rather than part of the declaration:
+
+- `moenarch-audio-analysis-core` and the other audio crates depend on `moenarch-video-analysis-core`; audio recognition/transcription depend on `moenarch-text-transcripts` and `moenarch-text-model-runtime` (audio → visual, audio → NLP).
+- `moenarch-image-analysis-ocr` depends on `moenarch-text-core` (visual → NLP).
+- `moenarch-text-transcripts` depends on `moenarch-audio-analysis-core` and `moenarch-video-analysis-ingest`, and several text crates on `moenarch-video-analysis-core` (NLP → audio, NLP → visual).
+- Foundation crates such as `moenarch-math-signal-core`, `moenarch-numbers-core`, `moenarch-tensor-data` and `moenarch-vector-analysis-core` depend on `moenarch-video-analysis-core` (foundation → visual).
+
+Re-check this list against `backend/Cargo.lock` when upstream releases change. Do not add these edges to the declared graph to make it match; remove them upstream.
+
