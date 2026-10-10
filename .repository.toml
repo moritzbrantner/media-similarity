@@ -1,0 +1,49 @@
+schema_version = 1
+id = "moritzbrantner/media-similarity"
+kind = "app"
+status = "active"
+summary = "Cross-media similarity search product: source configuration, indexing workflow, vector/index persistence and the search UI over image, video, audio and text capabilities consumed from their canonical repositories."
+depends_on = ["moritzbrantner/audio-analysis", "moritzbrantner/visual-analysis", "moritzbrantner/nlp-stack", "moritzbrantner/moenarch-foundation"]
+consumed_by = []
+supersedes = []
+replaced_by = []
+
+# Indexing, search workflow, persistence and the product UI live here. Media/NLP algorithms are
+# consumed from the capability repositories through versioned packages (see
+# docs/dependency-boundaries.md and scripts/check_dependency_boundaries.py).
+[architecture]
+owns = [
+  "media-similarity/source-configuration",
+  "media-similarity/cross-media-indexing",
+  "media-similarity/similarity-search",
+  "media-similarity/index-persistence",
+  "media-similarity/search-ui",
+]
+consumes = [
+  "audio-analysis/audio-capabilities",
+  "visual-analysis/image-capabilities",
+  "visual-analysis/video-capabilities",
+  "nlp-stack/text-transcripts",
+  "moenarch-foundation/model-runtime",
+  "moenarch-foundation/vector-math",
+]
+must_not_own = [
+  "audio-analysis/audio-capabilities",
+  "visual-analysis/image-capabilities",
+  "visual-analysis/video-capabilities",
+  "nlp-stack/text-transcripts",
+  "moenarch-foundation/model-runtime",
+  "moenarch-foundation/vector-math",
+]
+
+[bootstrap]
+command = ["bun", "install", "--frozen-lockfile"]
+check = ["bun", "run", "build"]
+timeout_seconds = 600
+
+# Browser-local WASM showcase; build output goes to the ignored .artifacts/pages directory.
+[pages]
+status = "enabled"
+command = ["bun", "run", "build:pages"]
+check = ["sh", "-c", "cargo test --manifest-path wasm/similarity/Cargo.toml --locked && grep -q '/media-similarity/assets/' .artifacts/pages/index.html"]
+timeout_seconds = 1800
