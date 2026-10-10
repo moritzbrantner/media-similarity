@@ -1,4 +1,9 @@
-import type { IdentityMutationResponse, SearchResponse, SearchResult } from "../types";
+import type {
+  FaceSearchResponse,
+  IdentityMutationResponse,
+  SearchResponse,
+  SearchResult,
+} from "../types";
 import {
   DEFAULT_METADATA_FILTERS,
   DEFAULT_RESULT_SORT,
@@ -399,4 +404,39 @@ function isResultSortMode(value: unknown): value is ResultSortMode {
     value === "size_largest" ||
     value === "vector_score"
   );
+}
+
+export function removeResultFromFaceResponse(
+  response: FaceSearchResponse,
+  id: string,
+): FaceSearchResponse {
+  const removed = response.results.filter((match) => match.result.image.id === id);
+  if (removed.length === 0) {
+    return response;
+  }
+  const removedFaceIds = new Set(removed.flatMap((match) => match.matched_face_ids));
+  // Media-level maxima cannot recover a person's per-face aggregate score. Omit
+  // affected summaries until a successful server refresh replaces them.
+  const people = response.people.filter((person) =>
+    person.matched_face_ids.every((faceId) => !removedFaceIds.has(faceId)),
+  );
+  return {
+    ...response,
+    people,
+    results: response.results.filter((match) => match.result.image.id !== id),
+  };
+}
+
+export function updateMediaInFaceResponse(
+  response: FaceSearchResponse,
+  media: SearchResult["image"],
+): FaceSearchResponse {
+  return {
+    ...response,
+    results: response.results.map((match) =>
+      match.result.image.id === media.id
+        ? { ...match, result: { ...match.result, image: media } }
+        : match,
+    ),
+  };
 }

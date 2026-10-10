@@ -19,7 +19,7 @@ Native Rust media similarity service with a React/Vite frontend. The backend ind
 ## Required Local Shape
 
 - Use Bun for frontend commands. The lockfile is `bun.lock`.
-- Registry dependencies are the distribution contract. Cross-repository feature work uses local-only source mode: prepare every sibling checkout declared in `.coding-tooling.source-deps.json` at its exact pinned revision, then run `bash scripts/source-deps activate`. Missing local source is an error; do not add authenticated Git fallback.
+- Registry dependencies are the distribution contract. Ordinary development needs no sibling checkouts (`.coding-tooling.source-deps.json` declares no standing patches). A task that deliberately changes a capability together with this application may add a task-scoped exact source override (see `docs/dependency-boundaries.md`), prepare that sibling checkout at its pinned revision and run `bash scripts/source-deps activate`, then remove the override when the migration lands. Missing local source is an error; do not add authenticated Git fallback.
 - Do not publish crates or start a release train merely to make an unreleased capability available during implementation.
 - Docker Compose is needed for `bun dev` and the full app stack.
 - `ffmpeg` and `ffprobe` are required for video/audio runtime behavior.
