@@ -426,34 +426,65 @@ fn payload_matches_filter(payload: &Value, filter: Option<&Value>) -> bool {
     let Some(filter) = filter else {
         return true;
     };
-    let Some(must) = filter.get("must").and_then(Value::as_array) else {
+    let conditions = |name: &str| {
+        filter
+            .get(name)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+    };
+    conditions("must")
+        .iter()
+        .all(|condition| condition_matches(payload, condition))
+        && !conditions("must_not")
+            .iter()
+            .any(|condition| condition_matches(payload, condition))
+}
+
+/// Qdrant condition semantics the service relies on: `match`, `range`, `is_empty` (key missing,
+/// null or an empty array) and `is_null` (key present with a null value).
+fn condition_matches(payload: &Value, condition: &Value) -> bool {
+    if let Some(key) = condition
+        .get("is_empty")
+        .and_then(|value| value.get("key"))
+        .and_then(Value::as_str)
+    {
+        return match payload_value(payload, key) {
+            None | Some(Value::Null) => true,
+            Some(Value::Array(values)) => values.is_empty(),
+            Some(_) => false,
+        };
+    }
+    if let Some(key) = condition
+        .get("is_null")
+        .and_then(|value| value.get("key"))
+        .and_then(Value::as_str)
+    {
+        return matches!(payload_value(payload, key), Some(Value::Null));
+    }
+    let Some(key) = condition.get("key").and_then(Value::as_str) else {
         return true;
     };
-    must.iter().all(|condition| {
-        let Some(key) = condition.get("key").and_then(Value::as_str) else {
-            return true;
+    let actual = payload_value(payload, key);
+    if let Some(expected) = condition.get("match").and_then(|value| value.get("value")) {
+        return actual.map(|actual| actual == expected).unwrap_or(false);
+    }
+    if let Some(range) = condition.get("range") {
+        let Some(actual) = actual.and_then(Value::as_f64) else {
+            return false;
         };
-        let actual = payload_value(payload, key);
-        if let Some(expected) = condition.get("match").and_then(|value| value.get("value")) {
-            return actual.map(|actual| actual == expected).unwrap_or(false);
-        }
-        if let Some(range) = condition.get("range") {
-            let Some(actual) = actual.and_then(Value::as_f64) else {
+        if let Some(gte) = range.get("gte").and_then(Value::as_f64) {
+            if actual < gte {
                 return false;
-            };
-            if let Some(gte) = range.get("gte").and_then(Value::as_f64) {
-                if actual < gte {
-                    return false;
-                }
-            }
-            if let Some(lte) = range.get("lte").and_then(Value::as_f64) {
-                if actual > lte {
-                    return false;
-                }
             }
         }
-        true
-    })
+        if let Some(lte) = range.get("lte").and_then(Value::as_f64) {
+            if actual > lte {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 fn payload_value<'a>(payload: &'a Value, key: &str) -> Option<&'a Value> {
