@@ -129,7 +129,7 @@ async fn watch_local_sources(state: Arc<AppState>) -> Result<(), String> {
 }
 
 /// The one-time legacy source-identity backfill (PR #66, option B), retried while Qdrant is
-/// unavailable.
+/// unavailable or any write failed.
 async fn backfill_legacy_source_identity_until_done(state: Arc<AppState>) {
     loop {
         let settings = state.indexing_settings();
@@ -139,20 +139,24 @@ async fn backfill_legacy_source_identity_until_done(state: Arc<AppState>) {
         };
         match result {
             Ok(outcome) => {
-                if outcome.updated > 0 || outcome.failed > 0 {
+                if outcome.updated > 0 || outcome.unreadable > 0 || outcome.failed_writes > 0 {
                     tracing::info!(
                         updated = outcome.updated,
-                        failed = outcome.failed,
+                        unreadable = outcome.unreadable,
+                        failed_writes = outcome.failed_writes,
                         "backfilled source identity on legacy media points"
                     );
                 }
-                return;
+                if outcome.failed_writes == 0 {
+                    return;
+                }
             }
             Err(error) => {
                 tracing::warn!(%error, "legacy source identity backfill failed; retrying");
-                time::sleep(WATCH_RESCAN_INTERVAL).await;
             }
         }
+        // A later pass reads only the points that are still legacy.
+        time::sleep(WATCH_RESCAN_INTERVAL).await;
     }
 }
 

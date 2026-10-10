@@ -17,8 +17,10 @@ use crate::workers::sources::build_image_sources;
 pub struct LegacySourceBackfill {
     /// Legacy points that now carry their source identity.
     pub updated: usize,
-    /// Legacy points whose payload could not be read or written.
-    pub failed: usize,
+    /// Legacy points whose payload cannot be read; they are not retried.
+    pub unreadable: usize,
+    /// Legacy points whose write failed; the pass should be retried.
+    pub failed_writes: usize,
 }
 
 /// True while media points without `source_item_uri` remain (reads at most one point).
@@ -52,27 +54,24 @@ pub async fn backfill_legacy_source_identity(
             .payload
             .and_then(|payload| serde_json::from_value::<ImagePayload>(payload).ok())
         else {
-            outcome.failed += 1;
+            outcome.unreadable += 1;
             continue;
         };
         let Some(source_item_uri) = legacy_source_item_uri(&payload) else {
-            outcome.failed += 1;
+            outcome.unreadable += 1;
             continue;
         };
-        let source_uri = payload
-            .source_uri
-            .clone()
-            .or_else(|| containing_source_uri(&sources, &source_item_uri));
-        let updated = ImagePayload {
-            source_item_uri: Some(source_item_uri),
-            source_uri,
-            ..payload
-        };
-        match store.set_media_payload(&updated).await {
+        // The configured sources decide; a stored `source_uri` (older than `source_item_uri`) is
+        // kept only when no configured source contains the item.
+        let source_uri = containing_source_uri(&sources, &source_item_uri).or(payload.source_uri);
+        match store
+            .set_legacy_media_source_identity(&point.id, &source_item_uri, source_uri.as_deref())
+            .await
+        {
             Ok(()) => outcome.updated += 1,
             Err(error) => {
                 tracing::warn!(point_id = %point.id, %error, "could not backfill media source identity");
-                outcome.failed += 1;
+                outcome.failed_writes += 1;
             }
         }
     }

@@ -84,6 +84,21 @@ impl MediaVectorStore for QdrantImageStore {
         QdrantImageStore::scroll_legacy_media_points(self, limit).await
     }
 
+    async fn set_legacy_media_source_identity(
+        &self,
+        point_id: &str,
+        source_item_uri: &str,
+        source_uri: Option<&str>,
+    ) -> Result<(), String> {
+        QdrantImageStore::set_legacy_media_source_identity(
+            self,
+            point_id,
+            source_item_uri,
+            source_uri,
+        )
+        .await
+    }
+
     async fn scroll_face_points_by_media_ids(
         &self,
         media_ids: &[String],

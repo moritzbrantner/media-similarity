@@ -91,7 +91,10 @@ struct FakeDeleteRequest {
 #[derive(Deserialize)]
 struct FakeSetPayloadRequest {
     payload: Value,
+    #[serde(default)]
     points: Vec<String>,
+    #[serde(default)]
+    filter: Option<Value>,
 }
 
 impl FakeQdrant {
@@ -279,11 +282,43 @@ async fn fake_set_payload(
     if !state.collections.contains_key(&collection) {
         return Err(AxumStatusCode::NOT_FOUND);
     }
-    for id in request.points {
+    // Qdrant `set_payload` merges the given keys into the payload of the selected points, chosen
+    // by `points` or by `filter` (`has_id` plus payload conditions).
+    let selected = match &request.filter {
+        Some(filter) => {
+            let ids = filter
+                .get("must")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|condition| condition.get("has_id").and_then(Value::as_array))
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect::<Vec<_>>();
+            ids.into_iter()
+                .filter(|id| {
+                    state
+                        .points
+                        .get(&(collection.clone(), id.clone()))
+                        .is_some_and(|point| payload_matches_filter(&point.payload, Some(filter)))
+                })
+                .collect::<Vec<_>>()
+        }
+        None => request.points,
+    };
+    for id in selected {
         let Some(point) = state.points.get_mut(&(collection.clone(), id)) else {
             continue;
         };
-        point.payload = request.payload.clone();
+        match (point.payload.as_object_mut(), request.payload.as_object()) {
+            (Some(stored), Some(update)) => {
+                for (key, value) in update {
+                    stored.insert(key.clone(), value.clone());
+                }
+            }
+            _ => point.payload = request.payload.clone(),
+        }
     }
     Ok(Json(json!({ "result": { "status": "completed" } })))
 }
