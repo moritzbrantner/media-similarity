@@ -232,7 +232,7 @@ curl -X POST http://localhost:8000/api/models/visual_embedding/download \
   -d '{"model": null}'
 ```
 
-Model roles are `visual_embedding`, `face_detection`, `face_embedding`, and `audio_transcription`. The service delegates model specs, bundle storage, and native runtime adapters to the sibling `../rust-packages` crates.
+Model roles are `visual_embedding`, `face_detection`, `face_embedding`, and `audio_transcription`. The service delegates model specs, bundle storage, and native runtime adapters to the versioned `moenarch-*` capability crates declared in `backend/Cargo.toml`.
 
 Default-enabled model roles are advertised capabilities for local readiness. If `/api/ready` reports a required model as missing, download it from the Models panel or use the role-specific `/api/models/<role>/download` endpoint shown above. Audio transcription is disabled by default, so its missing ASR bundle does not block readiness until transcription is enabled.
 
@@ -332,7 +332,7 @@ Set these values in `.env`:
 | `AUDIO_TRANSCRIPTION_ENABLED` | `false` | Compatibility switch for transcript analysis. The repository-local text compatibility layer does not bundle a native transcription backend. |
 | `VOICE_REGISTRY_PATH` | `/app/data/recognized-voices.json` | Persistent speaker registry used to recognize recurring voices across audio files. |
 | `SMART_ALBUMS_FILE` | `/app/data/smart-albums.json` | Persistent smart album definitions used by the Albums UI and `/api/smart-albums` endpoints. |
-| `MODEL_BUNDLE_DIR` | `/app/data/models/bundles` | Local model bundle directory used by rust-packages model stores. |
+| `MODEL_BUNDLE_DIR` | `/app/data/models/bundles` | Local model bundle directory used by the capability crates' model stores. |
 | `MODEL_HF_CACHE_DIR` | `/app/data/models/hf-cache` | Optional Hugging Face cache directory for model downloads. |
 | `MODEL_HF_TOKEN` | empty | Optional Hugging Face token forwarded to model downloads. |
 | `DEFAULT_SEARCH_LIMIT` | `12` | Default result count. |
@@ -393,11 +393,7 @@ Install the frontend dependencies:
 bun install
 ```
 
-Rust service builds and tests use Cargo with path dependencies from a sibling checkout:
-
-```txt
-../rust-packages
-```
+Rust service builds and tests resolve the versioned `moenarch-*` capability crates from crates.io; no sibling checkout is needed. A task that deliberately changes a capability together with this app can use an exact source override (`bash scripts/source-deps activate`, see `docs/dependency-boundaries.md`).
 
 Install Playwright Chromium once before running UI end-to-end tests:
 
@@ -490,19 +486,19 @@ Run this before handing off larger changes:
 bun run verify
 ```
 
-The verification command runs the hygiene report, frontend format check, TypeScript/Rust static checks, Rust tests, Playwright tests, the frontend build, and the Unlighthouse performance audit. It requires the sibling `../rust-packages` checkout and Playwright Chromium.
+The verification command runs the hygiene report, frontend format check, TypeScript/Rust static checks, Rust tests, Playwright tests, the frontend build, and the Unlighthouse performance audit. It requires Playwright Chromium.
 
 ### Release Notes
 
 This repository does not currently have a release or publish command. The frontend package is private and the Rust crate has `publish = false`. Use the existing Docker build when a runtime image is needed:
 
 ```bash
-docker build --build-context rust-packages=../rust-packages -t image-similarity-service .
+docker build -t image-similarity-service .
 ```
 
 ### Troubleshooting
 
-- If Rust commands cannot resolve `audio-analysis-*`, `image-analysis-*`, `vector-analysis-*`, or `video-analysis-*` crates, confirm `../rust-packages` exists.
+- If Rust commands cannot resolve `moenarch-*` capability crates, check crates.io access; if source mode is active (`bash scripts/source-deps status`), confirm the pinned sibling checkouts exist or run `bash scripts/source-deps deactivate`.
 - If `bun run test:e2e` fails before opening the UI, run `bunx playwright install chromium`.
 - If video or audio indexing fails locally, confirm `ffmpeg` and `ffprobe` are installed and on `PATH`.
 - If `git status --short` is noisy, run `bun run check:hygiene` and confirm local generated directories are ignored.
@@ -526,7 +522,7 @@ cargo test --manifest-path backend/Cargo.toml
 Build the runtime image:
 
 ```bash
-docker build --build-context rust-packages=../rust-packages -t image-similarity-service .
+docker build -t image-similarity-service .
 ```
 
 Run the same Rust tests inside Docker Compose:
@@ -606,5 +602,4 @@ bunx playwright install chromium
 
 - Re-running indexing upserts local images by deterministic ID based on absolute image path.
 - If an image file changes at the same path, run indexing again to refresh its vector, pHash, metadata, and thumbnail.
-- The Dockerfile uses Docker BuildKit's named `rust-packages` context for the sibling workspace required by the Cargo path dependencies.
 - This version intentionally omits auth, users, async queues, and a separate frontend build pipeline.

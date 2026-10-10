@@ -4,6 +4,14 @@
 
 Native Rust media similarity service with a React/Vite frontend. The backend indexes local image, GIF, video, and audio sources, writes thumbnails/uploads under local data directories, stores vectors in Qdrant, and serves the checked-in static frontend bundle.
 
+## Authority boundaries
+
+Machine-readable in `.repository.toml` (`[architecture]`); keep both lists identical. Check with `coding-tooling repository contract --root . --json`.
+
+- Owns: `media-similarity/source-configuration`, `media-similarity/cross-media-indexing`, `media-similarity/similarity-search`, `media-similarity/index-persistence`, `media-similarity/search-ui`
+- Adapts: `audio-analysis/audio-capabilities`, `visual-analysis/image-capabilities`, `visual-analysis/video-capabilities`, `nlp-stack/text-transcripts`, `moenarch-foundation/model-runtime`, `moenarch-foundation/vector-math`
+- Non-authoritative: `audio-analysis/audio-capabilities`, `visual-analysis/image-capabilities`, `visual-analysis/video-capabilities`, `nlp-stack/text-transcripts`, `moenarch-foundation/model-runtime`, `moenarch-foundation/vector-math`
+
 ## Repository Map
 
 - `backend/src/`: Rust Axum service, indexing, media decoding, pHash/vector search, Qdrant integration, and thumbnail/upload handling.
