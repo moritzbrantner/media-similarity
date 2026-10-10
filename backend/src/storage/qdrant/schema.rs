@@ -111,7 +111,33 @@ fn payload_index_schema_error(
 
 #[derive(Clone, Serialize)]
 struct Filter {
-    must: Vec<FieldCondition>,
+    must: Vec<Condition>,
+}
+
+/// A Qdrant filter condition: a field condition, or `is_empty` (the key is missing, null or an
+/// empty array).
+#[derive(Clone, Serialize)]
+#[serde(untagged)]
+enum Condition {
+    Field(FieldCondition),
+    IsEmpty { is_empty: PayloadKey },
+}
+
+impl From<FieldCondition> for Condition {
+    fn from(condition: FieldCondition) -> Self {
+        Self::Field(condition)
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct PayloadKey {
+    key: String,
+}
+
+fn is_empty_condition(key: impl Into<String>) -> Condition {
+    Condition::IsEmpty {
+        is_empty: PayloadKey { key: key.into() },
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -138,14 +164,16 @@ struct MatchValue {
 
 fn kind_filter(kind: &'static str) -> Filter {
     Filter {
-        must: vec![field_condition("point_kind", kind)],
+        must: vec![field_condition("point_kind", kind).into()],
     }
 }
 
 fn media_search_filter(filter: Option<MediaSearchFilter>) -> Option<Filter> {
     let mut conditions = vec![field_condition("point_kind", "media")];
     let Some(filter) = filter else {
-        return Some(Filter { must: conditions });
+        return Some(Filter {
+            must: conditions.into_iter().map(Condition::from).collect(),
+        });
     };
     if let Some(source_type) = filter.source_type {
         conditions.push(field_condition("source_type", source_type));
@@ -186,7 +214,9 @@ fn media_search_filter(filter: Option<MediaSearchFilter>) -> Option<Filter> {
         filter.captured_from,
         filter.captured_to,
     );
-    Some(Filter { must: conditions })
+    Some(Filter {
+        must: conditions.into_iter().map(Condition::from).collect(),
+    })
 }
 
 fn push_range(

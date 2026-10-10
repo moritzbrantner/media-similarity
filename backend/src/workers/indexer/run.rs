@@ -33,6 +33,7 @@ use crate::workers::media::thumbnails::{ensure_animated_thumbnail, ensure_thumbn
 use crate::workers::media::video::{decode_source_video_scenes_cancellable, SourceVideoScene};
 use crate::workers::media::visual_embedding::VisualEmbeddingBackend;
 use crate::workers::sources::{build_image_sources, SourceImage, SourceUnavailable};
+use crate::workers::indexing::backfill::legacy_media_points_remain;
 use crate::workers::workflows::{
     compile_media_workflow, default_media_workflow_library, load_media_workflow_library,
     validate_media_workflow_library, CompiledMediaWorkflow, MediaFileKind, WorkflowMode,

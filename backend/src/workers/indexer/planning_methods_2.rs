@@ -93,6 +93,12 @@ impl ImageIndexer {
         if changes.full_rescan() {
             return self.plan_sources().await;
         }
+        self.store.ensure_collection().await?;
+        // Legacy points lack the source identity the scoped lookups filter on. Until the
+        // backfill has given every point its identity, only a full rescan prunes them correctly.
+        if legacy_media_points_remain(self.store.as_ref()).await? {
+            return self.plan_sources().await;
+        }
 
         let sources = build_image_sources(&self.settings);
         let source_uris = sources
@@ -100,7 +106,6 @@ impl ImageIndexer {
             .map(|source| source.uri())
             .collect::<Vec<_>>();
 
-        self.store.ensure_collection().await?;
         let indexing_profile = indexing_profile(&self.settings);
         let ledger = IndexingLedger::load(&self.settings.indexing_ledger_file);
         let ledger_sources = ledger.active_run.as_ref().map(|run| &run.sources);

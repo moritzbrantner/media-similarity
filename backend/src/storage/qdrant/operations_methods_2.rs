@@ -89,8 +89,28 @@ impl QdrantImageStore {
         if let Some(source_item_uri) = source_item_uri {
             conditions.push(field_condition("source_item_uri", source_item_uri));
         }
-        self.scroll_points_with_filter(Some(Filter { must: conditions }))
-            .await
+        self.scroll_points_with_filter(Some(Filter {
+            must: conditions.into_iter().map(Condition::from).collect(),
+        }))
+        .await
+    }
+
+    /// Media points written before `source_item_uri` existed. With `limit`, reads one page of at
+    /// most that many points instead of all of them.
+    pub async fn scroll_legacy_media_points(
+        &self,
+        limit: Option<u32>,
+    ) -> Result<Vec<StoredPoint>, String> {
+        let filter = Filter {
+            must: vec![
+                field_condition("point_kind", "media").into(),
+                is_empty_condition("source_item_uri"),
+            ],
+        };
+        match limit {
+            Some(limit) => self.scroll_points_page(Some(filter), limit).await,
+            None => self.scroll_points_with_filter(Some(filter)).await,
+        }
     }
 
     pub async fn scroll_face_points_by_media_ids(
@@ -126,6 +146,39 @@ impl QdrantImageStore {
     ) -> Result<Vec<StoredPoint>, String> {
         self.scroll_points_with_filter(point_kind.map(kind_filter))
             .await
+    }
+
+    async fn scroll_points_page(
+        &self,
+        filter: Option<Filter>,
+        limit: u32,
+    ) -> Result<Vec<StoredPoint>, String> {
+        let request = ScrollRequest {
+            limit,
+            with_payload: true,
+            with_vector: false,
+            offset: None,
+            filter,
+        };
+        let path = format!("/collections/{}/points/scroll", self.collection);
+        let response = self
+            .send_qdrant("scroll_points", &path, |base_url| {
+                self.client.post(format!("{base_url}{path}")).json(&request)
+            })
+            .await
+            .map_err(|error| error.to_string())?;
+        let response = self
+            .parse_json::<ScrollResponse>("scroll_points", response)
+            .await?;
+        Ok(response
+            .result
+            .points
+            .into_iter()
+            .map(|point| StoredPoint {
+                id: point.id,
+                payload: point.payload,
+            })
+            .collect())
     }
 
     async fn scroll_points_with_filter(

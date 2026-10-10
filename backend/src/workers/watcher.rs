@@ -13,6 +13,7 @@ use uuid::Uuid;
 use crate::api::{run_watch_index_job, AppState};
 use crate::config::Settings;
 use crate::workers::indexer::LocalIndexChanges;
+use crate::workers::indexing::backfill::backfill_legacy_source_identity;
 use crate::workers::sources::{build_image_sources, video_extensions};
 
 const WATCH_RESCAN_INTERVAL: Duration = Duration::from_secs(5);
@@ -52,8 +53,16 @@ async fn watch_local_sources(state: Arc<AppState>) -> Result<(), String> {
     let mut pending_changes = LocalIndexChanges::default();
     let mut last_event_at: Option<Instant> = None;
 
+    // Runs alongside event handling; until it finishes, watcher jobs fall back to full rescans.
+    let backfill = backfill_legacy_source_identity_until_done(state.clone());
+    tokio::pin!(backfill);
+    let mut backfill_done = false;
+
     loop {
         tokio::select! {
+            () = &mut backfill, if !backfill_done => {
+                backfill_done = true;
+            }
             maybe_event = events_rx.recv() => {
                 let Some(event) = maybe_event else {
                     return Err("source watcher event channel closed".to_string());
@@ -114,6 +123,34 @@ async fn watch_local_sources(state: Arc<AppState>) -> Result<(), String> {
                         last_event_at = Some(Instant::now());
                     }
                 }
+            }
+        }
+    }
+}
+
+/// The one-time legacy source-identity backfill (PR #66, option B), retried while Qdrant is
+/// unavailable.
+async fn backfill_legacy_source_identity_until_done(state: Arc<AppState>) {
+    loop {
+        let settings = state.indexing_settings();
+        let result = match state.store.ensure_collection().await {
+            Ok(()) => backfill_legacy_source_identity(state.store.as_ref(), &settings).await,
+            Err(error) => Err(error),
+        };
+        match result {
+            Ok(outcome) => {
+                if outcome.updated > 0 || outcome.failed > 0 {
+                    tracing::info!(
+                        updated = outcome.updated,
+                        failed = outcome.failed,
+                        "backfilled source identity on legacy media points"
+                    );
+                }
+                return;
+            }
+            Err(error) => {
+                tracing::warn!(%error, "legacy source identity backfill failed; retrying");
+                time::sleep(WATCH_RESCAN_INTERVAL).await;
             }
         }
     }

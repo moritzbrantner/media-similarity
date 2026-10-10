@@ -77,6 +77,13 @@ impl MediaVectorStore for QdrantImageStore {
         QdrantImageStore::scroll_media_points_by_filter(self, id, source_uri, source_item_uri).await
     }
 
+    async fn scroll_legacy_media_points(
+        &self,
+        limit: Option<u32>,
+    ) -> Result<Vec<StoredPoint>, String> {
+        QdrantImageStore::scroll_legacy_media_points(self, limit).await
+    }
+
     async fn scroll_face_points_by_media_ids(
         &self,
         media_ids: &[String],

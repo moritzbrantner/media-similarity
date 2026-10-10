@@ -105,6 +105,29 @@ pub trait MediaVectorStore: Send + Sync {
         source_item_uri: Option<&str>,
     ) -> Result<Vec<StoredPoint>, String>;
 
+    /// Media points without `source_item_uri` (written before source identity existed). With
+    /// `limit`, at most that many are read.
+    async fn scroll_legacy_media_points(
+        &self,
+        limit: Option<u32>,
+    ) -> Result<Vec<StoredPoint>, String> {
+        let legacy = self
+            .scroll_media_points()
+            .await?
+            .into_iter()
+            .filter(|point| {
+                point
+                    .payload
+                    .as_ref()
+                    .and_then(|payload| payload.get("source_item_uri"))
+                    .is_none_or(serde_json::Value::is_null)
+            });
+        Ok(match limit {
+            Some(limit) => legacy.take(limit as usize).collect(),
+            None => legacy.collect(),
+        })
+    }
+
     async fn scroll_face_points_by_media_ids(
         &self,
         media_ids: &[String],
