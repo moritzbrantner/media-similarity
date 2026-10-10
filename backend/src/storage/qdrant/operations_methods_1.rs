@@ -247,6 +247,45 @@ impl QdrantImageStore {
         Ok(())
     }
 
+    /// A conditional partial write: Qdrant applies it only while the point still lacks
+    /// `source_item_uri`, and `set_payload` merges keys, so a concurrent index write that gave the
+    /// point a fresh modern payload is never overwritten.
+    pub async fn set_legacy_media_source_identity(
+        &self,
+        point_id: &str,
+        source_item_uri: &str,
+        source_uri: Option<&str>,
+    ) -> Result<(), String> {
+        let mut payload = serde_json::Map::new();
+        payload.insert(
+            "source_item_uri".to_string(),
+            Value::String(source_item_uri.to_string()),
+        );
+        if let Some(source_uri) = source_uri {
+            payload.insert(
+                "source_uri".to_string(),
+                Value::String(source_uri.to_string()),
+            );
+        }
+        let request = serde_json::json!({
+            "payload": payload,
+            "filter": {
+                "must": [
+                    { "has_id": [point_id] },
+                    { "key": "point_kind", "match": { "value": "media" } },
+                    { "is_empty": { "key": "source_item_uri" } },
+                ],
+            },
+        });
+        let path = format!("/collections/{}/points/payload?wait=true", self.collection);
+        self.send_qdrant("set_legacy_media_source_identity", &path, |base_url| {
+            self.client.post(format!("{base_url}{path}")).json(&request)
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
     pub async fn set_face_payload(&self, payload: &FacePointPayload) -> Result<(), String> {
         let mut payload_value = serde_json::to_value(payload).map_err(|error| error.to_string())?;
         set_payload_kind(&mut payload_value, "face");

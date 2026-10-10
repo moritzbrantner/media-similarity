@@ -105,6 +105,39 @@ pub trait MediaVectorStore: Send + Sync {
         source_item_uri: Option<&str>,
     ) -> Result<Vec<StoredPoint>, String>;
 
+    /// Media points without `source_item_uri` (written before source identity existed). With
+    /// `limit`, at most that many are read.
+    async fn scroll_legacy_media_points(
+        &self,
+        limit: Option<u32>,
+    ) -> Result<Vec<StoredPoint>, String> {
+        let legacy = self
+            .scroll_media_points()
+            .await?
+            .into_iter()
+            .filter(|point| {
+                point
+                    .payload
+                    .as_ref()
+                    .and_then(|payload| payload.get("source_item_uri"))
+                    .is_none_or(serde_json::Value::is_null)
+            });
+        Ok(match limit {
+            Some(limit) => legacy.take(limit as usize).collect(),
+            None => legacy.collect(),
+        })
+    }
+
+    /// Sets `source_item_uri`/`source_uri` on media point `point_id` only while it still lacks
+    /// `source_item_uri`, and leaves every other payload field as it is. Must be one atomic
+    /// conditional partial write, so a concurrent modern write is never overwritten.
+    async fn set_legacy_media_source_identity(
+        &self,
+        point_id: &str,
+        source_item_uri: &str,
+        source_uri: Option<&str>,
+    ) -> Result<(), String>;
+
     async fn scroll_face_points_by_media_ids(
         &self,
         media_ids: &[String],

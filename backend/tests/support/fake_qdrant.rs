@@ -41,6 +41,9 @@ struct FakePoint {
 pub struct FakeQdrantOperationCounts {
     pub upserted_points: usize,
     pub deleted_points: usize,
+    pub scroll_requests: usize,
+    pub filtered_scroll_requests: usize,
+    pub unfiltered_scroll_requests: usize,
 }
 
 #[derive(Deserialize)]
@@ -88,7 +91,10 @@ struct FakeDeleteRequest {
 #[derive(Deserialize)]
 struct FakeSetPayloadRequest {
     payload: Value,
+    #[serde(default)]
     points: Vec<String>,
+    #[serde(default)]
+    filter: Option<Value>,
 }
 
 impl FakeQdrant {
@@ -276,11 +282,43 @@ async fn fake_set_payload(
     if !state.collections.contains_key(&collection) {
         return Err(AxumStatusCode::NOT_FOUND);
     }
-    for id in request.points {
+    // Qdrant `set_payload` merges the given keys into the payload of the selected points, chosen
+    // by `points` or by `filter` (`has_id` plus payload conditions).
+    let selected = match &request.filter {
+        Some(filter) => {
+            let ids = filter
+                .get("must")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|condition| condition.get("has_id").and_then(Value::as_array))
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect::<Vec<_>>();
+            ids.into_iter()
+                .filter(|id| {
+                    state
+                        .points
+                        .get(&(collection.clone(), id.clone()))
+                        .is_some_and(|point| payload_matches_filter(&point.payload, Some(filter)))
+                })
+                .collect::<Vec<_>>()
+        }
+        None => request.points,
+    };
+    for id in selected {
         let Some(point) = state.points.get_mut(&(collection.clone(), id)) else {
             continue;
         };
-        point.payload = request.payload.clone();
+        match (point.payload.as_object_mut(), request.payload.as_object()) {
+            (Some(stored), Some(update)) => {
+                for (key, value) in update {
+                    stored.insert(key.clone(), value.clone());
+                }
+            }
+            _ => point.payload = request.payload.clone(),
+        }
     }
     Ok(Json(json!({ "result": { "status": "completed" } })))
 }
@@ -339,9 +377,15 @@ async fn fake_scroll_points(
     State(state): State<Arc<Mutex<FakeQdrantState>>>,
     Json(request): Json<FakeScrollRequest>,
 ) -> Result<Json<Value>, AxumStatusCode> {
-    let state = state.lock().unwrap();
+    let mut state = state.lock().unwrap();
     if !state.collections.contains_key(&collection) {
         return Err(AxumStatusCode::NOT_FOUND);
+    }
+    state.operation_counts.scroll_requests += 1;
+    if request.filter.is_some() {
+        state.operation_counts.filtered_scroll_requests += 1;
+    } else {
+        state.operation_counts.unfiltered_scroll_requests += 1;
     }
     let offset = request.offset.as_ref().and_then(Value::as_str);
     let mut points = state
@@ -417,34 +461,65 @@ fn payload_matches_filter(payload: &Value, filter: Option<&Value>) -> bool {
     let Some(filter) = filter else {
         return true;
     };
-    let Some(must) = filter.get("must").and_then(Value::as_array) else {
+    let conditions = |name: &str| {
+        filter
+            .get(name)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+    };
+    conditions("must")
+        .iter()
+        .all(|condition| condition_matches(payload, condition))
+        && !conditions("must_not")
+            .iter()
+            .any(|condition| condition_matches(payload, condition))
+}
+
+/// Qdrant condition semantics the service relies on: `match`, `range`, `is_empty` (key missing,
+/// null or an empty array) and `is_null` (key present with a null value).
+fn condition_matches(payload: &Value, condition: &Value) -> bool {
+    if let Some(key) = condition
+        .get("is_empty")
+        .and_then(|value| value.get("key"))
+        .and_then(Value::as_str)
+    {
+        return match payload_value(payload, key) {
+            None | Some(Value::Null) => true,
+            Some(Value::Array(values)) => values.is_empty(),
+            Some(_) => false,
+        };
+    }
+    if let Some(key) = condition
+        .get("is_null")
+        .and_then(|value| value.get("key"))
+        .and_then(Value::as_str)
+    {
+        return matches!(payload_value(payload, key), Some(Value::Null));
+    }
+    let Some(key) = condition.get("key").and_then(Value::as_str) else {
         return true;
     };
-    must.iter().all(|condition| {
-        let Some(key) = condition.get("key").and_then(Value::as_str) else {
-            return true;
+    let actual = payload_value(payload, key);
+    if let Some(expected) = condition.get("match").and_then(|value| value.get("value")) {
+        return actual.map(|actual| actual == expected).unwrap_or(false);
+    }
+    if let Some(range) = condition.get("range") {
+        let Some(actual) = actual.and_then(Value::as_f64) else {
+            return false;
         };
-        let actual = payload_value(payload, key);
-        if let Some(expected) = condition.get("match").and_then(|value| value.get("value")) {
-            return actual.map(|actual| actual == expected).unwrap_or(false);
-        }
-        if let Some(range) = condition.get("range") {
-            let Some(actual) = actual.and_then(Value::as_f64) else {
+        if let Some(gte) = range.get("gte").and_then(Value::as_f64) {
+            if actual < gte {
                 return false;
-            };
-            if let Some(gte) = range.get("gte").and_then(Value::as_f64) {
-                if actual < gte {
-                    return false;
-                }
-            }
-            if let Some(lte) = range.get("lte").and_then(Value::as_f64) {
-                if actual > lte {
-                    return false;
-                }
             }
         }
-        true
-    })
+        if let Some(lte) = range.get("lte").and_then(Value::as_f64) {
+            if actual > lte {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 fn payload_value<'a>(payload: &'a Value, key: &str) -> Option<&'a Value> {

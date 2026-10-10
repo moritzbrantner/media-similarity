@@ -882,6 +882,15 @@ mod tests {
             Ok(Vec::new())
         }
 
+        async fn set_legacy_media_source_identity(
+            &self,
+            _point_id: &str,
+            _source_item_uri: &str,
+            _source_uri: Option<&str>,
+        ) -> Result<(), String> {
+            Ok(())
+        }
+
         async fn scroll_face_points_by_media_ids(
             &self,
             _media_ids: &[String],
