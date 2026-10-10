@@ -129,34 +129,14 @@ pub trait MediaVectorStore: Send + Sync {
     }
 
     /// Sets `source_item_uri`/`source_uri` on media point `point_id` only while it still lacks
-    /// `source_item_uri`, and leaves every other payload field as it is.
+    /// `source_item_uri`, and leaves every other payload field as it is. Must be one atomic
+    /// conditional partial write, so a concurrent modern write is never overwritten.
     async fn set_legacy_media_source_identity(
         &self,
         point_id: &str,
         source_item_uri: &str,
         source_uri: Option<&str>,
-    ) -> Result<(), String> {
-        let Some(point) = self
-            .scroll_legacy_media_points(None)
-            .await?
-            .into_iter()
-            .find(|point| point.id == point_id)
-        else {
-            return Ok(());
-        };
-        let Some(payload) = point
-            .payload
-            .and_then(|payload| serde_json::from_value::<ImagePayload>(payload).ok())
-        else {
-            return Ok(());
-        };
-        self.set_media_payload(&ImagePayload {
-            source_item_uri: Some(source_item_uri.to_string()),
-            source_uri: source_uri.map(str::to_string),
-            ..payload
-        })
-        .await
-    }
+    ) -> Result<(), String>;
 
     async fn scroll_face_points_by_media_ids(
         &self,
