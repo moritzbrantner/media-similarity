@@ -7,10 +7,15 @@
 //! identity fields gives the legacy payload, and a correct backfill restores the modern one.
 
 use std::fs;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
+use async_trait::async_trait;
 use image_similarity_service::config::parse_extensions;
-use image_similarity_service::domain::models::ImagePayload;
+use image_similarity_service::domain::models::{FacePointPayload, ImagePayload};
+use image_similarity_service::storage::{MediaVectorStore, ScoredPoint, StoredPoint};
+use image_similarity_service::workers::indexing::backfill::backfill_legacy_source_identity;
 use image_similarity_service::workers::watcher::spawn_local_source_watcher;
 
 mod support;
@@ -246,4 +251,154 @@ async fn an_update_that_yields_fewer_points_prunes_the_stale_legacy_ones() {
     assert_eq!(payloads[0].source_item_uri, modern[0].source_item_uri);
 
     watcher.abort();
+}
+
+/// Delegates to the app's real Qdrant store and, right before forwarding the backfill's write for
+/// `point_id`, upserts `modern` for it: an index write that modernized the point between the
+/// backfill's legacy scroll and its conditional write.
+struct ModernizeBeforeBackfillWrite {
+    inner: Arc<dyn MediaVectorStore>,
+    modern: ImagePayload,
+    vector_size: usize,
+    races: AtomicUsize,
+}
+
+#[async_trait]
+impl MediaVectorStore for ModernizeBeforeBackfillWrite {
+    async fn ensure_collection(&self) -> Result<(), String> {
+        self.inner.ensure_collection().await
+    }
+
+    async fn upsert_media(&self, payload: &ImagePayload, vector: Vec<f32>) -> Result<(), String> {
+        self.inner.upsert_media(payload, vector).await
+    }
+
+    async fn upsert_face(
+        &self,
+        payload: &FacePointPayload,
+        vector: Vec<f32>,
+    ) -> Result<(), String> {
+        self.inner.upsert_face(payload, vector).await
+    }
+
+    async fn set_media_payload(&self, payload: &ImagePayload) -> Result<(), String> {
+        self.inner.set_media_payload(payload).await
+    }
+
+    async fn set_face_payload(&self, payload: &FacePointPayload) -> Result<(), String> {
+        self.inner.set_face_payload(payload).await
+    }
+
+    async fn delete_points(&self, ids: &[String]) -> Result<(), String> {
+        self.inner.delete_points(ids).await
+    }
+
+    async fn search_visual(
+        &self,
+        vector: Vec<f32>,
+        limit: u32,
+    ) -> Result<Vec<ScoredPoint>, String> {
+        self.inner.search_visual(vector, limit).await
+    }
+
+    async fn search_faces(&self, vector: Vec<f32>, limit: u32) -> Result<Vec<ScoredPoint>, String> {
+        self.inner.search_faces(vector, limit).await
+    }
+
+    async fn scroll_media_points(&self) -> Result<Vec<StoredPoint>, String> {
+        self.inner.scroll_media_points().await
+    }
+
+    async fn scroll_face_points(&self) -> Result<Vec<StoredPoint>, String> {
+        self.inner.scroll_face_points().await
+    }
+
+    async fn scroll_media_points_by_filter(
+        &self,
+        id: Option<&str>,
+        source_uri: Option<&str>,
+        source_item_uri: Option<&str>,
+    ) -> Result<Vec<StoredPoint>, String> {
+        self.inner
+            .scroll_media_points_by_filter(id, source_uri, source_item_uri)
+            .await
+    }
+
+    async fn scroll_legacy_media_points(
+        &self,
+        limit: Option<u32>,
+    ) -> Result<Vec<StoredPoint>, String> {
+        self.inner.scroll_legacy_media_points(limit).await
+    }
+
+    async fn set_legacy_media_source_identity(
+        &self,
+        point_id: &str,
+        source_item_uri: &str,
+        source_uri: Option<&str>,
+    ) -> Result<(), String> {
+        if point_id == self.modern.id {
+            self.races.fetch_add(1, Ordering::SeqCst);
+            self.inner
+                .upsert_media(&self.modern, vec![0.0; self.vector_size])
+                .await?;
+        }
+        self.inner
+            .set_legacy_media_source_identity(point_id, source_item_uri, source_uri)
+            .await
+    }
+
+    async fn scroll_face_points_by_media_ids(
+        &self,
+        media_ids: &[String],
+    ) -> Result<Vec<StoredPoint>, String> {
+        self.inner.scroll_face_points_by_media_ids(media_ids).await
+    }
+}
+
+/// Issue #74: the backfill's write is conditional (`has_id`, `point_kind = media`, `is_empty
+/// source_item_uri`), so a point that a concurrent index write modernized after the backfill's
+/// scroll keeps its fresh payload. A write selected by `points` only, or one without the
+/// `is_empty` condition, would put the identity derived from the stale legacy path back.
+#[tokio::test]
+async fn backfill_never_overwrites_a_point_modernized_after_its_scroll() {
+    let app = watched_app().await;
+    let modern = index_modern(&app, &[("legacy.png", 48, 48)]).await;
+    let original = &modern[0];
+    app.seed_media_payload(legacy(original)).await;
+
+    // The concurrent index write saw the item under a new name, so its identity differs from the
+    // one the backfill derives from the stale legacy path.
+    let rename = |value: &str| value.replace("legacy.png", "renamed.png");
+    let modernized = ImagePayload {
+        path: rename(&original.path),
+        relative_path: rename(&original.relative_path),
+        filename: "renamed.png".to_string(),
+        source_item_uri: original.source_item_uri.as_deref().map(rename),
+        ..original.clone()
+    };
+    assert_ne!(modernized.source_item_uri, original.source_item_uri);
+    let store = ModernizeBeforeBackfillWrite {
+        inner: app.state.store.clone(),
+        modern: modernized.clone(),
+        vector_size: app.state.settings.visual_embedding_vector_size,
+        races: AtomicUsize::new(0),
+    };
+
+    let outcome = backfill_legacy_source_identity(&store, &app.state.settings)
+        .await
+        .expect("the backfill pass runs");
+
+    assert_eq!(
+        store.races.load(Ordering::SeqCst),
+        1,
+        "the backfill scrolled the legacy point and then wrote it"
+    );
+    assert_eq!(outcome.failed_writes, 0);
+    assert_eq!(outcome.unreadable, 0);
+    assert_eq!(
+        app.stored_media_payloads(),
+        vec![modernized],
+        "the concurrently modernized payload is kept exactly"
+    );
 }
