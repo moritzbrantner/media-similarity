@@ -40,7 +40,7 @@ backend and the Vite UI with heavy model roles disabled, download and index the
 sample corpus, verify a sample query, then keep running until Ctrl-C.
 
 Options:
-  --check-prereqs  Only check the required tools (bun, cargo, ffmpeg, ffprobe and a
+  --check-prereqs  Only check the required tools (bun, cargo, ffmpeg, ffprobe, curl and a
                    compose command) and the optional PDF tools. Builds nothing.
   --seed-only      Index the sample corpus through a running backend and verify a
                    sample query. Uses SHOWCASE_API_URL (default
@@ -61,6 +61,7 @@ hint_for() {
     cargo) printf 'install the Rust toolchain with rustup from https://rustup.rs (curl --proto =https -sSf https://sh.rustup.rs | sh)' ;;
     ffmpeg) printf 'install FFmpeg, e.g. sudo apt install ffmpeg or brew install ffmpeg (https://ffmpeg.org/download.html)' ;;
     ffprobe) printf 'ffprobe ships with FFmpeg; install it, e.g. sudo apt install ffmpeg or brew install ffmpeg (https://ffmpeg.org/download.html)' ;;
+    curl) printf 'install curl, e.g. sudo apt install curl or brew install curl (https://curl.se/download.html)' ;;
     compose) printf 'install Docker with the Compose plugin (https://docs.docker.com/compose/install/) or Podman with podman-compose (https://podman.io/docs/installation)' ;;
   esac
 }
@@ -69,10 +70,22 @@ report_missing() {
   printf 'missing: %s\nhint: %s\n' "$1" "$(hint_for "${2:-$1}")" >&2
 }
 
+# `check_prereqs strict` (the one-command flow) requires every tool it uses; `legacy` keeps the
+# --check/--dev behaviour, where FFmpeg was only a warning for image-only use.
 check_prereqs() {
-  local failed=0 tool
+  local mode="${1:-strict}" failed=0 tool required=(bun cargo ffmpeg ffprobe curl)
+  if [[ "$mode" == legacy ]]; then
+    required=(bun cargo)
+    for tool in ffmpeg ffprobe; do
+      if command -v "$tool" >/dev/null 2>&1; then
+        printf 'ok: %s\n' "$tool"
+      else
+        printf 'warn: %s is not on PATH; related media workflows may be unavailable\n' "$tool" >&2
+      fi
+    done
+  fi
 
-  for tool in bun cargo ffmpeg ffprobe; do
+  for tool in "${required[@]}"; do
     if command -v "$tool" >/dev/null 2>&1; then
       printf 'ok: %s\n' "$tool"
     else
@@ -120,7 +133,7 @@ ENV
 check_showcase() {
   local failed=0
 
-  check_prereqs || failed=1
+  check_prereqs legacy || failed=1
   if [[ "$failed" -eq 0 ]]; then
     cargo run --manifest-path backend/Cargo.toml --bin sample_corpus -- check
   fi
@@ -360,12 +373,17 @@ write_media_sources() {
   } >"$showcase_app_dir/media-sources.txt"
 }
 
+# True when anything accepts TCP connections on 127.0.0.1:<port>, HTTP or not.
+port_in_use() {
+  (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null
+}
+
 ensure_ports_free() {
-  if curl -fsS --max-time 2 "http://127.0.0.1:8000/api/health" >/dev/null 2>&1; then
-    printf 'error: a backend already listens on 127.0.0.1:8000 (bun dev?); stop it before bun run showcase\n' >&2
+  if port_in_use 8000; then
+    printf 'error: port 8000 is already in use (bun dev?); stop it before bun run showcase\n' >&2
     return 1
   fi
-  if curl -sS --max-time 2 -o /dev/null "$ui_url" 2>/dev/null; then
+  if port_in_use "$ui_port"; then
     printf 'error: port %s is already in use (bun dev?); stop it before bun run showcase\n' "$ui_port" >&2
     return 1
   fi

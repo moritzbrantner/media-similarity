@@ -39,7 +39,7 @@ bun run showcase
 ```
 
 The command first checks the prerequisites: Bun, Cargo (Rust toolchain), `ffmpeg`,
-`ffprobe` and a Compose command (`docker compose`, `podman compose` or
+`ffprobe`, `curl` and a Compose command (`docker compose`, `podman compose` or
 `podman-compose`). For every missing tool it prints `missing: <tool>` and a
 `hint:` line with install instructions, then exits non-zero before building
 anything. Missing Poppler PDF tools only produce a `warn:` line.
