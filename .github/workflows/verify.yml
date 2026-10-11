@@ -38,6 +38,9 @@ jobs:
       - name: Test dependency architecture guard
         run: bun test scripts/check_dependency_boundaries.test.mjs
 
+      - name: Test one-command showcase diagnostics
+        run: bun run test:showcase
+
       - name: Check frontend formatting
         run: bun run format:check
 
