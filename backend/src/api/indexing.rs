@@ -11,7 +11,7 @@ use crate::config::Settings;
 use crate::domain::models::IndexResponse;
 use crate::storage::MediaVectorStore;
 use crate::workers::indexer::{ImageIndexer, LocalIndexChanges};
-use crate::workers::media::models::model_statuses;
+use crate::workers::media::models::model_statuses_unverified;
 use crate::workers::media::visual_embedding::VisualEmbeddingBackend;
 
 pub async fn index_images(
@@ -98,7 +98,7 @@ fn run_index_job_with_changes(
     } else {
         context.info("checking indexed media sources")?;
     }
-    for status in model_statuses(&settings)
+    for status in model_statuses_unverified(&settings)
         .into_iter()
         .filter(|status| status.blocking)
     {

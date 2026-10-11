@@ -13,7 +13,7 @@ use super::queries::{source_config_source, supported_source_types, video_source_
 use crate::api::ApiError;
 use crate::api::AppState;
 use crate::config::{parse_extensions, parse_media_sources_file};
-use crate::workers::media::models::{model_status, ModelRole};
+use crate::workers::media::models::{model_status_unverified, ModelRole};
 use crate::workers::sources::{build_media_sources, SourceDiagnostic, SourceDiagnosticCode};
 
 pub async fn get_source_config(State(state): State<Arc<AppState>>) -> Json<SourceConfigResponse> {
@@ -178,7 +178,7 @@ fn source_inventory(
         .filter(|role| {
             role.parse::<ModelRole>()
                 .ok()
-                .map(|role| !model_status(role, settings).active)
+                .map(|role| !model_status_unverified(role, settings).active)
                 .unwrap_or(false)
         })
         .cloned()

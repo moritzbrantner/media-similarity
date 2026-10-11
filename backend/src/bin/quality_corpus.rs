@@ -19,7 +19,7 @@ use image_similarity_service::workers::media::audio::decode_audio_segments;
 use image_similarity_service::workers::media::image_io::load_media_bytes;
 use image_similarity_service::workers::media::media::DecodedMedia;
 use image_similarity_service::workers::media::models::{
-    download_role_bundle, model_status, ModelRole,
+    download_role_bundle, model_status, record_model_provenance, ModelRole,
 };
 use image_similarity_service::workers::media::pdf::decode_pdf;
 use image_similarity_service::workers::media::video::decode_video_scenes;
@@ -313,6 +313,12 @@ fn download_required_model_bundles() -> Result<(), String> {
     ] {
         println!("downloading {} model bundle", role.label());
         let bundle = download_role_bundle(role, &settings)?;
+        if let Err(error) = record_model_provenance(role, &settings) {
+            eprintln!(
+                "warning: could not record {} model provenance: {error}",
+                role.label()
+            );
+        }
         println!(
             "{} model bundle ready at {}",
             role.label(),

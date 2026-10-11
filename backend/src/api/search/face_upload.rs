@@ -14,7 +14,7 @@ use crate::domain::models::{
 use crate::storage::ScoredPoint;
 use crate::workers::media::faces::{FaceBox, FaceDetector, FaceEmbedder};
 use crate::workers::media::image_io::load_media_bytes;
-use crate::workers::media::models::{model_status, ModelRole};
+use crate::workers::media::models::{model_status_unverified, ModelRole};
 use crate::workers::search::SearchFilters;
 
 use super::query::SearchQuery;
@@ -136,8 +136,8 @@ async fn read_face_upload(
 }
 
 fn face_model_status(settings: &crate::config::Settings) -> FaceSearchModelStatus {
-    let detection = model_status(ModelRole::FaceDetection, settings);
-    let embedding = model_status(ModelRole::FaceEmbedding, settings);
+    let detection = model_status_unverified(ModelRole::FaceDetection, settings);
+    let embedding = model_status_unverified(ModelRole::FaceEmbedding, settings);
     let degraded = !detection.active || !embedding.active;
     let face_detection_active = detection.active;
     let face_embedding_active = embedding.active;
