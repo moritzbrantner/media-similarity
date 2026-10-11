@@ -30,6 +30,47 @@ The repository is organized as a Rust-only backend plus a conventional React/Vit
 
 MinIO/S3 object-store sources are supported through `minio://bucket/prefix` and `s3://bucket/prefix` source specs. `video://` and camera source URI parsing is retained, but those source backends are currently reported as unavailable by the Rust service. Local video files inside configured local source folders are indexed as scene records, and local audio files are indexed as spectrogram records.
 
+## One-Command Showcase
+
+From a fresh clone, after `bun install`, run:
+
+```bash
+bun run showcase
+```
+
+The command first checks the prerequisites: Bun, Cargo (Rust toolchain), `ffmpeg`,
+`ffprobe`, `curl` and a Compose command (`docker compose`, `podman compose` or
+`podman-compose`). For every missing tool it prints `missing: <tool>` and a
+`hint:` line with install instructions, then exits non-zero before building
+anything. Missing Poppler PDF tools only produce a `warn:` line.
+
+It then builds the backend, downloads the lightweight sample corpus into
+`sample-images/showcase` when it is missing, starts Qdrant through the detected
+Compose command, and runs the backend plus the Vite UI with heavy model roles
+(CLIP visual embeddings, faces, transcription, OCR) disabled, so no model
+downloads are needed. It indexes the sample corpus, runs a sample query and
+prints:
+
+```txt
+sample query: upload sample-images/showcase/queries/wikimedia-example-query.jpg in the UI (...)
+showcase ready: http://127.0.0.1:5173
+```
+
+Showcase state lives in `.dev-data/showcase` and the Qdrant collection
+`media_similarity_showcase`, so it does not touch the `bun dev` data in
+`.dev-data/app`. The command needs ports 8000 and 5173 free (stop `bun dev`
+first). Under rootless Podman the Compose services run as container root, which maps
+to your user, so `.dev-data` stays writable. Press Ctrl-C to stop it; it stops the backend, the UI and the Qdrant
+container if it started that container.
+
+Seams for scripting:
+
+- `bash scripts/showcase.sh --check-prereqs` only runs the prerequisite check.
+- `bash scripts/showcase.sh --seed-only` indexes and verifies the sample corpus
+  through an already running backend (`SHOWCASE_API_URL`, default
+  `http://127.0.0.1:8000`; `SHOWCASE_SAMPLE_DIR`, default
+  `sample-images/showcase`; `SHOWCASE_WAIT_SECONDS`, default 180).
+
 ## Quick Start
 
 1. Copy the environment file:

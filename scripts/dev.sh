@@ -32,8 +32,11 @@ seed_local_media_sources() {
   } >"$target"
 }
 
+# shellcheck source=scripts/lib/compose.sh
+source "$project_root/scripts/lib/compose.sh"
+
 bash scripts/prepare-dev-data.sh
-HOST_UID="$(id -u)" HOST_GID="$(id -g)" docker compose up -d qdrant
+compose up -d qdrant
 
 app_data_dir="$(resolve_path "${APP_DATA_DIR:-.dev-data/app}")"
 media_sources_file="${MEDIA_SOURCES_FILE:-${app_data_dir}/media-sources.txt}"

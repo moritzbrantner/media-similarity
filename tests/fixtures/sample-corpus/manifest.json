@@ -72,9 +72,9 @@
       "kind": "video",
       "role": "source",
       "filename": "sources/big-buck-bunny-320x180.mp4",
-      "title": "Big Buck Bunny 320x180 MP4",
-      "download_url": "https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4",
-      "page_url": "https://peach.blender.org/about/",
+      "title": "Big Buck Bunny 10 second 360p MP4 clip",
+      "download_url": "https://test-videos.co.uk/vids/bigbuckbunny/mp4/h264/360/Big_Buck_Bunny_360_10s_1MB.mp4",
+      "page_url": "https://test-videos.co.uk/bigbuckbunny/mp4-h264",
       "license": "Creative Commons Attribution 3.0",
       "attribution": "Blender Foundation / www.bigbuckbunny.org"
     },
