@@ -32,6 +32,7 @@
     "quality:asset-tooling:materialize": "bun scripts/materialize-asset-tooling-quality.mjs && bun scripts/materialize-asset-tooling-audio-quality.mjs",
     "quality:asset-tooling:prepare": "bun run quality:download && bun run quality:asset-tooling:materialize",
     "quality:asset-tooling:evaluate": "bun run quality:asset-tooling:prepare && bash scripts/run-asset-tooling-quality.sh",
+    "showcase": "bash scripts/showcase.sh",
     "showcase:check": "bash scripts/showcase.sh --check",
     "showcase:download": "bun run sample:download",
     "showcase:dev": "bash scripts/showcase.sh --dev",
