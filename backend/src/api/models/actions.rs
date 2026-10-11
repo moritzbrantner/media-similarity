@@ -6,7 +6,9 @@ use jobs_core::{JobArtifact, JobError, JobProgress, JobSpec};
 use uuid::Uuid;
 
 use crate::api::jobs::ApiJobSnapshot;
-use crate::workers::media::models::{download_role_bundle, load_role_bundle, ModelRole};
+use crate::workers::media::models::{
+    download_role_bundle, load_role_bundle, record_model_provenance, ModelRole,
+};
 
 use crate::api::{ApiError, AppState};
 
@@ -56,6 +58,7 @@ pub async fn download_model(
                     .message("downloading model bundle"),
             )?;
             let bundle = download_role_bundle(role, &settings).map_err(job_failed)?;
+            record_provenance_in_job(&context, role, &settings)?;
             context.artifact(
                 JobArtifact::new("manifest", format!("model bundle {}", bundle.manifest.name))
                     .kind("model-bundle")
@@ -108,6 +111,7 @@ pub async fn download_all_models(
                         .message(format!("downloading {}", role.label())),
                 )?;
                 let bundle = download_role_bundle(role, &indexing_settings).map_err(job_failed)?;
+                record_provenance_in_job(&context, role, &indexing_settings)?;
                 context.artifact(
                     JobArtifact::new(
                         format!("manifest-{}", role.as_str()),
@@ -214,6 +218,7 @@ pub(crate) fn spawn_audio_transcription_download(
             )?;
             let bundle = download_role_bundle(ModelRole::AudioTranscription, &settings)
                 .map_err(job_failed)?;
+            record_provenance_in_job(&context, ModelRole::AudioTranscription, &settings)?;
             context.artifact(
                 JobArtifact::new("manifest", format!("native ASR model bundle {}", model))
                     .kind("model-bundle")
@@ -341,6 +346,27 @@ fn model_job_spec(kind: &str, name: &str, model: &str) -> Result<JobSpec, ApiErr
     .and_then(|spec| spec.with_metadata("provider", "candle-whisper"))
     .and_then(|spec| spec.with_metadata("model", model))
     .map_err(ApiError::from_job)
+}
+
+/// Record bundle provenance after a successful download. A recording failure
+/// is reported as a job warning; the download itself still succeeded.
+fn record_provenance_in_job(
+    context: &jobs_core::JobContext,
+    role: ModelRole,
+    settings: &crate::config::Settings,
+) -> Result<(), JobError> {
+    match record_model_provenance(role, settings) {
+        Ok(provenance) => context.info(format!(
+            "recorded provenance for {} ({} file(s), revision {})",
+            provenance.model_id,
+            provenance.files.len(),
+            provenance.revision
+        )),
+        Err(error) => context.warn(format!(
+            "could not record provenance for {} model bundle: {error}",
+            role.label()
+        )),
+    }
 }
 
 fn job_failed(error: impl std::fmt::Display) -> JobError {

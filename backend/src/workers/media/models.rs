@@ -1,5 +1,9 @@
+use std::collections::HashMap;
+use std::io::{BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, SystemTime};
 
 use image_analysis_detection::FaceDetectionPreset;
 use image_analysis_embeddings::{FaceEmbeddingPreset, ImageEmbeddingPreset};
@@ -7,7 +11,8 @@ use model_runtime::{
     HuggingFaceDownloader, HuggingFaceModelSpec, ModelBundle, ModelBundleFile, ModelBundleStore,
     ModelRuntimeError, ModelTask,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use text_transcripts::{WhisperCppModel, WhisperCppModelStore};
 
 use crate::config::Settings;
@@ -75,7 +80,33 @@ pub struct ModelRuntimeStatus {
     pub bundle_path: Option<String>,
     pub detail: Option<String>,
     pub options: Vec<ModelOption>,
+    /// Recorded `<bundle root>/provenance.json`, if a download wrote one.
+    pub provenance: Option<ModelProvenance>,
 }
+
+/// Where a cached model bundle came from and what its files hashed to when
+/// it was downloaded. Persisted as `<bundle root>/provenance.json`.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelProvenance {
+    pub role: String,
+    pub model_id: String,
+    pub revision: String,
+    /// Sorted by remote `path`.
+    pub files: Vec<ModelProvenanceFile>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelProvenanceFile {
+    /// Remote path inside the Hugging Face repository.
+    pub path: String,
+    pub source_url: String,
+    pub sha256: String,
+    pub size_bytes: u64,
+}
+
+pub const PROVENANCE_FILE_NAME: &str = "provenance.json";
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ModelOption {
@@ -182,6 +213,195 @@ pub fn download_role_bundle(role: ModelRole, settings: &Settings) -> Result<Mode
         .map_err(|error| error.to_string())
 }
 
+/// Record provenance for an already-cached role bundle: hash every cached file
+/// and write `<bundle root>/provenance.json` atomically. Never downloads; an
+/// uncached or invalid bundle is an error.
+pub fn record_model_provenance(
+    role: ModelRole,
+    settings: &Settings,
+) -> Result<ModelProvenance, String> {
+    let bundle = load_role_bundle(role, settings)?;
+    let mut files = Vec::with_capacity(bundle.manifest.files.len());
+    for (remote_path, file) in &bundle.manifest.files {
+        let local_path = bundle.root.join(&file.local_path);
+        let (sha256, size_bytes) = hash_file(&local_path)?;
+        files.push(ModelProvenanceFile {
+            path: remote_path.clone(),
+            source_url: huggingface_source_url(
+                &bundle.manifest.repo_id,
+                &bundle.manifest.revision,
+                remote_path,
+            ),
+            sha256,
+            size_bytes,
+        });
+    }
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+    let provenance = ModelProvenance {
+        role: role.as_str().to_string(),
+        model_id: bundle.manifest.repo_id.clone(),
+        revision: bundle.manifest.revision.clone(),
+        files,
+    };
+    write_provenance(&bundle.root, &provenance)?;
+    Ok(provenance)
+}
+
+fn huggingface_source_url(repo_id: &str, revision: &str, remote_path: &str) -> String {
+    format!("https://huggingface.co/{repo_id}/resolve/{revision}/{remote_path}")
+}
+
+fn write_provenance(bundle_root: &Path, provenance: &ModelProvenance) -> Result<(), String> {
+    let target = bundle_root.join(PROVENANCE_FILE_NAME);
+    let encoded = serde_json::to_vec_pretty(provenance)
+        .map_err(|error| format!("failed to encode model provenance: {error}"))?;
+    let nonce = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_nanos())
+        .unwrap_or_default();
+    let temp = bundle_root.join(format!(
+        ".{PROVENANCE_FILE_NAME}.{}.{nonce}.tmp",
+        std::process::id()
+    ));
+    let write = || -> std::io::Result<()> {
+        let mut file = std::fs::File::create(&temp)?;
+        file.write_all(&encoded)?;
+        file.sync_all()?;
+        std::fs::rename(&temp, &target)
+    };
+    write().map_err(|error| {
+        let _ = std::fs::remove_file(&temp);
+        format!("failed to write {}: {error}", target.display())
+    })
+}
+
+/// Read a recorded provenance file. `Ok(None)` when none was recorded.
+fn read_provenance(bundle_root: &Path) -> Result<Option<ModelProvenance>, String> {
+    let path = bundle_root.join(PROVENANCE_FILE_NAME);
+    match std::fs::read(&path) {
+        Ok(bytes) => serde_json::from_slice(&bytes)
+            .map(Some)
+            .map_err(|error| format!("{} is not valid provenance: {error}", path.display())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(format!("failed to read {}: {error}", path.display())),
+    }
+}
+
+/// Streaming SHA-256 of a file, returning (lowercase hex, byte count).
+fn hash_file(path: &Path) -> Result<(String, u64), String> {
+    let file = std::fs::File::open(path)
+        .map_err(|error| format!("failed to open {}: {error}", path.display()))?;
+    let mut hasher = Sha256::new();
+    let size = std::io::copy(&mut BufReader::with_capacity(1 << 20, file), &mut hasher)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    let hex = hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    Ok((hex, size))
+}
+
+/// Identity of a file's on-disk state for the status hash cache.
+#[derive(Clone, PartialEq, Eq)]
+struct FileStamp {
+    size: u64,
+    modified: Option<SystemTime>,
+    #[cfg(unix)]
+    inode: (u64, u64, i64, i64),
+}
+
+impl FileStamp {
+    fn of(metadata: &std::fs::Metadata) -> Self {
+        #[cfg(unix)]
+        use std::os::unix::fs::MetadataExt;
+        Self {
+            size: metadata.len(),
+            modified: metadata.modified().ok(),
+            #[cfg(unix)]
+            inode: (
+                metadata.dev(),
+                metadata.ino(),
+                metadata.ctime(),
+                metadata.ctime_nsec(),
+            ),
+        }
+    }
+}
+
+/// A file modified this recently may still change within the same timestamp
+/// tick, so its hash is not cached (same idea as git's "racy clean" check).
+const HASH_CACHE_SETTLE: Duration = Duration::from_secs(2);
+
+fn hash_cache() -> &'static Mutex<HashMap<PathBuf, (FileStamp, String)>> {
+    static CACHE: OnceLock<Mutex<HashMap<PathBuf, (FileStamp, String)>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// SHA-256 for status verification. Large bundles are re-hashed only when the
+/// file's size, mtime, inode or ctime changed since the last status call.
+fn cached_file_sha256(path: &Path) -> Result<String, String> {
+    let metadata = std::fs::metadata(path)
+        .map_err(|error| format!("failed to stat {}: {error}", path.display()))?;
+    let stamp = FileStamp::of(&metadata);
+    if let Ok(cache) = hash_cache().lock() {
+        if let Some((cached_stamp, sha256)) = cache.get(path) {
+            if *cached_stamp == stamp {
+                return Ok(sha256.clone());
+            }
+        }
+    }
+    let (sha256, _) = hash_file(path)?;
+    let settled = stamp
+        .modified
+        .and_then(|modified| SystemTime::now().duration_since(modified).ok())
+        .is_some_and(|age| age >= HASH_CACHE_SETTLE);
+    if let Ok(mut cache) = hash_cache().lock() {
+        if settled {
+            cache.insert(path.to_path_buf(), (stamp, sha256.clone()));
+        } else {
+            cache.remove(path);
+        }
+    }
+    Ok(sha256)
+}
+
+/// Read the recorded provenance for a cached bundle and compare it with the
+/// cached files. Returns the provenance plus a detail note for problems.
+fn bundle_provenance(bundle: &ModelBundle) -> (Option<ModelProvenance>, Option<String>) {
+    let provenance = match read_provenance(&bundle.root) {
+        Ok(Some(provenance)) => provenance,
+        Ok(None) => return (None, None),
+        Err(error) => return (None, Some(format!("provenance unavailable: {error}"))),
+    };
+    let mut mismatched = Vec::new();
+    for file in &provenance.files {
+        let Some(local_path) = bundle.file_path(&file.path) else {
+            mismatched.push(format!("`{}` (not in bundle manifest)", file.path));
+            continue;
+        };
+        match cached_file_sha256(&local_path) {
+            Ok(sha256) if sha256 == file.sha256 => {}
+            Ok(_) => mismatched.push(format!("`{}`", file.path)),
+            Err(error) => mismatched.push(format!("`{}` ({error})", file.path)),
+        }
+    }
+    let note = (!mismatched.is_empty()).then(|| {
+        format!(
+            "checksum mismatch against recorded provenance for cached file(s) {}; re-download the bundle",
+            mismatched.join(", ")
+        )
+    });
+    (Some(provenance), note)
+}
+
+fn join_detail(detail: Option<String>, note: Option<String>) -> Option<String> {
+    match (detail, note) {
+        (Some(detail), Some(note)) => Some(format!("{detail}; {note}")),
+        (detail, note) => detail.or(note),
+    }
+}
+
 pub fn role_spec(role: ModelRole) -> Result<HuggingFaceModelSpec, String> {
     role_spec_for_settings(role, &Settings::default())
 }
@@ -242,6 +462,10 @@ fn bundle_model_status(
         .as_ref()
         .map(|bundle| bundle.root.to_string_lossy().to_string())
         .or_else(|| fallback_path.map(|path| path.to_string_lossy().to_string()));
+    let (provenance, provenance_note) = bundle
+        .as_ref()
+        .map(bundle_provenance)
+        .unwrap_or((None, None));
     let detail = if bundle.is_some() {
         Some(format!("Using model bundle `{}`", spec.name))
     } else if fallback_cached {
@@ -261,6 +485,7 @@ fn bundle_model_status(
     } else {
         Some("Role is disabled by configuration".to_string())
     };
+    let detail = join_detail(detail, provenance_note);
     let missing_enabled_model = enabled && !cached;
 
     let blocking = matches!(
@@ -284,6 +509,7 @@ fn bundle_model_status(
             cached,
             configured: true,
         }],
+        provenance,
     }
 }
 
@@ -301,6 +527,10 @@ fn audio_model_status(settings: &Settings) -> ModelRuntimeStatus {
     };
     let bundle = bundle.ok();
     let cached = bundle.is_some();
+    let (provenance, provenance_note) = bundle
+        .as_ref()
+        .map(bundle_provenance)
+        .unwrap_or((None, None));
     let missing_enabled_model = settings.audio_transcription_enabled && !cached;
     ModelRuntimeStatus {
         role: ModelRole::AudioTranscription.as_str().to_string(),
@@ -313,31 +543,35 @@ fn audio_model_status(settings: &Settings) -> ModelRuntimeStatus {
         bundle_path: bundle
             .as_ref()
             .map(|bundle| bundle.root.to_string_lossy().to_string()),
-        detail: if cached {
-            Some(format!("Using native ASR model bundle `{}`", spec.name))
-        } else if let Some(error) = bundle_error {
-            Some(format!(
-                "Native ASR model bundle `{}` is malformed or incomplete in {}: {error}",
-                spec.name,
-                settings.model_bundle_dir.display()
-            ))
-        } else if settings.audio_transcription_enabled {
-            Some(format!(
+        detail: join_detail(
+            if cached {
+                Some(format!("Using native ASR model bundle `{}`", spec.name))
+            } else if let Some(error) = bundle_error {
+                Some(format!(
+                    "Native ASR model bundle `{}` is malformed or incomplete in {}: {error}",
+                    spec.name,
+                    settings.model_bundle_dir.display()
+                ))
+            } else if settings.audio_transcription_enabled {
+                Some(format!(
                 "Native ASR model bundle `{}` is not cached in {}; download it before enabling transcription",
                 spec.name,
                 settings.model_bundle_dir.display()
             ))
-        } else if !settings.audio_transcription_enabled {
-            Some("Role is disabled by configuration".to_string())
-        } else {
-            None
-        },
+            } else if !settings.audio_transcription_enabled {
+                Some("Role is disabled by configuration".to_string())
+            } else {
+                None
+            },
+            provenance_note,
+        ),
         options: vec![ModelOption {
             id: spec.name.clone(),
             label: spec.repo_id_value().unwrap_or(&spec.name).to_string(),
             cached,
             configured: true,
         }],
+        provenance,
     }
 }
 

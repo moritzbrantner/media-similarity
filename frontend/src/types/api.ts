@@ -159,6 +159,21 @@ export type ModelRuntimeStatus = {
   bundle_path: string | null;
   detail: string | null;
   options: ModelOption[];
+  provenance?: ModelProvenance | null;
+};
+
+export type ModelProvenanceFile = {
+  path: string;
+  sourceUrl: string;
+  sha256: string;
+  sizeBytes: number;
+};
+
+export type ModelProvenance = {
+  role: string;
+  modelId: string;
+  revision: string;
+  files: ModelProvenanceFile[];
 };
 
 export type ModelsResponse = {
