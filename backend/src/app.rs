@@ -28,6 +28,12 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let app_state = Arc::new(AppState::new(settings.clone()));
     lifecycle::initialize_startup_index_job(app_state.clone(), &settings);
     lifecycle::initialize_background_services(app_state.clone());
+    // Hash recorded model bundles once in the background so the first
+    // `GET /api/models` after a restart is served from the checksum cache.
+    let checksum_settings = app_state.indexing_settings();
+    tokio::task::spawn_blocking(move || {
+        crate::workers::media::models::warm_model_checksum_cache(&checksum_settings)
+    });
 
     let app = router::build_app_router(static_dir.clone(), app_state.clone(), &settings);
     let addr: SocketAddr = settings.bind_addr.parse()?;

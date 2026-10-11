@@ -145,7 +145,7 @@ pub async fn enable_model(
     }
 
     let settings = state.indexing_settings();
-    let status = crate::workers::media::models::model_status(role, &settings);
+    let status = crate::workers::media::models::model_status_unverified(role, &settings);
     if !status.cached {
         return Err(ApiError::bad_request(format!(
             "model `{}` is not cached; download it before enabling",
@@ -280,7 +280,8 @@ pub(crate) fn spawn_disable_model(
     state: Arc<AppState>,
     role: ModelRole,
 ) -> Result<ApiJobSnapshot, ApiError> {
-    let status = crate::workers::media::models::model_status(role, &state.indexing_settings());
+    let status =
+        crate::workers::media::models::model_status_unverified(role, &state.indexing_settings());
     let spec = JobSpec::new(
         format!("model.disable.{}.{}", role.as_str(), Uuid::new_v4()),
         format!("Disable {}", role.label()),

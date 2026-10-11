@@ -11,7 +11,7 @@ use serde::Serialize;
 use uuid::Uuid;
 
 use super::{source_config_source, AppState};
-use crate::workers::media::models::{model_statuses, ModelRuntimeStatus};
+use crate::workers::media::models::{model_statuses_unverified, ModelRuntimeStatus};
 
 #[derive(Debug, Serialize)]
 pub struct ReadinessResponse {
@@ -144,7 +144,7 @@ fn media_sources_check(state: &AppState) -> ReadinessCheck {
 }
 
 fn model_checks(settings: &crate::config::Settings) -> Vec<ReadinessCheck> {
-    model_statuses(settings)
+    model_statuses_unverified(settings)
         .into_iter()
         .map(model_check)
         .collect()

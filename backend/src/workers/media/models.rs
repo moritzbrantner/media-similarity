@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io::{BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
 
 use image_analysis_detection::FaceDetectionPreset;
@@ -116,6 +116,18 @@ pub struct ModelOption {
     pub configured: bool,
 }
 
+/// How a status call checks cached files against recorded provenance.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ChecksumVerification {
+    /// Hash every recorded file whose hash is not cached (may read GBs).
+    Full,
+    /// Never hash; report only mismatches already known from the hash cache.
+    CachedOnly,
+}
+
+/// Full status for every role, verifying cached files against recorded
+/// provenance. Can hash whole bundles on a cold cache: call it from a
+/// blocking context, never directly on an async worker.
 pub fn model_statuses(settings: &Settings) -> Vec<ModelRuntimeStatus> {
     ModelRole::ALL
         .into_iter()
@@ -123,7 +135,37 @@ pub fn model_statuses(settings: &Settings) -> Vec<ModelRuntimeStatus> {
         .collect()
 }
 
+/// Full status for one role; see [`model_statuses`] for the hashing cost.
 pub fn model_status(role: ModelRole, settings: &Settings) -> ModelRuntimeStatus {
+    model_status_with(role, settings, ChecksumVerification::Full)
+}
+
+/// Cheap status for readiness and preflight checks: same availability fields
+/// and recorded provenance, but never hashes files. A checksum mismatch is
+/// reported only when an earlier full status call already found it.
+pub fn model_statuses_unverified(settings: &Settings) -> Vec<ModelRuntimeStatus> {
+    ModelRole::ALL
+        .into_iter()
+        .map(|role| model_status_unverified(role, settings))
+        .collect()
+}
+
+/// Cheap status for one role; see [`model_statuses_unverified`].
+pub fn model_status_unverified(role: ModelRole, settings: &Settings) -> ModelRuntimeStatus {
+    model_status_with(role, settings, ChecksumVerification::CachedOnly)
+}
+
+/// Hash every recorded bundle file once so later full status calls are served
+/// from the hash cache. Intended for a background blocking task at startup.
+pub fn warm_model_checksum_cache(settings: &Settings) {
+    let _ = model_statuses(settings);
+}
+
+fn model_status_with(
+    role: ModelRole,
+    settings: &Settings,
+    verification: ChecksumVerification,
+) -> ModelRuntimeStatus {
     match role {
         ModelRole::VisualEmbedding => bundle_model_status(
             role,
@@ -131,6 +173,7 @@ pub fn model_status(role: ModelRole, settings: &Settings) -> ModelRuntimeStatus 
             visual_embedding_spec(),
             settings.visual_embedding_enabled,
             fallback_path(&settings.visual_embedding_model_path),
+            verification,
         ),
         ModelRole::FaceDetection => bundle_model_status(
             role,
@@ -138,6 +181,7 @@ pub fn model_status(role: ModelRole, settings: &Settings) -> ModelRuntimeStatus 
             face_detection_spec(),
             settings.face_analysis_enabled,
             fallback_path(&settings.face_detection_model_path),
+            verification,
         ),
         ModelRole::FaceEmbedding => bundle_model_status(
             role,
@@ -145,8 +189,9 @@ pub fn model_status(role: ModelRole, settings: &Settings) -> ModelRuntimeStatus 
             face_embedding_spec(),
             settings.face_analysis_enabled,
             fallback_path(&settings.face_embedding_model_path),
+            verification,
         ),
-        ModelRole::AudioTranscription => audio_model_status(settings),
+        ModelRole::AudioTranscription => audio_model_status(settings, verification),
     }
 }
 
@@ -267,6 +312,9 @@ fn write_provenance(bundle_root: &Path, provenance: &ModelProvenance) -> Result<
         let mut file = std::fs::File::create(&temp)?;
         file.write_all(&encoded)?;
         file.sync_all()?;
+        // Replaces an existing provenance.json on every platform: `rename` is
+        // rename(2) on Unix and a replacing SetFileInformationByHandle /
+        // MoveFileExW(MOVEFILE_REPLACE_EXISTING) on Windows.
         std::fs::rename(&temp, &target)
     };
     write().map_err(|error| {
@@ -338,18 +386,47 @@ fn hash_cache() -> &'static Mutex<HashMap<PathBuf, (FileStamp, String)>> {
     CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// One lock per file path so concurrent cold status calls hash a file once:
+/// later callers wait for the first and then read its cached result.
+fn hash_in_flight_lock(path: &Path) -> Arc<Mutex<()>> {
+    static LOCKS: OnceLock<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> = OnceLock::new();
+    let locks = LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut locks = locks
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    locks.entry(path.to_path_buf()).or_default().clone()
+}
+
+fn file_stamp(path: &Path) -> Result<FileStamp, String> {
+    std::fs::metadata(path)
+        .map(|metadata| FileStamp::of(&metadata))
+        .map_err(|error| format!("failed to stat {}: {error}", path.display()))
+}
+
+/// Cached SHA-256 for `path` if its stamp is unchanged since it was hashed.
+fn lookup_cached_sha256(path: &Path, stamp: &FileStamp) -> Option<String> {
+    let cache = hash_cache().lock().ok()?;
+    cache
+        .get(path)
+        .filter(|(cached_stamp, _)| cached_stamp == stamp)
+        .map(|(_, sha256)| sha256.clone())
+}
+
 /// SHA-256 for status verification. Large bundles are re-hashed only when the
 /// file's size, mtime, inode or ctime changed since the last status call.
 fn cached_file_sha256(path: &Path) -> Result<String, String> {
-    let metadata = std::fs::metadata(path)
-        .map_err(|error| format!("failed to stat {}: {error}", path.display()))?;
-    let stamp = FileStamp::of(&metadata);
-    if let Ok(cache) = hash_cache().lock() {
-        if let Some((cached_stamp, sha256)) = cache.get(path) {
-            if *cached_stamp == stamp {
-                return Ok(sha256.clone());
-            }
-        }
+    let stamp = file_stamp(path)?;
+    if let Some(sha256) = lookup_cached_sha256(path, &stamp) {
+        return Ok(sha256);
+    }
+    let in_flight = hash_in_flight_lock(path);
+    let _guard = in_flight
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    // Another caller may have hashed the file while this one waited.
+    let stamp = file_stamp(path)?;
+    if let Some(sha256) = lookup_cached_sha256(path, &stamp) {
+        return Ok(sha256);
     }
     let (sha256, _) = hash_file(path)?;
     let settled = stamp
@@ -368,7 +445,10 @@ fn cached_file_sha256(path: &Path) -> Result<String, String> {
 
 /// Read the recorded provenance for a cached bundle and compare it with the
 /// cached files. Returns the provenance plus a detail note for problems.
-fn bundle_provenance(bundle: &ModelBundle) -> (Option<ModelProvenance>, Option<String>) {
+fn bundle_provenance(
+    bundle: &ModelBundle,
+    verification: ChecksumVerification,
+) -> (Option<ModelProvenance>, Option<String>) {
     let provenance = match read_provenance(&bundle.root) {
         Ok(Some(provenance)) => provenance,
         Ok(None) => return (None, None),
@@ -380,9 +460,16 @@ fn bundle_provenance(bundle: &ModelBundle) -> (Option<ModelProvenance>, Option<S
             mismatched.push(format!("`{}` (not in bundle manifest)", file.path));
             continue;
         };
-        match cached_file_sha256(&local_path) {
-            Ok(sha256) if sha256 == file.sha256 => {}
-            Ok(_) => mismatched.push(format!("`{}`", file.path)),
+        let checked = match verification {
+            ChecksumVerification::Full => cached_file_sha256(&local_path).map(Some),
+            ChecksumVerification::CachedOnly => {
+                file_stamp(&local_path).map(|stamp| lookup_cached_sha256(&local_path, &stamp))
+            }
+        };
+        match checked {
+            Ok(Some(sha256)) if sha256 == file.sha256 => {}
+            Ok(None) => {}
+            Ok(Some(_)) => mismatched.push(format!("`{}`", file.path)),
             Err(error) => mismatched.push(format!("`{}` ({error})", file.path)),
         }
     }
@@ -440,6 +527,7 @@ fn bundle_model_status(
     spec: HuggingFaceModelSpec,
     enabled: bool,
     fallback_path: Option<PathBuf>,
+    verification: ChecksumVerification,
 ) -> ModelRuntimeStatus {
     let store = bundle_store(settings);
     let revision = spec.revision_value().unwrap_or("main");
@@ -464,7 +552,7 @@ fn bundle_model_status(
         .or_else(|| fallback_path.map(|path| path.to_string_lossy().to_string()));
     let (provenance, provenance_note) = bundle
         .as_ref()
-        .map(bundle_provenance)
+        .map(|bundle| bundle_provenance(bundle, verification))
         .unwrap_or((None, None));
     let detail = if bundle.is_some() {
         Some(format!("Using model bundle `{}`", spec.name))
@@ -513,7 +601,10 @@ fn bundle_model_status(
     }
 }
 
-fn audio_model_status(settings: &Settings) -> ModelRuntimeStatus {
+fn audio_model_status(
+    settings: &Settings,
+    verification: ChecksumVerification,
+) -> ModelRuntimeStatus {
     let spec = audio_transcription_spec(settings);
     let store = bundle_store(settings);
     let revision = spec.revision_value().unwrap_or("main");
@@ -529,7 +620,7 @@ fn audio_model_status(settings: &Settings) -> ModelRuntimeStatus {
     let cached = bundle.is_some();
     let (provenance, provenance_note) = bundle
         .as_ref()
-        .map(bundle_provenance)
+        .map(|bundle| bundle_provenance(bundle, verification))
         .unwrap_or((None, None));
     let missing_enabled_model = settings.audio_transcription_enabled && !cached;
     ModelRuntimeStatus {
