@@ -472,6 +472,11 @@ case "${1:-}" in
     check_prereqs
     ;;
   --seed-only)
+    # Seeding only talks to a running backend over HTTP, so curl is its one prerequisite.
+    if ! command -v curl >/dev/null 2>&1; then
+      report_missing curl
+      exit 1
+    fi
     seed_showcase
     ;;
   --check)
