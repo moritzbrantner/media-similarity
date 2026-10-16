@@ -14,7 +14,6 @@ on:
       - "Dockerfile"
       - ".github/workflows/environment-v1.yml"
       - ".github/workflows/verify.yml"
-      - ".github/workflows/tests.yml"
   push:
     branches: [main]
     paths:
@@ -29,7 +28,6 @@ on:
       - "Dockerfile"
       - ".github/workflows/environment-v1.yml"
       - ".github/workflows/verify.yml"
-      - ".github/workflows/tests.yml"
   workflow_dispatch:
 
 permissions:
