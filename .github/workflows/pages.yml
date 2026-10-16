@@ -37,8 +37,11 @@ jobs:
       - name: Check WASM dependency lock
         run: cargo metadata --manifest-path wasm/similarity/Cargo.toml --locked --no-deps >/dev/null
 
-      - name: Install wasm-pack
-        run: cargo install wasm-pack --locked --version 0.15.0
+      - name: Install checksum-verified wasm-pack
+        uses: moritzbrantner/reusable-workflows/.github/actions/install-verified-wasm-cli@5e4c334179c59bbc4a4768bf033ff1d27cd89c0c
+        with:
+          tool: wasm-pack
+          version: "0.15.0"
 
       - name: Check WASM formatting
         run: cargo fmt --manifest-path wasm/similarity/Cargo.toml -- --check
