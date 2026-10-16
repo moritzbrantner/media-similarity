@@ -21,7 +21,7 @@ Machine-readable in `.repository.toml` (`[architecture]`); keep both lists ident
 - `frontend/`: React, TypeScript, Tailwind, and React Query frontend source.
 - `frontend/dist/`: Vite build output served by the Rust backend. This is generated and checked in; update it with `bun run build`, not by manual edits.
 - `tests/e2e/`: Playwright UI tests. API and thumbnail routes are mocked in the tests.
-- `.github/workflows/tests.yml`: CI format, frontend build, Rust clippy, and Rust test workflow.
+- `.github/workflows/verify.yml`: canonical CI for frontend format/build, Storybook, browser acceptance, Rust clippy/tests, and Qdrant integration smoke.
 - `docker-compose.yml`: Local app, Qdrant, seed-data, and Rust test containers.
 
 ## Required Local Shape
@@ -67,7 +67,7 @@ Source-mode verification in the local multi-repository workspace is valid implem
 
 Always run `bun run lint` before finishing a job. If linting cannot be run, report the blocker in the final response.
 
-CI intentionally keeps frontend and Rust jobs separate. Do not change existing `build` or `format:check` behavior without checking `.github/workflows/tests.yml`.
+CI intentionally keeps frontend and Rust jobs separate. Do not change existing `build` or `format:check` behavior without checking `.github/workflows/verify.yml`.
 
 ## Files Agents Should Not Edit Manually
 
