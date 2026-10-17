@@ -38,8 +38,20 @@ jobs:
       - name: Install Callgrind runtime
         run: sudo apt-get install --yes valgrind
 
-      - name: Install Iai-Callgrind runner
-        run: cargo install iai-callgrind-runner --version 0.16.1 --locked
+      # Cache only the pinned benchmark CLI; fresh builds remain the fallback.
+      - name: Cache Iai-Callgrind runner
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/.cargo/bin/iai-callgrind-runner
+          key: ${{ runner.os }}-${{ runner.arch }}-iai-callgrind-0.16.1-${{ hashFiles('rust-toolchain.toml') }}
+      - name: Install Iai-Callgrind runner if missing
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! -x "$HOME/.cargo/bin/iai-callgrind-runner" ]]; then
+            cargo install iai-callgrind-runner --version 0.16.1 --locked
+          fi
+          test -x "$HOME/.cargo/bin/iai-callgrind-runner"
 
       - name: Run deterministic performance smoke
         run: bash scripts/benchmark-smoke.sh
