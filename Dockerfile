@@ -65,7 +65,7 @@ EXPOSE 8000
 
 CMD ["image-similarity-service"]
 
-FROM nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10 AS web-runtime
+FROM nginx:1.31-alpine@sha256:892bb2152464f0c5d8972593a5f5afaf8054552580b699d95f8ff4af08c2d33d AS web-runtime
 
 ENV MAX_UPLOAD_MB=20
 
