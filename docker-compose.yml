@@ -101,7 +101,7 @@ services:
     restart: "no"
 
   qdrant:
-    image: qdrant/qdrant:v1.12.5@sha256:05fecce7dce45d1254e0468bc037e8210e187fd56fa847688b012293d5f08aae
+    image: qdrant/qdrant:v1.19.2@sha256:b7b0444c4c351c970b98e90a6f89c2ee4287c65b44e52b4cb503fa5b2aa927ad
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     ports:
       - "127.0.0.1:6333:6333"
