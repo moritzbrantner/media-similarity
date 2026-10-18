@@ -1,6 +1,6 @@
 import { Button } from "@moritzbrantner/ui";
 import { AlertCircle, CheckCircle2, Database, Loader2 } from "lucide-react";
-import { NavLink } from "react-router";
+import { NavLink, type NavLinkRenderProps } from "react-router";
 
 import { appRouteNavItems } from "../pages/routes";
 import type { HealthResponse } from "../types";
@@ -55,7 +55,7 @@ export function AppHeader({
             return (
               <NavLink
                 aria-label={item.screenReaderLabel}
-                className={({ isActive }) =>
+                className={({ isActive }: NavLinkRenderProps) =>
                   `inline-flex h-9 min-w-0 items-center justify-center gap-2 rounded px-3 text-sm font-semibold transition ${
                     isActive ? "bg-neutral-900 text-white" : "text-neutral-700 hover:bg-neutral-100"
                   }`
