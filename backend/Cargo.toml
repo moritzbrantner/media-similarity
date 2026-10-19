@@ -62,7 +62,7 @@ search-engine = { git = "https://github.com/moritzbrantner/search-engine", rev =
 [dev-dependencies]
 criterion = "=0.8.2"
 iai-callgrind = "=0.16.1"
-tempfile = "3"
+tempfile = "=3.27.0"
 
 # Media Intelligence's public downstream OCR contract: this unpublished leaf is
 # consumed at its declared immutable public source, without sibling checkouts.
