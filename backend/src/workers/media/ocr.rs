@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 use std::io::ErrorKind;
+use std::path::Path;
 use std::process::Command;
 
 use image::{DynamicImage, ImageFormat, RgbImage};
@@ -90,6 +91,13 @@ pub fn ocr_match_score(ocr_text: &str, normalized_query: &str) -> Option<f32> {
 }
 
 fn recognize_image_text(image: &RgbImage, settings: &Settings) -> Result<String, String> {
+    recognize_image_text_with_availability(image, settings).map(Option::unwrap_or_default)
+}
+
+fn recognize_image_text_with_availability(
+    image: &RgbImage,
+    settings: &Settings,
+) -> Result<Option<String>, String> {
     std::fs::create_dir_all(&settings.upload_dir).map_err(|error| error.to_string())?;
     let image_path = settings
         .upload_dir
@@ -110,12 +118,42 @@ fn recognize_image_text(image: &RgbImage, settings: &Settings) -> Result<String,
 
     match output {
         Ok(output) if output.status.success() => {
-            Ok(String::from_utf8_lossy(&output.stdout).to_string())
+            Ok(Some(String::from_utf8_lossy(&output.stdout).to_string()))
         }
         Ok(output) => Err(String::from_utf8_lossy(&output.stderr).trim().to_string()),
-        Err(error) if error.kind() == ErrorKind::NotFound => Ok(String::new()),
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
         Err(error) => Err(error.to_string()),
     }
+}
+
+/// JSON-command bridge for Media Intelligence's canonical video OCR producer.
+/// The service invokes its own executable in this mode; no shell or extra runtime
+/// is needed in the native deployment. A missing engine fails explicitly here.
+pub fn video_ocr_json(
+    image_path: &Path,
+    command: String,
+    language: Option<String>,
+) -> Result<String, String> {
+    let image = image::open(image_path)
+        .map_err(|error| error.to_string())?
+        .to_rgb8();
+    let prepared = prepare_ocr_image(&image);
+    let settings = Settings {
+        ocr_command: command,
+        ocr_language: language,
+        upload_dir: std::env::temp_dir(),
+        ..Settings::default()
+    };
+    let text = recognize_image_text_with_availability(&prepared, &settings)?
+        .ok_or_else(|| format!("OCR engine `{}` is unavailable", settings.ocr_command))?;
+    let mut document = media_intelligence_analysis::visible_text::ocr::OcrDocument::new(
+        normalize_ocr_text(&text),
+        image.width(),
+        image.height(),
+    )
+    .map_err(|error| error.to_string())?;
+    document.language = settings.ocr_language;
+    serde_json::to_string(&document).map_err(|error| error.to_string())
 }
 
 fn prepare_ocr_image(image: &RgbImage) -> RgbImage {

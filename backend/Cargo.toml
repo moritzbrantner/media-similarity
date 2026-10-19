@@ -24,7 +24,7 @@ metastrip = "0.1"
 model-runtime = { package = "moenarch-model-runtime", version = "0.1.0" }
 runtime-onnx = { package = "moenarch-runtime-onnx", version = "0.1.0", features = ["onnxruntime"] }
 text-analysis-core = { path = "shims/text-analysis-core" }
-text-transcripts = { package = "moenarch-text-transcripts", version = "0.1.2", features = ["native"] }
+text-transcripts = { package = "moenarch-text-transcripts", version = "0.1.3" }
 async-trait = "0.1"
 axum = { version = "0.8", features = ["multipart"] }
 dotenvy = "0.15"
@@ -54,10 +54,18 @@ chrono = { version = "0.4", features = ["serde"] }
 notify = "8.2.0"
 image-analysis-embeddings = { package = "moenarch-image-analysis-embeddings", version = "0.1.0", features = ["onnx"] }
 image-analysis-detection = { package = "moenarch-image-analysis-detection", version = "0.1.0", features = ["onnx"] }
+media-intelligence-analysis = { git = "https://github.com/moritzbrantner/media-intelligence", rev = "c4e66234193f33a7206cb6ca0e5385281d806d9a", version = "0.1.0", features = ["visual-analysis-ocr"] }
 
 [dev-dependencies]
 criterion = "=0.8.2"
 iai-callgrind = "=0.16.1"
+
+# Media Intelligence's public downstream OCR contract: this unpublished leaf is
+# consumed at its declared immutable public source, without sibling checkouts.
+[patch.crates-io]
+moenarch-semantic-core = { git = "https://github.com/moritzbrantner/moenarch-foundation", rev = "b0e26e4e671e5c43d659a2c67583ffdf5a9bbfa9" }
+moenarch-video-analysis-core = { git = "https://github.com/moritzbrantner/visual-analysis", rev = "f73969447916e5ac47f4559fc51ab47552f4f734" }
+moenarch-video-analysis-ingest = { git = "https://github.com/moritzbrantner/visual-analysis", rev = "f73969447916e5ac47f4559fc51ab47552f4f734" }
 
 [[bench]]
 name = "media_pipeline"

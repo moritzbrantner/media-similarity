@@ -13,7 +13,6 @@ use model_runtime::{
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use text_transcripts::{WhisperCppModel, WhisperCppModelStore};
 
 use crate::config::Settings;
 
@@ -515,22 +514,6 @@ pub fn role_spec_for_settings(
         ModelRole::FaceEmbedding => Ok(face_embedding_spec()),
         ModelRole::AudioTranscription => Ok(audio_transcription_spec(settings)),
     }
-}
-
-pub fn parse_whisper_cpp_model(value: &str) -> Result<WhisperCppModel, String> {
-    let normalized = value.trim();
-    WhisperCppModel::ALL
-        .into_iter()
-        .find(|model| model.id().eq_ignore_ascii_case(normalized))
-        .ok_or_else(|| format!("Unknown whisper.cpp model `{normalized}`"))
-}
-
-pub fn audio_transcription_model_store(settings: &Settings) -> WhisperCppModelStore {
-    settings
-        .audio_transcription_cache_dir
-        .clone()
-        .map(WhisperCppModelStore::new)
-        .unwrap_or_default()
 }
 
 fn bundle_model_status(
