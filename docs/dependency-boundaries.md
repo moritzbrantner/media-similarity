@@ -20,6 +20,14 @@ versioned external capability packages
 
 API handlers may orchestrate adapters, but new capability-specific conversion logic should move into `workers/media` rather than spreading crate imports through HTTP code.
 
+`workers/media/video_evidence.rs` consumes Media Intelligence's public analysis
+and evidence facades for video scene/OCR/transcript composition. Source lifecycle,
+Qdrant persistence and specialized similarity scoring remain here. Domain result
+types are application-owned projections; the dependency guard rejects composition
+crate imports and renamed aliases in the domain. See
+[ADR 0008](adr/0008-video-evidence-composition.md) for the exact public source and
+compatibility dependency contract.
+
 ## Source development
 
 The committed `.coding-tooling.source-deps.json` intentionally contains no ambient source patches. Normal application development uses the versioned dependencies in `backend/Cargo.toml`.

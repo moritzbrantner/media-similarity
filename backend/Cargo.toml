@@ -67,6 +67,8 @@ iai-callgrind = "=0.16.1"
 moenarch-semantic-core = { git = "https://github.com/moritzbrantner/moenarch-foundation", rev = "b0e26e4e671e5c43d659a2c67583ffdf5a9bbfa9" }
 moenarch-video-analysis-core = { git = "https://github.com/moritzbrantner/visual-analysis", rev = "f73969447916e5ac47f4559fc51ab47552f4f734" }
 moenarch-video-analysis-ingest = { git = "https://github.com/moritzbrantner/visual-analysis", rev = "f73969447916e5ac47f4559fc51ab47552f4f734" }
+moenarch-image-analysis-core = { git = "https://github.com/moritzbrantner/visual-analysis", rev = "f73969447916e5ac47f4559fc51ab47552f4f734" }
+moenarch-image-analysis-detection = { git = "https://github.com/moritzbrantner/visual-analysis", rev = "f73969447916e5ac47f4559fc51ab47552f4f734" }
 
 [[bench]]
 name = "media_pipeline"

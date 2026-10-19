@@ -1714,7 +1714,7 @@ dependencies = [
  "moenarch-audio-analysis-rhythm",
  "moenarch-audio-analysis-speakers",
  "moenarch-audio-analysis-transcription",
- "moenarch-image-analysis-core 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "moenarch-image-analysis-core",
  "moenarch-image-analysis-detection",
  "moenarch-image-analysis-embeddings",
  "moenarch-image-analysis-io 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2296,19 +2296,6 @@ dependencies = [
 [[package]]
 name = "moenarch-image-analysis-core"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc88c19d33f5b461ba8ae52cc432c7268781b647840bb30ba8ffff2d895fdca8"
-dependencies = [
- "moenarch-runtime-core",
- "moenarch-tensor-data",
- "moenarch-video-analysis-core",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "moenarch-image-analysis-core"
-version = "0.1.0"
 source = "git+https://github.com/moritzbrantner/visual-analysis?rev=f73969447916e5ac47f4559fc51ab47552f4f734#f73969447916e5ac47f4559fc51ab47552f4f734"
 dependencies = [
  "moenarch-runtime-core",
@@ -2321,17 +2308,17 @@ dependencies = [
 [[package]]
 name = "moenarch-image-analysis-detection"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ded50cf78bd03ee71ccb70afc857ecb8e5af9d8b442557068f2e1d8a932c545"
+source = "git+https://github.com/moritzbrantner/visual-analysis?rev=f73969447916e5ac47f4559fc51ab47552f4f734#f73969447916e5ac47f4559fc51ab47552f4f734"
 dependencies = [
- "moenarch-image-analysis-core 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "moenarch-image-analysis-processing 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "moenarch-image-analysis-segmentation",
+ "moenarch-image-analysis-core",
+ "moenarch-image-analysis-io 0.1.0 (git+https://github.com/moritzbrantner/visual-analysis?rev=f73969447916e5ac47f4559fc51ab47552f4f734)",
+ "moenarch-image-analysis-processing 0.1.0 (git+https://github.com/moritzbrantner/visual-analysis?rev=f73969447916e5ac47f4559fc51ab47552f4f734)",
+ "moenarch-image-analysis-segmentation 0.1.0 (git+https://github.com/moritzbrantner/visual-analysis?rev=f73969447916e5ac47f4559fc51ab47552f4f734)",
  "moenarch-model-runtime",
  "moenarch-runtime-core",
  "moenarch-runtime-onnx",
  "moenarch-video-analysis-core",
- "moenarch-vision-core 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "moenarch-vision-core 0.1.0 (git+https://github.com/moritzbrantner/visual-analysis?rev=f73969447916e5ac47f4559fc51ab47552f4f734)",
  "serde",
  "serde_json",
 ]
@@ -2342,11 +2329,11 @@ version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "36492900e27fc0202641de7999309e60446a44ccf74382d859162cc82e224761"
 dependencies = [
- "moenarch-image-analysis-core 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "moenarch-image-analysis-core",
  "moenarch-image-analysis-detection",
  "moenarch-image-analysis-ocr 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "moenarch-image-analysis-processing 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "moenarch-image-analysis-segmentation",
+ "moenarch-image-analysis-segmentation 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "moenarch-image-analysis-synthesis",
  "moenarch-math-geometry-2d",
  "moenarch-model-runtime",
@@ -2365,7 +2352,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8665d1e62d69198ff8842f535d7b70eb93ef4b18941e633bc726c4dfa7785e1f"
 dependencies = [
  "image",
- "moenarch-image-analysis-core 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "moenarch-image-analysis-core",
  "moenarch-runtime-core",
  "moenarch-video-analysis-core",
  "serde",
@@ -2378,7 +2365,7 @@ version = "0.1.0"
 source = "git+https://github.com/moritzbrantner/visual-analysis?rev=f73969447916e5ac47f4559fc51ab47552f4f734#f73969447916e5ac47f4559fc51ab47552f4f734"
 dependencies = [
  "image",
- "moenarch-image-analysis-core 0.1.0 (git+https://github.com/moritzbrantner/visual-analysis?rev=f73969447916e5ac47f4559fc51ab47552f4f734)",
+ "moenarch-image-analysis-core",
  "moenarch-runtime-core",
  "moenarch-video-analysis-core",
  "serde",
@@ -2391,7 +2378,7 @@ version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c74635fa99b1fb553b8da73d13eef894d86fed9f8f8dac452e881e156a53221b"
 dependencies = [
- "moenarch-image-analysis-core 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "moenarch-image-analysis-core",
  "moenarch-image-analysis-io 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "moenarch-image-analysis-processing 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "moenarch-model-runtime",
@@ -2409,7 +2396,7 @@ name = "moenarch-image-analysis-ocr"
 version = "0.1.0"
 source = "git+https://github.com/moritzbrantner/visual-analysis?rev=f73969447916e5ac47f4559fc51ab47552f4f734#f73969447916e5ac47f4559fc51ab47552f4f734"
 dependencies = [
- "moenarch-image-analysis-core 0.1.0 (git+https://github.com/moritzbrantner/visual-analysis?rev=f73969447916e5ac47f4559fc51ab47552f4f734)",
+ "moenarch-image-analysis-core",
  "moenarch-image-analysis-io 0.1.0 (git+https://github.com/moritzbrantner/visual-analysis?rev=f73969447916e5ac47f4559fc51ab47552f4f734)",
  "moenarch-image-analysis-processing 0.1.0 (git+https://github.com/moritzbrantner/visual-analysis?rev=f73969447916e5ac47f4559fc51ab47552f4f734)",
  "moenarch-model-runtime",
@@ -2429,7 +2416,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b471c2ce367eaf972dfcf7d3f10870101e985229bec9fc101876e68095413767"
 dependencies = [
  "image",
- "moenarch-image-analysis-core 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "moenarch-image-analysis-core",
  "moenarch-math-geometry-2d",
  "moenarch-math-linear",
  "moenarch-runtime-core",
@@ -2444,7 +2431,7 @@ version = "0.1.0"
 source = "git+https://github.com/moritzbrantner/visual-analysis?rev=f73969447916e5ac47f4559fc51ab47552f4f734#f73969447916e5ac47f4559fc51ab47552f4f734"
 dependencies = [
  "image",
- "moenarch-image-analysis-core 0.1.0 (git+https://github.com/moritzbrantner/visual-analysis?rev=f73969447916e5ac47f4559fc51ab47552f4f734)",
+ "moenarch-image-analysis-core",
  "moenarch-math-geometry-2d",
  "moenarch-math-linear",
  "moenarch-runtime-core",
@@ -2459,7 +2446,20 @@ version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6537abc308fa632b6d7514dd072734a168eb1b0e135e1a3ee2fee5c9ce682456"
 dependencies = [
- "moenarch-image-analysis-core 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "moenarch-image-analysis-core",
+ "moenarch-model-runtime",
+ "moenarch-runtime-core",
+ "moenarch-video-analysis-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "moenarch-image-analysis-segmentation"
+version = "0.1.0"
+source = "git+https://github.com/moritzbrantner/visual-analysis?rev=f73969447916e5ac47f4559fc51ab47552f4f734#f73969447916e5ac47f4559fc51ab47552f4f734"
+dependencies = [
+ "moenarch-image-analysis-core",
  "moenarch-model-runtime",
  "moenarch-runtime-core",
  "moenarch-video-analysis-core",
@@ -2474,7 +2474,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "65af363c6b98d201db29293714f041ea492f9db37c96b0ff252a89e6bbc71661"
 dependencies = [
  "moenarch-data-inversion-core",
- "moenarch-image-analysis-core 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "moenarch-image-analysis-core",
  "moenarch-runtime-core",
  "moenarch-video-analysis-core",
  "serde",
@@ -2757,7 +2757,7 @@ version = "0.1.0"
 source = "git+https://github.com/moritzbrantner/visual-analysis?rev=f73969447916e5ac47f4559fc51ab47552f4f734#f73969447916e5ac47f4559fc51ab47552f4f734"
 dependencies = [
  "base64 0.23.1",
- "moenarch-image-analysis-core 0.1.0 (git+https://github.com/moritzbrantner/visual-analysis?rev=f73969447916e5ac47f4559fc51ab47552f4f734)",
+ "moenarch-image-analysis-core",
  "moenarch-image-analysis-ocr 0.1.0 (git+https://github.com/moritzbrantner/visual-analysis?rev=f73969447916e5ac47f4559fc51ab47552f4f734)",
  "moenarch-model-runtime",
  "moenarch-runtime-core",
