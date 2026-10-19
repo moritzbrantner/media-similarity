@@ -15,6 +15,10 @@ use support::media_fixtures::{inject_xmp_metadata, test_photo_xmp, write_pattern
 
 type Params = Vec<(&'static str, String)>;
 
+fn browser_enabled() -> bool {
+    std::env::var("METADATA_ACCEPTANCE_BROWSER").is_ok_and(|value| value == "1")
+}
+
 struct NativeApi {
     url: String,
     client: reqwest::Client,
@@ -23,8 +27,7 @@ struct NativeApi {
 
 impl NativeApi {
     async fn start(mut settings: Settings) -> Self {
-        settings.frontend_serving_enabled =
-            std::env::var_os("METADATA_ACCEPTANCE_BROWSER").is_some();
+        settings.frontend_serving_enabled = browser_enabled();
         fs::create_dir_all(&settings.thumbnail_dir).unwrap();
         fs::create_dir_all(&settings.upload_dir).unwrap();
         let state = Arc::new(AppState::new(settings.clone()));
@@ -109,7 +112,7 @@ impl NativeApi {
     }
 
     async fn browser(&self, query: &Path, stage: &str) {
-        if std::env::var_os("METADATA_ACCEPTANCE_BROWSER").is_none() {
+        if !browser_enabled() {
             return;
         }
         let url = self.url.clone();
