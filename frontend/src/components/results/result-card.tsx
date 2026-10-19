@@ -15,6 +15,7 @@ import {
   photoCameraLabel,
 } from "./result-formatting";
 import { ResultTags } from "./result-tags";
+import { VideoEvidenceDetails } from "./video-evidence-details";
 
 type ResultCardData = Omit<
   SearchResult,
@@ -188,6 +189,7 @@ export function ResultCard({
         {photoMetadata?.raw?.length ? <PhotoMetadataDetails metadata={photoMetadata} /> : null}
 
         <VideoSceneLinks image={image} />
+        <VideoEvidenceDetails image={image} />
         <AudioLinks image={image} />
         <PdfLinks image={image} />
 

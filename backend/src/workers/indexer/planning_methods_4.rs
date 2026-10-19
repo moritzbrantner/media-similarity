@@ -122,6 +122,7 @@ impl ImageIndexer {
             scene_clip_url.as_deref(),
         );
         Ok(ImagePayload {
+            video_evidence: video_scene.map(|scene| scene.evidence.clone()),
             id: image_id,
             path,
             relative_path,
@@ -168,7 +169,9 @@ impl ImageIndexer {
             source_type: source_image.source_type.clone(),
             source_id: Some(source_image.source_id.clone()),
             source_item_uri: Some(source_image.item_uri.clone()),
-            indexing_profile: Some(indexing_profile(settings)),
+            // Planning and the ledger use the source configuration plus the full
+            // workflow hash. Per-kind disabled processors must not change this key.
+            indexing_profile: Some(indexing_profile(&self.settings)),
             source_uri: Some(source_image.source_uri.clone()),
         })
     }

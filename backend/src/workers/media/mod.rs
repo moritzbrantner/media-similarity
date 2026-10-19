@@ -12,5 +12,6 @@ pub mod persons;
 pub mod photo_metadata;
 pub mod thumbnails;
 pub mod video;
+pub mod video_evidence;
 pub mod visual_embedding;
 pub mod voice;

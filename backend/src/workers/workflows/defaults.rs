@@ -113,6 +113,7 @@ fn default_document(kind: MediaFileKind, settings: &Settings) -> MediaWorkflowDo
             "source.input",
             "video.detect_scenes",
             "video.split_scenes",
+            "audio.analyze",
             "faces.analyze",
             "ocr.extract",
             "thumbnail.ensure",

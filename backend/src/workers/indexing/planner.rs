@@ -192,6 +192,7 @@ mod tests {
 
     fn media(kind: &str) -> ImagePayload {
         ImagePayload {
+            video_evidence: None,
             id: "media".to_string(),
             path: "/images/media".to_string(),
             relative_path: "media".to_string(),

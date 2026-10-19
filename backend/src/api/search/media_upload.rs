@@ -108,6 +108,7 @@ pub async fn search_pdf_upload(
         flattened.extend(response.results.clone());
         scene_responses.push(SearchSceneResponse {
             scene_index: page.page_index,
+            video_evidence: None,
             scene_kind: "pdf_page".to_string(),
             start_frame: page.page_number as u64,
             end_frame: page.page_number as u64,
@@ -178,6 +179,7 @@ pub async fn search_audio_upload(
         flattened.extend(response.results.clone());
         scene_responses.push(SearchSceneResponse {
             scene_index: segment.scene_index,
+            video_evidence: None,
             scene_kind: "audio_bit".to_string(),
             start_frame: (segment.start_seconds * 1000.0).round() as u64,
             end_frame: (segment.end_seconds * 1000.0).round() as u64,
@@ -250,6 +252,7 @@ pub async fn search_video_upload(
         flattened.extend(response.results.clone());
         scene_responses.push(SearchSceneResponse {
             scene_index: scene.scene_index,
+            video_evidence: scene.evidence.clone(),
             scene_kind: "scene".to_string(),
             start_frame: scene.start.frame_index,
             end_frame: scene.end.frame_index,
@@ -383,6 +386,7 @@ mod tests {
         };
         DecodedVideoScene {
             scene_index,
+            evidence: None,
             start: FramePosition::from_frame_index(0, Rational64::new(24, 1)),
             end: FramePosition::from_frame_index(1, Rational64::new(24, 1)),
             clip_url: None,

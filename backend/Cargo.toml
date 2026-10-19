@@ -55,6 +55,7 @@ notify = "8.2.0"
 image-analysis-embeddings = { package = "moenarch-image-analysis-embeddings", version = "0.1.0", features = ["onnx"] }
 image-analysis-detection = { package = "moenarch-image-analysis-detection", version = "0.1.0", features = ["onnx"] }
 media-intelligence-analysis = { git = "https://github.com/moritzbrantner/media-intelligence", rev = "c4e66234193f33a7206cb6ca0e5385281d806d9a", version = "0.1.0", features = ["visual-analysis-ocr"] }
+media-intelligence-core = { git = "https://github.com/moritzbrantner/media-intelligence", rev = "c4e66234193f33a7206cb6ca0e5385281d806d9a", version = "0.1.0" }
 
 [dev-dependencies]
 criterion = "=0.8.2"

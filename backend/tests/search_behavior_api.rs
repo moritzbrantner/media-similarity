@@ -242,6 +242,7 @@ fn write_diagonal_image(path: &Path, width: u32, height: u32, inverted: bool) {
 
 fn pdf_page_payload(id: &str, filename: &str, ocr_text: &str) -> ImagePayload {
     ImagePayload {
+        video_evidence: None,
         id: id.to_string(),
         path: format!("/pdf-pages/{filename}.png"),
         relative_path: filename.to_string(),

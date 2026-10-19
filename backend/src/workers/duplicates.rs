@@ -172,6 +172,7 @@ mod tests {
 
     fn media(id: &str, phash: &str) -> ImagePayload {
         ImagePayload {
+            video_evidence: None,
             id: id.to_string(),
             path: id.to_string(),
             relative_path: id.to_string(),

@@ -571,6 +571,7 @@ mod tests {
 
     fn test_payload(filename: &str) -> ImagePayload {
         ImagePayload {
+            video_evidence: None,
             id: filename.to_string(),
             path: format!("/media/{filename}"),
             relative_path: filename.to_string(),

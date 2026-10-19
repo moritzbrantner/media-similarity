@@ -98,7 +98,52 @@ export type PhotoMetadataPayload = {
   raw: PhotoMetadataEntryPayload[];
 };
 
+export type EvidenceStatus =
+  | { state: "not_requested" | "unavailable" | "completed" }
+  | { state: "failed"; reason: string };
+
+export type EvidenceProducer = {
+  producer: string;
+  producer_version: string;
+  model: string;
+  model_version: string;
+  config_hash: string;
+  input_hash: string;
+};
+
+export type VideoEvidence = {
+  asset_id: string;
+  content_hash: string;
+  scene_id: string;
+  ocr_status: EvidenceStatus;
+  speech_status: EvidenceStatus;
+  visible_text: {
+    id: string;
+    text: string;
+    start_seconds: number;
+    end_seconds: number;
+    track_id: string | null;
+    role: string | null;
+    observations: {
+      timestamp_seconds: number;
+      frame_index: number | null;
+      ocr_confidence: number | null;
+    }[];
+    producer: EvidenceProducer;
+  }[];
+  speech: {
+    id: string;
+    text: string;
+    start_seconds: number;
+    end_seconds: number;
+    transcript_confidence: number | null;
+    producer: EvidenceProducer;
+  }[];
+  relations: { kind: string; subject: string; object: string }[];
+};
+
 export type ImagePayload = {
+  video_evidence?: VideoEvidence | null;
   id: string;
   path: string;
   relative_path: string;
@@ -160,6 +205,7 @@ export type SearchResult = {
 };
 
 export type SearchSceneResponse = {
+  video_evidence?: VideoEvidence | null;
   scene_index: number;
   scene_kind: string;
   start_frame: number;

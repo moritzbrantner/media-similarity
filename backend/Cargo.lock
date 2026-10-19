@@ -1708,6 +1708,7 @@ dependencies = [
  "iai-callgrind",
  "image",
  "media-intelligence-analysis",
+ "media-intelligence-core",
  "metastrip",
  "moenarch-audio-analysis-core",
  "moenarch-audio-analysis-rhythm",

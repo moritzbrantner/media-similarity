@@ -33,6 +33,7 @@ audio-analysis-core = { package = "moenarch-audio-analysis-core", version = "0.1
 jobs-core = { package = "moenarch-jobs-core", version = "0.1.1" }
 rt = { package = "moenarch-runtime-onnx", version = "0.1.0" }
 spectral = { package = "moenarch-spectral-features", version = "0.1.0" }
+evidence = { package = "media-intelligence-analysis", version = "0.1.0" }
 serde = { version = "1", features = ["derive"] }
 `;
 
@@ -122,6 +123,14 @@ describe("dependency-boundary guard on a fixture layout", () => {
   test("renamed capability alias in domain fails", () => {
     write("backend/src/domain/runtime.rs", "\nuse rt::Session;\n");
     expectFails(root, "backend/src/domain/runtime.rs:2", "`rt`");
+  });
+
+  test("composition facade and renamed alias stay outside the domain", () => {
+    write(
+      "backend/src/domain/evidence.rs",
+      "use media_intelligence_core::EvidenceItem;\nuse evidence::analyze;\n",
+    );
+    expectFails(root, "media_intelligence_core", "`evidence`");
   });
 
   test("capability path inside an expression fails", () => {

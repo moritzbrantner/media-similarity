@@ -11,6 +11,27 @@ use support::harness::TestApp;
 use support::media_fixtures::write_pattern_image;
 
 #[tokio::test]
+async fn repeat_indexing_uses_the_same_profile_when_a_workflow_disables_an_unrelated_capability() {
+    let app = TestApp::new(|settings| {
+        settings.audio_transcription_enabled = true;
+        settings.face_analysis_enabled = false;
+    })
+    .await;
+    write_pattern_image(
+        &app.source_path("still.png"),
+        48,
+        48,
+        [220, 30, 30],
+        [35, 35, 35],
+    );
+    let first = app.index().await;
+    assert_eq!(first.indexed, 1, "{first:?}");
+    let second = app.index().await;
+    assert_eq!(second.indexed, 0, "{second:?}");
+    assert_eq!(second.already_indexed, 1);
+}
+
+#[tokio::test]
 async fn repeat_indexing_current_local_file_does_not_replace_media_point() {
     let app = indexing_app().await;
     let image = app.source_path("current.png");

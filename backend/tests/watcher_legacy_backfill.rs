@@ -73,6 +73,7 @@ fn legacy(payload: &ImagePayload) -> ImagePayload {
 /// newer analysis no longer produces). Its path carries a generated fragment.
 fn stale_legacy_sibling(payload: &ImagePayload) -> ImagePayload {
     ImagePayload {
+        video_evidence: None,
         id: format!("{}-stale", payload.id),
         path: format!("{}#page=2", payload.path),
         ..legacy(payload)
