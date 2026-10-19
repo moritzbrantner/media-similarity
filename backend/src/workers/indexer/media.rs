@@ -157,8 +157,11 @@ fn indexing_profile(settings: &Settings) -> String {
         ocr_max_frames: settings.ocr_max_frames,
     };
     let encoded = serde_json::to_vec(&profile).unwrap_or_default();
-    let digest = Sha256::digest(encoded);
-    format!("v{}:{digest:x}", profile.version)
+    let digest: String = Sha256::digest(encoded)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    format!("v{}:{digest}", profile.version)
 }
 
 #[derive(Serialize)]
