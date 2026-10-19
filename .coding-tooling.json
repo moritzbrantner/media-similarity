@@ -24,6 +24,7 @@
       "benchmark:smoke",
       "storybook:check"
     ],
+    "policy": ["lint"],
     "integration": [
       "test:integration"
     ],

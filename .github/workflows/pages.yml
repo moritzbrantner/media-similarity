@@ -46,6 +46,9 @@ jobs:
       - name: Check WASM formatting
         run: cargo fmt --manifest-path wasm/similarity/Cargo.toml -- --check
 
+      - name: Build native similarity core
+        run: cargo build --manifest-path wasm/similarity/Cargo.toml --locked
+
       - name: Test WASM similarity core
         run: cargo test --manifest-path wasm/similarity/Cargo.toml --locked
 
