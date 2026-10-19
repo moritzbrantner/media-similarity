@@ -1,0 +1,7 @@
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.19.2@sha256:b7b0444c4c351c970b98e90a6f89c2ee4287c65b44e52b4cb503fa5b2aa927ad
+    ports: ["127.0.0.1:${ACCEPTANCE_QDRANT_PORT:-6333}:6333"]
+    volumes:
+      - ${ACCEPTANCE_ROOT:-/tmp/media88-native-acceptance-data}/qdrant:/qdrant/storage
+      - ${ACCEPTANCE_ROOT:-/tmp/media88-native-acceptance-data}/snapshots:/qdrant/snapshots
