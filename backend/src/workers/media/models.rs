@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::{BufReader, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex, OnceLock};
@@ -340,8 +340,20 @@ fn hash_file(path: &Path) -> Result<(String, u64), String> {
     let file = std::fs::File::open(path)
         .map_err(|error| format!("failed to open {}: {error}", path.display()))?;
     let mut hasher = Sha256::new();
-    let size = std::io::copy(&mut BufReader::with_capacity(1 << 20, file), &mut hasher)
-        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    let mut reader = BufReader::with_capacity(1 << 20, file);
+    let mut size = 0;
+    loop {
+        let chunk = reader
+            .fill_buf()
+            .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+        if chunk.is_empty() {
+            break;
+        }
+        hasher.update(chunk);
+        let count = chunk.len();
+        size += count as u64;
+        reader.consume(count);
+    }
     let hex = hasher
         .finalize()
         .iter()
@@ -850,6 +862,23 @@ mod tests {
 
     use super::{model_status, normalize_onnx_role_bundle, role_spec, ModelRole};
     use crate::config::Settings;
+
+    #[test]
+    fn streaming_file_hash_matches_one_shot_across_buffer_boundaries() {
+        use sha2::{Digest, Sha256};
+
+        let path = std::env::temp_dir().join(format!("streaming-hash-{}", uuid::Uuid::new_v4()));
+        for size in [0, 3, (1 << 20) + 17] {
+            let bytes: Vec<u8> = (0..size).map(|index| (index % 251) as u8).collect();
+            std::fs::write(&path, &bytes).unwrap();
+            let expected: String = Sha256::digest(&bytes)
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect();
+            assert_eq!(super::hash_file(&path).unwrap(), (expected, size as u64));
+        }
+        std::fs::remove_file(path).unwrap();
+    }
 
     #[test]
     fn missing_enabled_visual_model_is_blocking_and_downloadable() {
