@@ -178,11 +178,11 @@ impl SourceImage {
             .bytes()
             .await
             .map_err(|error| format!("{}: {error}", self.item_uri))?;
-        let digest = Sha256::digest(self.item_uri.as_bytes());
-        let cache_dir = settings
-            .upload_dir
-            .join("source-cache")
-            .join(format!("{digest:x}"));
+        let digest: String = Sha256::digest(self.item_uri.as_bytes())
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        let cache_dir = settings.upload_dir.join("source-cache").join(digest);
         fs::create_dir_all(&cache_dir).map_err(|error| {
             format!(
                 "Could not create object source cache {}: {error}",
