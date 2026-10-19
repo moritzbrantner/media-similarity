@@ -125,19 +125,17 @@ fn delta_image(left: &RgbImage, right: &RgbImage) -> RgbImage {
     let width = left.width().min(right.width());
     let height = left.height().min(right.height());
     let mut image = RgbImage::new(width, height);
-    for y in 0..height {
-        for x in 0..width {
-            let left_pixel = left.get_pixel(x, y);
-            let right_pixel = right.get_pixel(x, y);
-            image.put_pixel(
-                x,
-                y,
-                image::Rgb([
-                    left_pixel[0].abs_diff(right_pixel[0]),
-                    left_pixel[1].abs_diff(right_pixel[1]),
-                    left_pixel[2].abs_diff(right_pixel[2]),
-                ]),
-            );
+    if width == 0 || height == 0 {
+        return image;
+    }
+
+    // Crop each input row to the common width without per-pixel coordinate checks.
+    let output_rows = image.as_mut().chunks_exact_mut(width as usize * 3);
+    let left_rows = left.as_raw().chunks_exact(left.width() as usize * 3);
+    let right_rows = right.as_raw().chunks_exact(right.width() as usize * 3);
+    for ((output, left), right) in output_rows.zip(left_rows).zip(right_rows) {
+        for ((output, left), right) in output.iter_mut().zip(left).zip(right) {
+            *output = left.abs_diff(*right);
         }
     }
     image
@@ -149,6 +147,35 @@ mod tests {
 
     use super::ImageEmbedder;
     use crate::workers::media::media::MediaFrame;
+
+    #[test]
+    fn frame_delta_matches_pixel_reference_for_different_dimensions() {
+        let sizes = [(0, 0), (0, 3), (3, 0), (1, 1), (2, 3), (3, 2), (96, 96)];
+        for (left_width, left_height) in sizes {
+            for (right_width, right_height) in sizes {
+                let left = ImageBuffer::from_fn(left_width, left_height, |x, y| {
+                    Rgb([(x % 256) as u8, (y % 256) as u8, 230])
+                });
+                let right = ImageBuffer::from_fn(right_width, right_height, |x, y| {
+                    Rgb([255 - (x % 256) as u8, 255 - (y % 256) as u8, 17])
+                });
+                let expected = ImageBuffer::from_fn(
+                    left_width.min(right_width),
+                    left_height.min(right_height),
+                    |x, y| {
+                        let left = left.get_pixel(x, y);
+                        let right = right.get_pixel(x, y);
+                        Rgb([
+                            left[0].abs_diff(right[0]),
+                            left[1].abs_diff(right[1]),
+                            left[2].abs_diff(right[2]),
+                        ])
+                    },
+                );
+                assert_eq!(super::delta_image(&left, &right), expected);
+            }
+        }
+    }
 
     #[test]
     fn embedder_returns_normalized_configured_vector_size() {
