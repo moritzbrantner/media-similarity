@@ -63,7 +63,7 @@
     "test:sample:with-services": "COMPOSE_SERVICES=\"qdrant\" bash scripts/run-with-compose-services.sh bun run test:sample"
   },
   "dependencies": {
-    "@moritzbrantner/ui": "^0.8.0",
+    "@moritzbrantner/ui": "^0.10.0",
     "@moritzbrantner/workflow-editor": "^0.1.1",
     "@tanstack/react-query": "^5.100.11",
     "lucide-react": "^1.17.0",
@@ -72,22 +72,22 @@
     "react-router": "^8.1.0"
   },
   "devDependencies": {
-    "@playwright/test": "1.64.0",
-    "@storybook/addon-docs": "10.6.1",
-    "@storybook/react-vite": "10.6.1",
+    "@playwright/test": "1.64.1",
+    "@storybook/addon-docs": "10.6.2",
+    "@storybook/react-vite": "10.6.2",
     "@tailwindcss/vite": "4.3.3",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "@unlighthouse/cli": "0.17.10",
+    "@unlighthouse/cli": "0.19.1",
     "@vitejs/plugin-react": "6.1.2",
-    "oxfmt": "0.51.0",
-    "oxlint": "1.80.0",
-    "oxlint-tsgolint": "7.0.2003",
-    "puppeteer": "25.12.0",
-    "storybook": "10.6.1",
+    "oxfmt": "0.73.0",
+    "oxlint": "1.88.0",
+    "oxlint-tsgolint": "7.0.2004",
+    "puppeteer": "25.14.0",
+    "storybook": "10.6.2",
     "tailwindcss": "4.3.3",
     "typescript": "6.0.3",
     "vite": "8.3.4"
   },
-  "packageManager": "bun@1.4.2"
+  "packageManager": "bun@1.4.3"
 }
