@@ -1,19 +1,7 @@
 name: Environment v1
 
 on:
-  pull_request:
-    paths:
-      - ".repository-environment.toml"
-      - ".coding-tooling.source-deps.json"
-      - "scripts/codex-environment.sh"
-      - "package.json"
-      - "bun.lock"
-      - "rust-toolchain.toml"
-      - "backend/Cargo.toml"
-      - "backend/Cargo.lock"
-      - "Dockerfile"
-      - ".github/workflows/environment-v1.yml"
-      - ".github/workflows/verify.yml"
+  workflow_call:
   push:
     branches: [main]
     paths:
