@@ -33,6 +33,7 @@ fn response_and_filters(c: &mut Criterion) {
                 modified_to: Some(1_800_000_000.0),
                 captured_from: Some(1_700_000_000.0),
                 captured_to: Some(1_800_000_000.0),
+                ..Default::default()
             };
             json!({
                 "must": [

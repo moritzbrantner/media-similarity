@@ -1,6 +1,7 @@
 use std::sync::{Arc, RwLock};
 
-use crate::config::Settings;
+use crate::config::{MetadataFilterProvider, Settings};
+use crate::storage::metadata_store::MetadataIndexStore;
 use crate::storage::qdrant::{QdrantHttpOptions, QdrantImageStore};
 use crate::storage::MediaVectorStore;
 use crate::workers::jobs::JobManager;
@@ -26,7 +27,7 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(settings: Settings) -> Self {
-        let store = Arc::new(QdrantImageStore::new_with_options(
+        let store: Arc<dyn MediaVectorStore> = Arc::new(QdrantImageStore::new_with_options(
             settings.qdrant_url.clone(),
             settings.qdrant_collection.clone(),
             settings.visual_embedding_vector_size,
@@ -38,6 +39,14 @@ impl AppState {
                 retry_backoff_ms: settings.qdrant_retry_backoff_ms,
             },
         ));
+        let store: Arc<dyn MediaVectorStore> = match settings.metadata_filter_provider {
+            MetadataFilterProvider::Existing => store,
+            MetadataFilterProvider::SearchEngine => Arc::new(MetadataIndexStore::new(
+                store,
+                &settings.metadata_index_dir,
+                &settings.qdrant_collection,
+            )),
+        };
         let embedder = build_visual_embedder(&settings);
         let indexing_config = RwLock::new(EditableIndexingConfig::from_settings(&settings));
         let source_specs = RwLock::new(settings.source_specs());

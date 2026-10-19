@@ -192,9 +192,11 @@ impl ImageSearchService {
             return Err("text query is required".to_string());
         }
 
+        let mut metadata_filter = filters.qdrant_filter();
+        metadata_filter.text_query = Some(normalized_text_query.clone());
         let points = self
             .store
-            .scroll_media_points_filtered(Some(filters.qdrant_filter()))
+            .scroll_media_points_filtered(Some(metadata_filter))
             .await?;
         let mut results = Vec::new();
         for point in points {
@@ -261,6 +263,8 @@ pub fn relevance_score(
 impl SearchFilters {
     pub fn qdrant_filter(&self) -> MediaSearchFilter {
         MediaSearchFilter {
+            name_query: self.name_query.clone(),
+            camera_query: self.camera_query.clone(),
             source_type: self.source_type.clone(),
             media_kind: self.media_kind.clone(),
             has_gps: self.has_gps,
@@ -274,6 +278,7 @@ impl SearchFilters {
             modified_to: self.modified_to,
             captured_from: self.captured_from,
             captured_to: self.captured_to,
+            ..Default::default()
         }
     }
 

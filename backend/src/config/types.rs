@@ -5,11 +5,39 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MetadataFilterProvider {
+    #[default]
+    Existing,
+    SearchEngine,
+}
+
+impl std::str::FromStr for MetadataFilterProvider {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "existing" => Ok(Self::Existing),
+            "search-engine" => Ok(Self::SearchEngine),
+            _ => Err("METADATA_FILTER_PROVIDER must be existing or search-engine".to_owned()),
+        }
+    }
+}
+
+fn default_metadata_index_dir() -> PathBuf {
+    PathBuf::from("data/metadata-index")
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
     pub source_image_dir: PathBuf,
     pub qdrant_url: String,
     pub qdrant_collection: String,
+    #[serde(default)]
+    pub metadata_filter_provider: MetadataFilterProvider,
+    #[serde(default = "default_metadata_index_dir")]
+    pub metadata_index_dir: PathBuf,
     pub qdrant_request_timeout_ms: u64,
     pub qdrant_connect_timeout_ms: u64,
     pub qdrant_retry_attempts: u32,
@@ -103,6 +131,10 @@ pub struct ServerSettings {
 pub struct StorageSettings {
     pub qdrant_url: String,
     pub qdrant_collection: String,
+    #[serde(default)]
+    pub metadata_filter_provider: MetadataFilterProvider,
+    #[serde(default = "default_metadata_index_dir")]
+    pub metadata_index_dir: PathBuf,
     pub qdrant_request_timeout_ms: u64,
     pub qdrant_connect_timeout_ms: u64,
     pub qdrant_retry_attempts: u32,
