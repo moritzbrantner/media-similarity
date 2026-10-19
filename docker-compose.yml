@@ -112,9 +112,3 @@ services:
     volumes:
       - ${QDRANT_DATA_DIR:-./.dev-data/qdrant}:/qdrant/storage
       - ${QDRANT_SNAPSHOTS_DIR:-./.dev-data/qdrant-snapshots}:/qdrant/snapshots
-
-networks:
-  default:
-    ipam:
-      config:
-        - subnet: 10.89.0.0/24
