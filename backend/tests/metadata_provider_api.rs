@@ -23,11 +23,16 @@ struct NativeApi {
 
 impl NativeApi {
     async fn start(mut settings: Settings) -> Self {
-        settings.frontend_serving_enabled = false;
+        settings.frontend_serving_enabled =
+            std::env::var_os("METADATA_ACCEPTANCE_BROWSER").is_some();
         fs::create_dir_all(&settings.thumbnail_dir).unwrap();
         fs::create_dir_all(&settings.upload_dir).unwrap();
         let state = Arc::new(AppState::new(settings.clone()));
-        let app = build_app_router(PathBuf::new(), state, &settings);
+        let app = build_app_router(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../frontend/dist"),
+            state,
+            &settings,
+        );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
         let task = tokio::spawn(async move {
@@ -42,10 +47,12 @@ impl NativeApi {
 
     async fn search(&self, bytes: &[u8], params: &Params) -> SearchResponse {
         let (content_type, body) = multipart_body("query.jpg", "image/jpeg", bytes.to_vec());
+        let mut url = url::Url::parse(&format!("{}/api/search", self.url)).unwrap();
+        url.query_pairs_mut()
+            .extend_pairs(params.iter().map(|(key, value)| (*key, value)));
         let response = self
             .client
-            .post(format!("{}/api/search", self.url))
-            .query(params)
+            .post(url)
             .header(reqwest::header::CONTENT_TYPE, content_type)
             .body(body)
             .send()
@@ -99,6 +106,33 @@ impl NativeApi {
             task.abort();
             assert!(task.await.unwrap_err().is_cancelled());
         }
+    }
+
+    async fn browser(&self, query: &Path, stage: &str) {
+        if std::env::var_os("METADATA_ACCEPTANCE_BROWSER").is_none() {
+            return;
+        }
+        let url = self.url.clone();
+        let query = query.to_owned();
+        let stage = stage.to_owned();
+        let output = tokio::task::spawn_blocking(move || {
+            std::process::Command::new("bun")
+                .arg(
+                    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                        .join("../scripts/check-metadata-ui.mjs"),
+                )
+                .args([url.as_str(), query.to_str().unwrap(), stage.as_str()])
+                .output()
+                .unwrap()
+        })
+        .await
+        .unwrap();
+        assert!(
+            output.status.success(),
+            "browser: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        println!("browser {}", String::from_utf8_lossy(&output.stdout));
     }
 }
 impl Drop for NativeApi {
@@ -154,7 +188,8 @@ async fn metadata_providers_keep_ids_scores_and_lifecycle_through_the_production
 
 #[tokio::test]
 #[ignore = "requires an isolated real Qdrant service through QDRANT_URL"]
-async fn metadata_providers_match_real_qdrant_through_update_remove_restart_and_rebuild() {
+async fn qdrant_smoke_metadata_providers_match_real_qdrant_through_update_remove_restart_and_rebuild(
+) {
     let root = tempfile::tempdir().unwrap();
     let url =
         std::env::var("QDRANT_URL").expect("set QDRANT_URL to an isolated local test service");
@@ -213,6 +248,8 @@ async fn exercise_provider_lifecycle(mut settings: Settings, root: &Path) {
     inject_xmp_metadata(&dated, test_photo_xmp());
     inject_xmp_metadata(&portrait, test_photo_xmp());
     let query = fs::read(&dated).unwrap();
+    let browser_query = root.join("query.jpg");
+    fs::write(&browser_query, &query).unwrap();
     settings.metadata_filter_provider = MetadataFilterProvider::Existing;
     let existing = NativeApi::start(settings.clone()).await;
     assert_eq!(existing.index().await.indexed, 3);
@@ -234,6 +271,8 @@ async fn exercise_provider_lifecycle(mut settings: Settings, root: &Path) {
         vec![("name_query", "portrait".into())],
     ];
     assert_parity(&existing, &indexed, &query, &queries).await;
+    existing.browser(&browser_query, "initial").await;
+    indexed.browser(&browser_query, "initial").await;
     let date_query = &queries[2];
     let matches = indexed.search(&query, date_query).await;
     assert_eq!(matches.count, 1);
@@ -258,6 +297,8 @@ async fn exercise_provider_lifecycle(mut settings: Settings, root: &Path) {
     assert_parity(&existing, &indexed, &query, &queries).await;
     assert_eq!(indexed.search(&query, date_query).await.count, 0);
     assert_eq!(indexed.search(&query, &queries[5]).await.count, 0);
+    existing.browser(&browser_query, "updated").await;
+    indexed.browser(&browser_query, "updated").await;
     assert!(existing
         .search(&query, &vec![])
         .await
@@ -268,10 +309,12 @@ async fn exercise_provider_lifecycle(mut settings: Settings, root: &Path) {
     indexed.shutdown().await;
     let reopened = NativeApi::start(settings.clone()).await;
     assert_parity(&existing, &reopened, &query, &queries).await;
+    reopened.browser(&browser_query, "reopened").await;
     reopened.shutdown().await;
     fs::remove_dir_all(&settings.metadata_index_dir).unwrap();
     let rebuilt = NativeApi::start(settings).await;
     assert_parity(&existing, &rebuilt, &query, &queries).await;
+    rebuilt.browser(&browser_query, "rebuilt").await;
     assert_eq!(
         existing.album(criteria.clone()).await,
         rebuilt.album(criteria).await

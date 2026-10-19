@@ -24,6 +24,11 @@
       "repository": "moritzbrantner/nlp-stack",
       "layer": "domain",
       "relation": "capability"
+    },
+    {
+      "repository": "moritzbrantner/search-engine",
+      "layer": "domain",
+      "relation": "capability"
     }
   ],
   "maxExactSourceRepositories": 2,
@@ -36,11 +41,19 @@
       "moritzbrantner/moenarch-foundation",
       "moritzbrantner/audio-analysis",
       "moritzbrantner/visual-analysis",
-      "moritzbrantner/nlp-stack"
+      "moritzbrantner/nlp-stack",
+      "moritzbrantner/search-engine"
     ],
-    "moritzbrantner/audio-analysis": ["moritzbrantner/moenarch-foundation"],
-    "moritzbrantner/visual-analysis": ["moritzbrantner/moenarch-foundation"],
-    "moritzbrantner/nlp-stack": ["moritzbrantner/moenarch-foundation"],
-    "moritzbrantner/moenarch-foundation": []
+    "moritzbrantner/audio-analysis": [
+      "moritzbrantner/moenarch-foundation"
+    ],
+    "moritzbrantner/visual-analysis": [
+      "moritzbrantner/moenarch-foundation"
+    ],
+    "moritzbrantner/nlp-stack": [
+      "moritzbrantner/moenarch-foundation"
+    ],
+    "moritzbrantner/moenarch-foundation": [],
+    "moritzbrantner/search-engine": []
   }
 }

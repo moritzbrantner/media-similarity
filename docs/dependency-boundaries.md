@@ -20,6 +20,11 @@ versioned external capability packages
 
 API handlers may orchestrate adapters, but new capability-specific conversion logic should move into `workers/media` rather than spreading crate imports through HTTP code.
 
+`backend/src/storage/metadata_index.rs` adapts the public Search Engine facade for
+the optional derived metadata candidate index. Its exact public Git dependency
+is reproducible without sibling checkouts or authentication. Qdrant remains the
+payload/vector authority; see [ADR 0007](adr/0007-optional-derived-metadata-index.md).
+
 ## Source development
 
 The committed `.coding-tooling.source-deps.json` intentionally contains no ambient source patches. Normal application development uses the versioned dependencies in `backend/Cargo.toml`.

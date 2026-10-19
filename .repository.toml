@@ -3,7 +3,7 @@ id = "moritzbrantner/media-similarity"
 kind = "app"
 status = "active"
 summary = "Cross-media similarity search product: source configuration, indexing workflow, vector/index persistence and the search UI over image, video, audio and text capabilities consumed from their canonical repositories."
-depends_on = ["moritzbrantner/audio-analysis", "moritzbrantner/visual-analysis", "moritzbrantner/nlp-stack", "moritzbrantner/moenarch-foundation"]
+depends_on = ["moritzbrantner/audio-analysis", "moritzbrantner/visual-analysis", "moritzbrantner/nlp-stack", "moritzbrantner/moenarch-foundation", "moritzbrantner/search-engine"]
 consumed_by = []
 supersedes = []
 replaced_by = []
@@ -26,6 +26,7 @@ consumes = [
   "nlp-stack/text-transcripts",
   "moenarch-foundation/model-runtime",
   "moenarch-foundation/vector-math",
+  "search-engine/metadata-index",
 ]
 must_not_own = [
   "audio-analysis/audio-capabilities",
@@ -34,6 +35,7 @@ must_not_own = [
   "nlp-stack/text-transcripts",
   "moenarch-foundation/model-runtime",
   "moenarch-foundation/vector-math",
+  "search-engine/metadata-index",
 ]
 
 [bootstrap]
