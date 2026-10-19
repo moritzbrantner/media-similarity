@@ -358,6 +358,7 @@ mod tests {
 
     fn base_image() -> ImagePayload {
         ImagePayload {
+            video_evidence: None,
             id: "media".to_string(),
             path: "media".to_string(),
             relative_path: "media".to_string(),

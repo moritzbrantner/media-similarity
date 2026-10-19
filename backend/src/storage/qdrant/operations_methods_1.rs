@@ -216,7 +216,7 @@ impl QdrantImageStore {
         set_payload_kind(&mut payload_value, "face");
         let request = UpsertRequest {
             points: vec![PointStruct {
-                id: payload.face_id.clone(),
+                id: face_storage_point_id(&payload.face_id),
                 vector: NamedPointVectors::face(vector),
                 payload: payload_value,
             }],
@@ -291,7 +291,7 @@ impl QdrantImageStore {
         set_payload_kind(&mut payload_value, "face");
         let request = SetPayloadRequest {
             payload: payload_value,
-            points: vec![payload.face_id.clone()],
+            points: vec![face_storage_point_id(&payload.face_id)],
         };
         let path = format!("/collections/{}/points/payload?wait=true", self.collection);
         self.send_qdrant("set_face_payload", &path, |base_url| {

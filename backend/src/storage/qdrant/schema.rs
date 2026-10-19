@@ -270,3 +270,13 @@ fn set_payload_kind(payload: &mut Value, kind: &'static str) {
         object.insert("point_kind".to_string(), Value::String(kind.to_string()));
     }
 }
+
+// Qdrant accepts UUIDs (or numeric JSON IDs), while application face identities
+// include stable media/frame coordinates. Preserve those logical identity links
+// in the payload and adapt only the physical storage key. Existing UUID keys stay
+// unchanged so previously valid records can still be updated.
+fn face_storage_point_id(logical_id: &str) -> String {
+    uuid::Uuid::parse_str(logical_id)
+        .unwrap_or_else(|_| uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, logical_id.as_bytes()))
+        .to_string()
+}

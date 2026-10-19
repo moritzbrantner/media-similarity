@@ -14,6 +14,7 @@ use super::harness::TestApp;
 
 pub fn test_media_payload(id: &str, filename: &str) -> ImagePayload {
     ImagePayload {
+        video_evidence: None,
         id: id.to_string(),
         path: format!("/images/{filename}"),
         relative_path: filename.to_string(),

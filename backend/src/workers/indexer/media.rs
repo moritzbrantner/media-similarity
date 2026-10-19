@@ -23,6 +23,7 @@ impl<'a> PayloadBuildOptions<'a> {
 
     fn with_video_scene(mut self, scene: &'a SourceVideoScene) -> Self {
         self.video_scene = Some(scene);
+        self.ocr_override = Some(scene.ocr.clone());
         self
     }
 
@@ -116,7 +117,7 @@ fn generated_artifacts(
 
 fn indexing_profile(settings: &Settings) -> String {
     let profile = IndexingProfile {
-        version: 6,
+        version: 7,
         processing_workflows_hash: settings.processing_workflows_hash.as_deref(),
         photo_metadata_version: "photo-metadata-v1",
         clip_model_name: &settings.clip_model_name,

@@ -103,6 +103,7 @@ pub fn synthetic_payload(index: usize) -> ImagePayload {
         "local"
     };
     ImagePayload {
+        video_evidence: None,
         id: format!("media-{index:06}"),
         path: format!("/bench/source-{}/media-{index:06}.jpg", index % 4),
         relative_path: format!("source-{}/media-{index:06}.jpg", index % 4),

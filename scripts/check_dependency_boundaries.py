@@ -23,6 +23,7 @@ FORBIDDEN_IMPORTS = (
     "runtime_core",
     "runtime_onnx",
     "vector_analysis_core",
+    "media_intelligence_",
 )
 
 # Every first-party `moenarch-*` package is a capability or runtime implementation

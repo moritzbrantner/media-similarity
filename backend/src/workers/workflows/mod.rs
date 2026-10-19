@@ -41,6 +41,20 @@ mod tests {
     }
 
     #[test]
+    fn default_video_workflow_preserves_requested_transcription() {
+        let mut settings = Settings {
+            audio_transcription_enabled: true,
+            ..Default::default()
+        };
+        let library = default_media_workflow_library(&settings);
+        assert!(validate_media_workflow_library(&library).is_empty());
+        let workflow =
+            compile_media_workflow(MediaFileKind::Video, WorkflowMode::Index, &library).unwrap();
+        workflow.apply_to_settings(&mut settings);
+        assert!(settings.audio_transcription_enabled);
+    }
+
+    #[test]
     fn missing_required_document_fails_validation() {
         let mut library = default_media_workflow_library(&Settings::default());
         library.documents.retain(|entry| entry.id != "pdf");

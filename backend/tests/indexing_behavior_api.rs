@@ -4,11 +4,91 @@ use std::time::Duration;
 use serde_json::json;
 
 use image_similarity_service::config::parse_extensions;
+use image_similarity_service::domain::models::{FaceBoxPayload, FacePointPayload};
 
 mod support;
 
 use support::harness::TestApp;
 use support::media_fixtures::write_pattern_image;
+
+#[tokio::test]
+async fn face_storage_uses_qdrant_ids_without_replacing_logical_identity_links() {
+    let app = indexing_app().await;
+    app.state.store.ensure_collection().await.unwrap();
+    let media_id = "24ae838b-1e99-5d72-8a25-8eeb1caef149";
+    let mut payload = FacePointPayload {
+        face_id: format!("{media_id}#face=0-0"),
+        media_id: media_id.into(),
+        frame_index: 0,
+        bbox: FaceBoxPayload {
+            x: 0.1,
+            y: 0.1,
+            width: 0.5,
+            height: 0.5,
+        },
+        confidence: 0.95,
+        person_id: "existing-person".into(),
+        person_label: None,
+        source_uri: None,
+        source_item_uri: None,
+    };
+    app.state
+        .store
+        .upsert_face(&payload, vec![0.1; 32])
+        .await
+        .unwrap();
+    let points = app.state.store.scroll_face_points().await.unwrap();
+    assert_eq!(points.len(), 1);
+    let physical_id = points[0].id.clone();
+    assert!(uuid::Uuid::parse_str(&physical_id).is_ok(), "{physical_id}");
+    assert_eq!(
+        points[0].payload.as_ref().unwrap()["face_id"],
+        payload.face_id
+    );
+    payload.person_label = Some("Existing person".into());
+    app.state.store.set_face_payload(&payload).await.unwrap();
+    app.state
+        .store
+        .upsert_face(&payload, vec![0.1; 32])
+        .await
+        .unwrap();
+    let points = app.state.store.scroll_face_points().await.unwrap();
+    assert_eq!(points.len(), 1);
+    assert_eq!(points[0].id, physical_id);
+    assert_eq!(
+        points[0].payload.as_ref().unwrap()["person_label"],
+        "Existing person"
+    );
+    app.state.store.delete_points(&[physical_id]).await.unwrap();
+    assert!(app
+        .state
+        .store
+        .scroll_face_points()
+        .await
+        .unwrap()
+        .is_empty());
+}
+
+#[tokio::test]
+async fn repeat_indexing_uses_the_same_profile_when_a_workflow_disables_an_unrelated_capability() {
+    let app = TestApp::new(|settings| {
+        settings.audio_transcription_enabled = true;
+        settings.face_analysis_enabled = false;
+    })
+    .await;
+    write_pattern_image(
+        &app.source_path("still.png"),
+        48,
+        48,
+        [220, 30, 30],
+        [35, 35, 35],
+    );
+    let first = app.index().await;
+    assert_eq!(first.indexed, 1, "{first:?}");
+    let second = app.index().await;
+    assert_eq!(second.indexed, 0, "{second:?}");
+    assert_eq!(second.already_indexed, 1);
+}
 
 #[tokio::test]
 async fn repeat_indexing_current_local_file_does_not_replace_media_point() {

@@ -6,19 +6,20 @@ use std::time::Duration;
 
 use image::RgbImage;
 use uuid::Uuid;
-use video_analysis_core::{DetectionResult, FramePosition, Scene, ScenePipeline, VideoSource};
-use video_analysis_detectors::ContentDetector;
+use video_analysis_core::{FramePosition, Scene, VideoSource};
 use video_analysis_ffmpeg::FfmpegVideoSource;
 use video_analysis_split::{build_split_plan, SplitOptions};
 
 use crate::config::Settings;
-use crate::domain::models::AudioAnalysis;
+use crate::domain::models::{AudioAnalysis, OcrAnalysis, VideoEvidence};
 use crate::workers::media::audio::analyze_audio_track_cancellable;
 use crate::workers::media::image_io::image_id_for_uri;
 use crate::workers::media::media::{DecodedMedia, MediaFrame, MediaKind};
+use crate::workers::media::video_evidence::analyze_video;
 
 #[derive(Clone, Debug)]
 pub struct DecodedVideoScene {
+    pub evidence: Option<VideoEvidence>,
     pub scene_index: usize,
     pub start: FramePosition,
     pub end: FramePosition,
@@ -28,6 +29,8 @@ pub struct DecodedVideoScene {
 
 #[derive(Clone, Debug)]
 pub struct SourceVideoScene {
+    pub ocr: OcrAnalysis,
+    pub evidence: VideoEvidence,
     pub scene_index: usize,
     pub start: FramePosition,
     pub end: FramePosition,
@@ -62,22 +65,27 @@ pub fn decode_video_scenes(
     path: &Path,
     settings: &Settings,
 ) -> Result<Vec<DecodedVideoScene>, String> {
-    let detection = detect_scenes(path)?;
-    let scenes = if detection.scenes.is_empty() {
-        whole_video_scene(path)?
-    } else {
-        detection.scenes
-    };
-
-    let scene_media = sample_scene_media(path, &scenes, settings)?;
     let source_audio_analysis = source_video_audio_analysis(path, settings)?;
+    let analyzed = analyze_video(
+        path,
+        &path.to_string_lossy(),
+        source_audio_analysis.as_ref(),
+        settings,
+    )?;
+    let scenes = analyzed
+        .iter()
+        .map(|scene| scene.scene.clone())
+        .collect::<Vec<_>>();
+    let scene_media = sample_scene_media(path, &scenes, settings)?;
     Ok(scene_media
         .into_iter()
-        .map(|(scene_index, scene, mut media)| {
+        .zip(analyzed)
+        .map(|((scene_index, scene, mut media), analyzed)| {
             if let Some(analysis) = &source_audio_analysis {
                 media.audio_analysis = slice_audio_analysis_for_scene(analysis, &scene);
             }
             DecodedVideoScene {
+                evidence: Some(analyzed.evidence),
                 scene_index,
                 start: scene.start,
                 end: scene.end,
@@ -103,13 +111,14 @@ pub fn decode_source_video_scenes_cancellable(
     mut is_cancelled: impl FnMut() -> bool,
 ) -> Result<Vec<SourceVideoScene>, String> {
     check_cancelled(&mut is_cancelled)?;
-    let detection = detect_scenes(path)?;
+    let source_audio_analysis =
+        source_video_audio_analysis_cancellable(path, settings, &mut is_cancelled)?;
+    let analyzed = analyze_video(path, id_base, source_audio_analysis.as_ref(), settings)?;
     check_cancelled(&mut is_cancelled)?;
-    let scenes = if detection.scenes.is_empty() {
-        whole_video_scene_cancellable(path, &mut is_cancelled)?
-    } else {
-        detection.scenes
-    };
+    let scenes = analyzed
+        .iter()
+        .map(|scene| scene.scene.clone())
+        .collect::<Vec<_>>();
 
     let video_id = image_id_for_uri(id_base);
     check_cancelled(&mut is_cancelled)?;
@@ -120,16 +129,17 @@ pub fn decode_source_video_scenes_cancellable(
     check_cancelled(&mut is_cancelled)?;
     let scene_media = sample_scene_media_cancellable(path, &scenes, settings, &mut is_cancelled)?;
     check_cancelled(&mut is_cancelled)?;
-    let source_audio_analysis =
-        source_video_audio_analysis_cancellable(path, settings, &mut is_cancelled)?;
     Ok(scene_media
         .into_iter()
         .zip(clip_urls)
-        .map(|((scene_index, scene, mut media), clip_url)| {
+        .zip(analyzed)
+        .map(|(((scene_index, scene, mut media), clip_url), analyzed)| {
             if let Some(analysis) = &source_audio_analysis {
                 media.audio_analysis = slice_audio_analysis_for_scene(analysis, &scene);
             }
             SourceVideoScene {
+                ocr: analyzed.ocr,
+                evidence: analyzed.evidence,
                 scene_index,
                 start: scene.start,
                 end: scene.end,
@@ -139,41 +149,6 @@ pub fn decode_source_video_scenes_cancellable(
             }
         })
         .collect())
-}
-
-fn detect_scenes(path: &Path) -> Result<DetectionResult, String> {
-    let mut source = FfmpegVideoSource::open(path).map_err(video_error)?;
-    let detector = ContentDetector::new(27.0, 15);
-    let mut pipeline = ScenePipeline::builder()
-        .detector(detector)
-        .start_in_scene(true)
-        .build()
-        .map_err(video_error)?;
-    pipeline.detect(&mut source).map_err(video_error)
-}
-
-fn whole_video_scene(path: &Path) -> Result<Vec<Scene>, String> {
-    whole_video_scene_cancellable(path, &mut || false)
-}
-
-fn whole_video_scene_cancellable(
-    path: &Path,
-    is_cancelled: &mut impl FnMut() -> bool,
-) -> Result<Vec<Scene>, String> {
-    let mut source = FfmpegVideoSource::open(path).map_err(video_error)?;
-    let fps = source.frame_rate();
-    let mut first = None;
-    let mut last = None;
-    while let Some(frame) = source.next_frame().map_err(video_error)? {
-        check_cancelled(is_cancelled)?;
-        first.get_or_insert(frame.position);
-        last = Some(frame.position);
-    }
-    let start = first.unwrap_or_else(|| FramePosition::from_frame_index(0, fps));
-    let end = last
-        .map(|position| FramePosition::from_frame_index(position.frame_index + 1, fps))
-        .unwrap_or_else(|| FramePosition::from_frame_index(1, fps));
-    Ok(vec![Scene { start, end }])
 }
 
 fn split_source_scenes_cancellable(

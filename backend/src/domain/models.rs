@@ -73,6 +73,73 @@ pub struct OcrFrameText {
     pub text: String,
 }
 
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum EvidenceStatus {
+    NotRequested,
+    Unavailable,
+    Failed { reason: String },
+    Completed,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct EvidenceProducer {
+    pub producer: String,
+    pub producer_version: String,
+    pub model: String,
+    pub model_version: String,
+    pub config_hash: String,
+    pub input_hash: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct VideoTextObservation {
+    pub timestamp_seconds: f64,
+    pub frame_index: Option<u64>,
+    pub ocr_confidence: Option<f64>,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct VideoTextEvidence {
+    pub id: String,
+    pub text: String,
+    pub start_seconds: f64,
+    pub end_seconds: f64,
+    pub track_id: Option<String>,
+    pub role: Option<String>,
+    pub observations: Vec<VideoTextObservation>,
+    pub producer: EvidenceProducer,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct VideoSpeechEvidence {
+    pub id: String,
+    pub text: String,
+    pub start_seconds: f64,
+    pub end_seconds: f64,
+    pub transcript_confidence: Option<f64>,
+    pub producer: EvidenceProducer,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct VideoEvidenceRelation {
+    pub kind: String,
+    pub subject: String,
+    pub object: String,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct VideoEvidence {
+    pub asset_id: String,
+    pub content_hash: String,
+    pub scene_id: String,
+    pub ocr_status: EvidenceStatus,
+    pub speech_status: EvidenceStatus,
+    pub visible_text: Vec<VideoTextEvidence>,
+    pub speech: Vec<VideoSpeechEvidence>,
+    pub relations: Vec<VideoEvidenceRelation>,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct FaceBoxPayload {
     pub x: f32,
@@ -174,6 +241,8 @@ pub struct PhotoMetadataEntryPayload {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ImagePayload {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video_evidence: Option<VideoEvidence>,
     pub id: String,
     pub path: String,
     pub relative_path: String,
@@ -325,6 +394,8 @@ pub struct FaceSearchResponse {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct SearchSceneResponse {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video_evidence: Option<VideoEvidence>,
     pub scene_index: usize,
     #[serde(default = "default_scene_kind")]
     pub scene_kind: String,
@@ -471,6 +542,7 @@ mod tests {
     #[test]
     fn gif_payload_serializes_media_metadata() {
         let payload = ImagePayload {
+            video_evidence: None,
             id: "id".to_string(),
             path: "/images/clip.gif".to_string(),
             relative_path: "clip.gif".to_string(),
@@ -528,6 +600,7 @@ mod tests {
     #[test]
     fn video_scene_payload_serializes_links_and_time_window() {
         let payload = ImagePayload {
+            video_evidence: None,
             id: "id".to_string(),
             path: "/images/clip.mp4#scene=1".to_string(),
             relative_path: "clip.mp4#scene=1".to_string(),
@@ -587,6 +660,7 @@ mod tests {
     #[test]
     fn audio_payload_serializes_audio_link() {
         let payload = ImagePayload {
+            video_evidence: None,
             id: "id".to_string(),
             path: "/images/song.mp3".to_string(),
             relative_path: "song.mp3".to_string(),
