@@ -32,19 +32,19 @@ pub fn build_app_router(
         .route("/api/smart-albums", get(list_albums).post(create_album))
         .route("/api/smart-albums/preview", post(preview_album))
         .route(
-            "/api/smart-albums/:album_id",
+            "/api/smart-albums/{album_id}",
             put(update_album).delete(delete_album),
         )
-        .route("/api/smart-albums/:album_id/results", get(album_results))
+        .route("/api/smart-albums/{album_id}/results", get(album_results))
         .route("/api/inverse-index", get(inverse_index))
-        .route("/api/identities/people/:person_id", put(rename_person))
+        .route("/api/identities/people/{person_id}", put(rename_person))
         .route(
-            "/api/identities/people/:target_person_id/merge",
+            "/api/identities/people/{target_person_id}/merge",
             post(merge_people),
         )
-        .route("/api/identities/speakers/:speaker_id", put(rename_speaker))
+        .route("/api/identities/speakers/{speaker_id}", put(rename_speaker))
         .route(
-            "/api/identities/speakers/:target_speaker_id/merge",
+            "/api/identities/speakers/{target_speaker_id}/merge",
             post(merge_speakers),
         )
         .route(
@@ -57,14 +57,14 @@ pub fn build_app_router(
         .route("/api/workflows/reset", post(reset_workflows))
         .route("/api/jobs", get(list_jobs))
         .route("/api/jobs/index", post(spawn_index_job))
-        .route("/api/jobs/:job_id", get(get_job))
-        .route("/api/jobs/:job_id/events", get(get_job_events))
-        .route("/api/jobs/:job_id/cancel", post(cancel_job))
+        .route("/api/jobs/{job_id}", get(get_job))
+        .route("/api/jobs/{job_id}/events", get(get_job_events))
+        .route("/api/jobs/{job_id}/cancel", post(cancel_job))
         .route("/api/models", get(get_models))
         .route("/api/models/download-all", post(download_all_models))
-        .route("/api/models/:role/download", post(download_model))
-        .route("/api/models/:role/enable", post(enable_model))
-        .route("/api/models/:role/disable", post(disable_model))
+        .route("/api/models/{role}/download", post(download_model))
+        .route("/api/models/{role}/enable", post(enable_model))
+        .route("/api/models/{role}/disable", post(disable_model))
         .route(
             "/api/models/audio-transcription",
             get(audio_transcription_models),
@@ -77,9 +77,12 @@ pub fn build_app_router(
             "/api/models/audio-transcription/enable",
             post(enable_audio_transcription_model),
         )
-        .route("/api/indexed-media/:id", delete(delete_indexed_media_route))
         .route(
-            "/api/indexed-media/:id/tags",
+            "/api/indexed-media/{id}",
+            delete(delete_indexed_media_route),
+        )
+        .route(
+            "/api/indexed-media/{id}/tags",
             put(update_indexed_media_tags_route),
         )
         .route("/api/indexed-sources", delete(delete_indexed_sources_route))

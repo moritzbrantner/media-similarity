@@ -45,7 +45,10 @@ pub fn compile_media_workflow(
 
 pub fn media_workflow_hash(library: &MediaWorkflowLibrary) -> String {
     let encoded = serde_json::to_vec(library).unwrap_or_default();
-    format!("{:x}", Sha256::digest(encoded))
+    Sha256::digest(encoded)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 fn node_processor(node: &MediaWorkflowNode) -> &str {

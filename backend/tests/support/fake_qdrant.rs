@@ -103,28 +103,28 @@ impl FakeQdrant {
         let app = Router::new()
             .route("/collections", get(fake_list_collections))
             .route(
-                "/collections/:collection",
+                "/collections/{collection}",
                 get(fake_get_collection).put(fake_create_collection),
             )
             .route(
-                "/collections/:collection/index",
+                "/collections/{collection}/index",
                 put(fake_create_payload_index),
             )
-            .route("/collections/:collection/points", put(fake_upsert_points))
+            .route("/collections/{collection}/points", put(fake_upsert_points))
             .route(
-                "/collections/:collection/points/payload",
+                "/collections/{collection}/points/payload",
                 post(fake_set_payload),
             )
             .route(
-                "/collections/:collection/points/delete",
+                "/collections/{collection}/points/delete",
                 post(fake_delete_points),
             )
             .route(
-                "/collections/:collection/points/scroll",
+                "/collections/{collection}/points/scroll",
                 post(fake_scroll_points),
             )
             .route(
-                "/collections/:collection/points/search",
+                "/collections/{collection}/points/search",
                 post(fake_search_points),
             )
             .with_state(state.clone());
