@@ -37,6 +37,11 @@ impl Settings {
             source_image_dir: path_var("SOURCE_IMAGE_DIR", defaults.source_image_dir),
             qdrant_url: string_var("QDRANT_URL", defaults.qdrant_url),
             qdrant_collection: string_var("QDRANT_COLLECTION", defaults.qdrant_collection),
+            metadata_filter_provider: optional_string_var("METADATA_FILTER_PROVIDER")
+                .as_deref()
+                .unwrap_or("existing")
+                .parse()?,
+            metadata_index_dir: path_var("METADATA_INDEX_DIR", defaults.metadata_index_dir),
             qdrant_request_timeout_ms,
             qdrant_connect_timeout_ms,
             qdrant_retry_attempts: bounded_u32_var(

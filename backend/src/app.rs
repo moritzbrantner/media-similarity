@@ -10,7 +10,7 @@ use crate::config::Settings;
 mod lifecycle;
 mod router;
 
-pub use router::upload_body_limit_bytes;
+pub use router::{build_app_router, upload_body_limit_bytes};
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()

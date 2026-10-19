@@ -54,6 +54,7 @@ export INDEXING_LEDGER_FILE="${INDEXING_LEDGER_FILE:-${app_data_dir}/indexing-le
 export PROCESSING_WORKFLOWS_FILE="${PROCESSING_WORKFLOWS_FILE:-${app_data_dir}/processing-workflows.json}"
 export VOICE_REGISTRY_PATH="${VOICE_REGISTRY_PATH:-${app_data_dir}/recognized-voices.json}"
 export SMART_ALBUMS_FILE="${SMART_ALBUMS_FILE:-${app_data_dir}/smart-albums.json}"
+export METADATA_INDEX_DIR="${METADATA_INDEX_DIR:-${app_data_dir}/metadata-index}"
 export MODEL_BUNDLE_DIR="${MODEL_BUNDLE_DIR:-${app_data_dir}/models/bundles}"
 export MODEL_HF_CACHE_DIR="${MODEL_HF_CACHE_DIR:-${app_data_dir}/models/hf-cache}"
 

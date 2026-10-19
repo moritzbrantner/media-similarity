@@ -63,6 +63,9 @@ pub async fn smart_album_results(
 
 fn qdrant_filter(criteria: &SmartAlbumCriteria) -> MediaSearchFilter {
     MediaSearchFilter {
+        name_query: criteria.name_query.clone(),
+        camera_query: criteria.camera_query.clone(),
+        text_query: criteria.text_query.clone(),
         source_type: criteria.source_type.clone(),
         media_kind: criteria.media_kind.clone(),
         has_gps: criteria.has_gps,
@@ -76,6 +79,7 @@ fn qdrant_filter(criteria: &SmartAlbumCriteria) -> MediaSearchFilter {
         modified_to: criteria.modified_to,
         captured_from: criteria.captured_from,
         captured_to: criteria.captured_to,
+        ..Default::default()
     }
 }
 

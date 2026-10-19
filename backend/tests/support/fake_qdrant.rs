@@ -301,7 +301,9 @@ async fn fake_set_payload(
                     state
                         .points
                         .get(&(collection.clone(), id.clone()))
-                        .is_some_and(|point| payload_matches_filter(&point.payload, Some(filter)))
+                        .is_some_and(|point| {
+                            payload_matches_filter(id, &point.payload, Some(filter))
+                        })
                 })
                 .collect::<Vec<_>>()
         }
@@ -353,7 +355,7 @@ async fn fake_search_points(
         .points
         .iter()
         .filter(|((point_collection, _), _)| point_collection == &collection)
-        .filter(|(_, point)| payload_matches_filter(&point.payload, request.filter.as_ref()))
+        .filter(|((_, id), point)| payload_matches_filter(id, &point.payload, request.filter.as_ref()))
         .map(|((_, id), point)| {
             json!({
                 "id": id,
@@ -395,7 +397,9 @@ async fn fake_scroll_points(
             point_collection == &collection
                 && offset.map(|offset| id.as_str() > offset).unwrap_or(true)
         })
-        .filter(|(_, point)| payload_matches_filter(&point.payload, request.filter.as_ref()))
+        .filter(|((_, id), point)| {
+            payload_matches_filter(id, &point.payload, request.filter.as_ref())
+        })
         .map(|((_, id), point)| {
             json!({
                 "id": id,
@@ -457,7 +461,7 @@ fn named_vector(value: &Value) -> Option<Vec<f32>> {
     None
 }
 
-fn payload_matches_filter(payload: &Value, filter: Option<&Value>) -> bool {
+fn payload_matches_filter(point_id: &str, payload: &Value, filter: Option<&Value>) -> bool {
     let Some(filter) = filter else {
         return true;
     };
@@ -470,15 +474,18 @@ fn payload_matches_filter(payload: &Value, filter: Option<&Value>) -> bool {
     };
     conditions("must")
         .iter()
-        .all(|condition| condition_matches(payload, condition))
+        .all(|condition| condition_matches(point_id, payload, condition))
         && !conditions("must_not")
             .iter()
-            .any(|condition| condition_matches(payload, condition))
+            .any(|condition| condition_matches(point_id, payload, condition))
 }
 
 /// Qdrant condition semantics the service relies on: `match`, `range`, `is_empty` (key missing,
-/// null or an empty array) and `is_null` (key present with a null value).
-fn condition_matches(payload: &Value, condition: &Value) -> bool {
+/// null or an empty array), `is_null` (key present with a null value), and physical `has_id`.
+fn condition_matches(point_id: &str, payload: &Value, condition: &Value) -> bool {
+    if let Some(ids) = condition.get("has_id").and_then(Value::as_array) {
+        return ids.iter().any(|id| id.as_str() == Some(point_id));
+    }
     if let Some(key) = condition
         .get("is_empty")
         .and_then(|value| value.get("key"))
