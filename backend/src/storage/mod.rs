@@ -3,6 +3,8 @@ use serde_json::Value;
 
 use crate::domain::models::{FacePointPayload, ImagePayload};
 
+mod metadata_index;
+pub mod metadata_store;
 pub mod qdrant;
 
 #[derive(Clone, Debug)]
@@ -19,6 +21,10 @@ pub struct StoredPoint {
 
 #[derive(Clone, Debug, Default)]
 pub struct MediaSearchFilter {
+    pub ids: Option<Vec<String>>,
+    pub name_query: Option<String>,
+    pub camera_query: Option<String>,
+    pub text_query: Option<String>,
     pub source_type: Option<String>,
     pub media_kind: Option<String>,
     pub has_gps: Option<bool>,
@@ -36,7 +42,11 @@ pub struct MediaSearchFilter {
 
 impl MediaSearchFilter {
     pub fn is_empty(&self) -> bool {
-        self.source_type.is_none()
+        self.ids.is_none()
+            && self.name_query.is_none()
+            && self.camera_query.is_none()
+            && self.text_query.is_none()
+            && self.source_type.is_none()
             && self.media_kind.is_none()
             && self.has_gps.is_none()
             && self.min_width.is_none()

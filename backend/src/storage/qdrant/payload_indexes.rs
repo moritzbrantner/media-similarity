@@ -49,7 +49,7 @@ fn add_media_filter_payload_fields(payload: &mut Value, media: &ImagePayload) {
     }
 }
 
-fn parse_capture_time_epoch(value: &str) -> Option<f64> {
+pub(crate) fn parse_capture_time_epoch(value: &str) -> Option<f64> {
     chrono::DateTime::parse_from_rfc3339(value)
         .ok()
         .map(|datetime| {

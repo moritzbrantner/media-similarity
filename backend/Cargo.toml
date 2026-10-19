@@ -54,10 +54,12 @@ chrono = { version = "0.4", features = ["serde"] }
 notify = "8.2.0"
 image-analysis-embeddings = { package = "moenarch-image-analysis-embeddings", version = "0.1.0", features = ["onnx"] }
 image-analysis-detection = { package = "moenarch-image-analysis-detection", version = "0.1.0", features = ["onnx"] }
+search-engine = { git = "https://github.com/moritzbrantner/search-engine", rev = "e8d2d1ab3f6a3825125756c3ccbe2fbca2edab76", version = "0.1.0" }
 
 [dev-dependencies]
 criterion = "=0.8.2"
 iai-callgrind = "=0.16.1"
+tempfile = "3"
 
 [[bench]]
 name = "media_pipeline"
