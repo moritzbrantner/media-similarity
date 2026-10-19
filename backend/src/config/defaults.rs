@@ -10,6 +10,8 @@ impl Settings {
         StorageSettings {
             qdrant_url: self.qdrant_url.clone(),
             qdrant_collection: self.qdrant_collection.clone(),
+            metadata_filter_provider: self.metadata_filter_provider,
+            metadata_index_dir: self.metadata_index_dir.clone(),
             qdrant_request_timeout_ms: self.qdrant_request_timeout_ms,
             qdrant_connect_timeout_ms: self.qdrant_connect_timeout_ms,
             qdrant_retry_attempts: self.qdrant_retry_attempts,
@@ -131,6 +133,8 @@ impl Default for Settings {
             source_image_dir: PathBuf::from("/images"),
             qdrant_url: "http://qdrant:6333".to_string(),
             qdrant_collection: "image_similarity".to_string(),
+            metadata_filter_provider: MetadataFilterProvider::Existing,
+            metadata_index_dir: default_metadata_index_dir(),
             qdrant_request_timeout_ms: 30_000,
             qdrant_connect_timeout_ms: 2_000,
             qdrant_retry_attempts: 2,

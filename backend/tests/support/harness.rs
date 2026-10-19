@@ -54,6 +54,7 @@ impl TestApp {
             qdrant_url: qdrant.base_url.clone(),
             qdrant_collection: format!("test-{}", Uuid::new_v4()),
             thumbnail_dir,
+            metadata_index_dir: root.path().join("metadata-index"),
             upload_dir: upload_dir.clone(),
             voice_registry_path: root.path().join("recognized-voices.json"),
             smart_albums_file: root.path().join("smart-albums.json"),
@@ -496,7 +497,7 @@ impl Drop for TempDir {
     }
 }
 
-fn multipart_body(filename: &str, content_type: &str, bytes: Vec<u8>) -> (String, Vec<u8>) {
+pub fn multipart_body(filename: &str, content_type: &str, bytes: Vec<u8>) -> (String, Vec<u8>) {
     let boundary = format!("boundary-{}", Uuid::new_v4());
     let mut body = Vec::new();
     body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());

@@ -212,6 +212,7 @@ mod tests {
             modified_to: Some(1_700_086_400.0),
             captured_from: Some(1_600_000_000.0),
             captured_to: Some(1_600_086_400.0),
+            ..Default::default()
         }))
         .unwrap();
 

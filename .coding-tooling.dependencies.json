@@ -29,6 +29,11 @@
       "repository": "moritzbrantner/media-intelligence",
       "layer": "domain",
       "relation": "capability"
+    },
+    {
+      "repository": "moritzbrantner/search-engine",
+      "layer": "domain",
+      "relation": "capability"
     }
   ],
   "maxExactSourceRepositories": 2,
@@ -42,7 +47,8 @@
       "moritzbrantner/audio-analysis",
       "moritzbrantner/visual-analysis",
       "moritzbrantner/nlp-stack",
-      "moritzbrantner/media-intelligence"
+      "moritzbrantner/media-intelligence",
+      "moritzbrantner/search-engine"
     ],
     "moritzbrantner/audio-analysis": [
       "moritzbrantner/moenarch-foundation"
@@ -57,6 +63,7 @@
     "moritzbrantner/media-intelligence": [
       "moritzbrantner/visual-analysis",
       "moritzbrantner/moenarch-foundation"
-    ]
+    ],
+    "moritzbrantner/search-engine": []
   }
 }

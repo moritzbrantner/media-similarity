@@ -28,6 +28,11 @@ crate imports and renamed aliases in the domain. See
 [ADR 0008](adr/0008-video-evidence-composition.md) for the exact public source and
 compatibility dependency contract.
 
+`backend/src/storage/metadata_index.rs` adapts the public Search Engine facade for
+the optional derived metadata candidate index. Its exact public Git dependency
+is reproducible without sibling checkouts or authentication. Qdrant remains the
+payload/vector authority; see [ADR 0007](adr/0007-optional-derived-metadata-index.md).
+
 ## Source development
 
 The committed `.coding-tooling.source-deps.json` intentionally contains no ambient source patches. Normal application development uses the versioned dependencies in `backend/Cargo.toml`.

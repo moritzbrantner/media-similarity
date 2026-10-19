@@ -57,9 +57,12 @@ image-analysis-detection = { package = "moenarch-image-analysis-detection", vers
 media-intelligence-analysis = { git = "https://github.com/moritzbrantner/media-intelligence", rev = "c4e66234193f33a7206cb6ca0e5385281d806d9a", version = "0.1.0", features = ["visual-analysis-ocr"] }
 media-intelligence-core = { git = "https://github.com/moritzbrantner/media-intelligence", rev = "c4e66234193f33a7206cb6ca0e5385281d806d9a", version = "0.1.0" }
 
+search-engine = { git = "https://github.com/moritzbrantner/search-engine", rev = "e8d2d1ab3f6a3825125756c3ccbe2fbca2edab76", version = "0.1.0" }
+
 [dev-dependencies]
 criterion = "=0.8.2"
 iai-callgrind = "=0.16.1"
+tempfile = "3"
 
 # Media Intelligence's public downstream OCR contract: this unpublished leaf is
 # consumed at its declared immutable public source, without sibling checkouts.

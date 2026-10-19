@@ -121,6 +121,7 @@ struct Filter {
 enum Condition {
     Field(FieldCondition),
     IsEmpty { is_empty: PayloadKey },
+    HasId { has_id: Vec<String> },
 }
 
 impl From<FieldCondition> for Condition {
@@ -214,9 +215,11 @@ fn media_search_filter(filter: Option<MediaSearchFilter>) -> Option<Filter> {
         filter.captured_from,
         filter.captured_to,
     );
-    Some(Filter {
-        must: conditions.into_iter().map(Condition::from).collect(),
-    })
+    let mut must: Vec<Condition> = conditions.into_iter().map(Condition::from).collect();
+    if let Some(ids) = filter.ids {
+        must.push(Condition::HasId { has_id: ids });
+    }
+    Some(Filter { must })
 }
 
 fn push_range(

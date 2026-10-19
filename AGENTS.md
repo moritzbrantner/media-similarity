@@ -9,8 +9,8 @@ Native Rust media similarity service with a React/Vite frontend. The backend ind
 Machine-readable in `.repository.toml` (`[architecture]`); keep both lists identical. Check with `coding-tooling repository contract --root . --json`.
 
 - Owns: `media-similarity/source-configuration`, `media-similarity/cross-media-indexing`, `media-similarity/similarity-search`, `media-similarity/index-persistence`, `media-similarity/search-ui`
-- Adapts: `audio-analysis/audio-capabilities`, `visual-analysis/image-capabilities`, `visual-analysis/video-capabilities`, `nlp-stack/text-transcripts`, `moenarch-foundation/model-runtime`, `moenarch-foundation/vector-math`, `media-intelligence/multimodal-evidence`
-- Non-authoritative: `audio-analysis/audio-capabilities`, `visual-analysis/image-capabilities`, `visual-analysis/video-capabilities`, `nlp-stack/text-transcripts`, `moenarch-foundation/model-runtime`, `moenarch-foundation/vector-math`, `media-intelligence/multimodal-evidence`
+- Adapts: `audio-analysis/audio-capabilities`, `visual-analysis/image-capabilities`, `visual-analysis/video-capabilities`, `nlp-stack/text-transcripts`, `moenarch-foundation/model-runtime`, `moenarch-foundation/vector-math`, `media-intelligence/multimodal-evidence`, `search-engine/metadata-index`
+- Non-authoritative: `audio-analysis/audio-capabilities`, `visual-analysis/image-capabilities`, `visual-analysis/video-capabilities`, `nlp-stack/text-transcripts`, `moenarch-foundation/model-runtime`, `moenarch-foundation/vector-math`, `media-intelligence/multimodal-evidence`, `search-engine/metadata-index`
 
 ## Repository Map
 
