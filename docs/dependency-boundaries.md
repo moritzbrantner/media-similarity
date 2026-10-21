@@ -33,6 +33,14 @@ the optional derived metadata candidate index. Its exact public Git dependency
 is reproducible without sibling checkouts or authentication. Qdrant remains the
 payload/vector authority; see [ADR 0007](adr/0007-optional-derived-metadata-index.md).
 
+## Application-owned text adapter
+
+`backend/shims/text-analysis-core` is an application-owned adapter, not a copy of an upstream package. Its contract is one function, `normalize_whitespace(text) -> String`. It collapses every run of Unicode whitespace to one space and trims both ends. The OCR and PDF workers use it, and its unit test plus the standalone shim check in `.github/workflows/verify.yml` guard it. Extend it only for media-similarity's own needs. If a released text capability package later provides the same function, replace the shim with that package rather than growing it.
+
+## Upstream updates
+
+External capabilities are exact Git revisions in `backend/Cargo.toml` (`git` + `rev`), so a clean checkout needs no sibling repositories and no authentication. Updates arrive as scoped PRs that bump one capability's `rev`. They come either from Renovate, through the shared `coding-agent-conventions` preset in `renovate.json`, or from the cross-repository task that changed the capability. Each update PR must pass `verify.yml` before merge. When a capability is published to a registry, switch its entry from `git`/`rev` to the released version in the same kind of scoped PR.
+
 ## Source development
 
 The committed `.coding-tooling.source-deps.json` intentionally contains no ambient source patches. Normal application development uses the versioned dependencies in `backend/Cargo.toml`.
