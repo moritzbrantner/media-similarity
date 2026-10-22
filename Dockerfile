@@ -20,7 +20,7 @@ COPY frontend ./frontend
 RUN bun install --frozen-lockfile \
     && bun run build
 
-FROM rust:1-bookworm@sha256:edaa2a8cc254d5936207af267114814c61cceea40b46eaa4e976068af55e20e7 AS rust-builder
+FROM rust:1-bookworm@sha256:48b7f435b8fc6378ce43b44f15e3a47fd8919b2825f835c39bd4bd3da50af5b8 AS rust-builder
 
 WORKDIR /workspace/image-similarity-service
 
@@ -65,7 +65,7 @@ EXPOSE 8000
 
 CMD ["image-similarity-service"]
 
-FROM nginx:1.31-alpine@sha256:060849a174666c53439dc7cecbf8f67e225c7cbfb1a44ca97915d9a172a81e6d AS web-runtime
+FROM nginx:1.31-alpine@sha256:a3554c0d0b48177b1413c26e01f695334428020d9df01243fbae3e11cfd17417 AS web-runtime
 
 ENV MAX_UPLOAD_MB=20
 
