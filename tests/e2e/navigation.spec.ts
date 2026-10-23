@@ -50,41 +50,59 @@ test("renders service health and empty UI state", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("navigates between web UI pages with route link state", async ({ page }) => {
+test("primary route graph supports links, browser history, reload and deep links", async ({
+  page,
+}) => {
+  // Acceptance oracle stays independent of the application's route registry.
+  const states = [
+    { path: "/", link: "Open query page", heading: "Results" },
+    { path: "/albums", link: "Open smart albums", heading: "Albums" },
+    { path: "/registry", link: "Open inverse index", heading: "Inverse Index" },
+    { path: "/sources", link: "Open media configuration", heading: "Media Sources" },
+    { path: "/workflows", link: "Open workflow editor", heading: "Processing Workflows" },
+  ] as const;
+
+  const expectState = async (state: (typeof states)[number]) => {
+    await expect.poll(() => new URL(page.url()).pathname).toBe(state.path);
+    await expect(page.getByRole("heading", { name: state.heading, exact: true })).toBeVisible();
+    const nav = page.getByRole("navigation", { name: "Primary" });
+    for (const destination of states) {
+      const link = nav.getByRole("link", { name: destination.link });
+      await expect(link).toHaveAttribute("href", destination.path);
+      if (destination.path === state.path) {
+        await expect(link).toHaveAttribute("aria-current", "page");
+      } else {
+        await expect(link).not.toHaveAttribute("aria-current", "page");
+      }
+    }
+  };
+
   await page.goto("/");
+  await expectState(states[0]);
 
-  await expect(page.getByRole("link", { name: "Open query page" })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
+  for (const state of states.slice(1)) {
+    await page.getByRole("link", { name: state.link }).click();
+    await expectState(state);
+  }
+  for (const state of states.slice(0, -1).reverse()) {
+    await page.goBack();
+    await expectState(state);
+  }
+  for (const state of states.slice(1)) {
+    await page.goForward();
+    await expectState(state);
+  }
 
-  await page.getByRole("link", { name: "Open inverse index" }).click();
-  await expect(page).toHaveURL(/\/registry$/);
-  await expect(page.getByRole("heading", { name: "Inverse Index" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open inverse index" })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
+  await page.reload();
+  await expectState(states[4]);
+  for (const state of states) {
+    await page.goto(state.path);
+    await expectState(state);
+  }
 
-  await page.getByRole("link", { name: "Open media configuration" }).click();
-  await expect(page).toHaveURL(/\/sources$/);
-  await expect(page.getByRole("heading", { name: "Media Sources" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open media configuration" })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
-
-  await page.getByRole("link", { name: "Open workflow editor" }).click();
-  await expect(page).toHaveURL(/\/workflows$/);
-  await expect(page.getByRole("heading", { name: "Processing Workflows" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Open workflow editor" })).toHaveAttribute(
-    "aria-current",
-    "page",
-  );
-
-  await page.getByRole("link", { name: "Open query page" }).click();
-  await expect(page).toHaveURL("/");
-  await expect(page.getByRole("heading", { name: "Results" })).toBeVisible();
+  // The catch-all transition must not strand the user on an empty screen.
+  await page.goto("/does-not-exist");
+  await expectState(states[0]);
 });
 
 test("renders inverse index people and speaker registries", async ({ page }) => {
