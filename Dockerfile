@@ -1,4 +1,4 @@
-FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 AS frontend-builder
+FROM debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8 AS frontend-builder
 
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 ENV PATH="/root/.bun/bin:${PATH}"
@@ -20,7 +20,7 @@ COPY frontend ./frontend
 RUN bun install --frozen-lockfile \
     && bun run build
 
-FROM rust:1-bookworm@sha256:e12566d5abc17a0da741628782cdb504b68b8961f5bfcf677936bf3e8b32de29 AS rust-builder
+FROM rust:1-bookworm@sha256:48b7f435b8fc6378ce43b44f15e3a47fd8919b2825f835c39bd4bd3da50af5b8 AS rust-builder
 
 WORKDIR /workspace/image-similarity-service
 
@@ -38,7 +38,7 @@ COPY backend ./backend
 
 RUN cargo build --manifest-path backend/Cargo.toml --bins --release
 
-FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 AS api-runtime
+FROM debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8 AS api-runtime
 
 ENV RUST_LOG=info
 
@@ -65,7 +65,7 @@ EXPOSE 8000
 
 CMD ["image-similarity-service"]
 
-FROM nginx:1.31-alpine@sha256:892bb2152464f0c5d8972593a5f5afaf8054552580b699d95f8ff4af08c2d33d AS web-runtime
+FROM nginx:1.31-alpine@sha256:a3554c0d0b48177b1413c26e01f695334428020d9df01243fbae3e11cfd17417 AS web-runtime
 
 ENV MAX_UPLOAD_MB=20
 
