@@ -31,11 +31,14 @@ jobs:
             git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin "$PERF_BASE_SHA"
           fi
 
+      - name: Install system packages
+        uses: moritzbrantner/reusable-workflows/.github/actions/install-system-packages@b712d9f2c4a3590567776b75bec9894b0f0ba76c # main
+        with:
+          environment_file: .repository-environment.toml
+          packages: valgrind
+
       - name: Set up repository environment
         run: bash scripts/codex-environment.sh setup
-
-      - name: Install Callgrind runtime
-        run: sudo apt-get install --yes valgrind
 
       # Cache only the pinned benchmark CLI; fresh builds remain the fallback.
       - name: Cache Iai-Callgrind runner

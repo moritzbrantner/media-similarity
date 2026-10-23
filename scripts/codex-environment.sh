@@ -38,9 +38,19 @@ for package in data.get('system', {}).get('apt', []):
     print(package)
 PY
   )
-  if (( ${#apt_packages[@]} )); then
-    run_privileged apt-get update
-    run_privileged apt-get install -y --no-install-recommends "${apt_packages[@]}"
+  # Skip packages that are already dpkg-installed so apt, and its mirror, is only contacted for
+  # real gaps. Environment verification checks dpkg state, so a same-named binary outside dpkg
+  # (such as a runner's /usr/local/bin/cmake) does not count.
+  missing_apt_packages=()
+  for package in "${apt_packages[@]}"; do
+    if [[ "$(dpkg-query -W -f='${db:Status-Abbrev}' "$package" 2>/dev/null || true)" != ii* ]]; then
+      missing_apt_packages+=("$package")
+    fi
+  done
+  if (( ${#missing_apt_packages[@]} )); then
+    apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+    run_privileged apt-get "${apt_options[@]}" update
+    run_privileged apt-get "${apt_options[@]}" install -y --no-install-recommends "${missing_apt_packages[@]}"
   fi
 fi
 

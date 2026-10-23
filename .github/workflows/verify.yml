@@ -156,6 +156,12 @@ jobs:
           git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin "$GITHUB_REF"
           git checkout --force FETCH_HEAD
 
+      - name: Install declared system packages
+        uses: moritzbrantner/reusable-workflows/.github/actions/install-system-packages@b712d9f2c4a3590567776b75bec9894b0f0ba76c # main
+        with:
+          working_directory: image-similarity-service
+          environment_file: .repository-environment.toml
+
       - name: Prepare declared repository environment
         working-directory: image-similarity-service
         run: bash scripts/codex-environment.sh setup
@@ -206,6 +212,12 @@ jobs:
           git remote add origin "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           git -c "http.${GITHUB_SERVER_URL}/.extraheader=AUTHORIZATION: basic ${auth_header}" fetch --depth=1 origin "$GITHUB_REF"
           git checkout --force FETCH_HEAD
+
+      - name: Install declared system packages
+        uses: moritzbrantner/reusable-workflows/.github/actions/install-system-packages@b712d9f2c4a3590567776b75bec9894b0f0ba76c # main
+        with:
+          working_directory: image-similarity-service
+          environment_file: .repository-environment.toml
 
       - name: Prepare declared repository environment
         working-directory: image-similarity-service
