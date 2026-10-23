@@ -47,12 +47,13 @@ jobs:
           test "$(git -C ../asset-tooling rev-parse HEAD)" = "$revision"
 
       - name: Ensure FFmpeg media runtime is available
+        uses: moritzbrantner/reusable-workflows/.github/actions/install-system-packages@a30c972a594d044c23951b1b6fb6e88e14b914e5 # main
+        with:
+          packages: ffmpeg
+
+      - name: Report FFmpeg media runtime
         run: |
           set -euo pipefail
-          if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
-            sudo apt-get update
-            sudo apt-get install -y --no-install-recommends ffmpeg
-          fi
           ffmpeg -version | head -n 1
           ffprobe -version | head -n 1
 

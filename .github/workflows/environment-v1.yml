@@ -30,6 +30,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Install declared system packages
+        uses: moritzbrantner/reusable-workflows/.github/actions/install-system-packages@a30c972a594d044c23951b1b6fb6e88e14b914e5 # main
+        with:
+          environment_file: .repository-environment.toml
+
       - name: Prepare declared environment
         run: bash scripts/codex-environment.sh setup
 
