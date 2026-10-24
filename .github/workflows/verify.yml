@@ -157,7 +157,7 @@ jobs:
           git checkout --force FETCH_HEAD
 
       - name: Install declared system packages
-        uses: moritzbrantner/reusable-workflows/.github/actions/install-system-packages@b712d9f2c4a3590567776b75bec9894b0f0ba76c # main
+        uses: moritzbrantner/reusable-workflows/.github/actions/install-system-packages@dc9439453923b24e657cfb6e9db647eed530e901 # main
         with:
           working_directory: image-similarity-service
           environment_file: .repository-environment.toml
@@ -214,7 +214,7 @@ jobs:
           git checkout --force FETCH_HEAD
 
       - name: Install declared system packages
-        uses: moritzbrantner/reusable-workflows/.github/actions/install-system-packages@b712d9f2c4a3590567776b75bec9894b0f0ba76c # main
+        uses: moritzbrantner/reusable-workflows/.github/actions/install-system-packages@dc9439453923b24e657cfb6e9db647eed530e901 # main
         with:
           working_directory: image-similarity-service
           environment_file: .repository-environment.toml
