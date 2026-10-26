@@ -46,7 +46,7 @@ jobs:
           test "$(git -C ../asset-tooling rev-parse HEAD)" = "$revision"
 
       - name: Ensure FFmpeg media runtime is available
-        uses: moritzbrantner/reusable-workflows/.github/actions/install-system-packages@fa354ad57d45f3b3bda1d3e172202466b3cbce5f # main
+        uses: moritzbrantner/reusable-workflows/.github/actions/install-system-packages@50cd4543ca6303954018517a2c6b2507385df9dd # main
         with:
           packages: ffmpeg
 
