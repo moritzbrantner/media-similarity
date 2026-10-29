@@ -37,6 +37,10 @@ jobs:
           environment_file: .repository-environment.toml
           packages: valgrind
 
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+
       - name: Set up repository environment
         run: bash scripts/codex-environment.sh setup
 
