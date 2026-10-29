@@ -35,6 +35,10 @@ jobs:
         with:
           environment_file: .repository-environment.toml
 
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: latest
+
       - name: Prepare declared environment
         run: bash scripts/codex-environment.sh setup
 
