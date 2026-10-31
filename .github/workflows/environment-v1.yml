@@ -31,7 +31,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install declared system packages
-        uses: moritzbrantner/reusable-workflows/.github/actions/install-system-packages@8592cea8794365d419fd793840c3102c527679c7 # main
+        uses: moritzbrantner/reusable-workflows/.github/actions/install-system-packages@cfada1f90a389c51318414b65cf9f9fbac586723 # main
         with:
           environment_file: .repository-environment.toml
 
