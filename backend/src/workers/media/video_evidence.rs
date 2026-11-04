@@ -1,5 +1,5 @@
 //! Translate the public composition facade into application-owned video metadata.
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
@@ -7,11 +7,16 @@ use media_intelligence_analysis::visible_text::{
     OcrBackendConfig, VisualAnalysisOcrConfig, VisualAnalysisOcrProducer,
 };
 use media_intelligence_analysis::{
-    analyze, AnalysisProfile, AnalysisRequest, AssetId, CancellationToken, ContentHash,
-    InMemoryStageCache, MediaIdentity, Modality, ProducerError, ProducerIdentity, ProducerInput,
-    ProducerReceipt, Producers, SceneConfig, SpeechProducer, SpeechRun, StageStatus,
+    analyze_with_exact_scene_timing, AnalysisProfile, AnalysisRequest, AssetId, CancellationToken,
+    ContentHash, InMemoryStageCache, MediaIdentity, Modality, ProducerError, ProducerIdentity,
+    ProducerInput, ProducerReceipt, Producers, SceneConfig, SpeechProducer, SpeechRun, StageStatus,
 };
-use media_intelligence_core::{EvidenceContent, EvidenceItem, RelationKind, TranscriptSegment};
+use media_intelligence_core::exact_timing::{
+    ExactAnchorTimingV1, ExactAnchorV1, EXACT_TIMING_SCHEMA, EXACT_TIMING_SCHEMA_VERSION,
+};
+use media_intelligence_core::{
+    EvidenceContent, EvidenceItem, RelationKind, SceneEvidence, TranscriptSegment,
+};
 use sha2::{Digest, Sha256};
 use video_analysis_core::{FramePosition, Scene, Timebase, Timestamp};
 
@@ -70,7 +75,7 @@ pub fn analyze_video(
         .and_then(|output| output.lines().next().map(str::to_owned));
     let ocr = VisualAnalysisOcrProducer::new(config).map_err(|error| error.to_string())?;
     let speech = ExistingSpeech { audio, settings };
-    let report = analyze(
+    let analyzed = analyze_with_exact_scene_timing(
         &request,
         &Producers {
             speech: audio.map(|_| &speech as &dyn SpeechProducer),
@@ -80,14 +85,63 @@ pub fn analyze_video(
         &CancellationToken::new(),
     )
     .map_err(|error| error.to_string())?;
+    let report = &analyzed.legacy;
     if let StageStatus::Failed { reason, .. } = &report.scenes {
         return Err(reason.clone());
+    }
+    // The opt-in producer is the only authority for source PTS. Index anchors
+    // once by producer-local scene id, never infer them from v1 floating seconds.
+    let exact_scene_anchors = analyzed
+        .exact_timing
+        .as_ref()
+        .map(
+            |sidecar| -> Result<BTreeMap<&str, &ExactAnchorV1>, String> {
+                if sidecar.schema != EXACT_TIMING_SCHEMA
+                    || sidecar.schema_version != EXACT_TIMING_SCHEMA_VERSION
+                    || sidecar.clock != "media_relative"
+                    || sidecar.media != request.media
+                    || !sidecar.exact_modalities.contains(&Modality::Scene)
+                {
+                    return Err(
+                        "exact timing sidecar has invalid media or source clock identity".into(),
+                    );
+                }
+                let mut anchors = BTreeMap::new();
+                for anchor in &sidecar.anchors {
+                    if anchor.receipt.modality == Modality::Scene
+                        && anchors.insert(anchor.record_id.as_str(), anchor).is_some()
+                    {
+                        return Err("duplicate exact producer-local scene id".into());
+                    }
+                }
+                Ok(anchors)
+            },
+        )
+        .transpose()?;
+    if exact_scene_anchors.is_none()
+        && report
+            .analysis
+            .evidence
+            .iter()
+            .any(|item| item.modality == Modality::Scene)
+    {
+        return Err("direct-file scene producer completed without original PTS anchors".into());
     }
     let mut scenes = Vec::new();
     for item in &report.analysis.evidence {
         let EvidenceContent::Scene(scene) = &item.content else {
             continue;
         };
+        let exact_anchor = exact_scene_anchors
+            .as_ref()
+            .map(|anchors| {
+                anchors
+                    .get(scene.scene_id.as_str())
+                    .copied()
+                    .ok_or_else(|| format!("no original PTS for scene {}", scene.scene_id))
+            })
+            .transpose()?;
+        let (start, end) = scene_frame_positions(item, scene, exact_anchor)?;
         let related: BTreeSet<_> = report
             .analysis
             .relations
@@ -177,10 +231,7 @@ pub fn analyze_video(
         };
         scenes.push(AnalyzedVideoScene {
             scene_index: scene.scene_index as usize,
-            scene: Scene {
-                start: scene_frame_position(scene.start_frame, item.start_seconds)?,
-                end: scene_frame_position(scene.end_frame, item.end_seconds)?,
-            },
+            scene: Scene { start, end },
             ocr,
             evidence: VideoEvidence {
                 asset_id: asset_id.clone(),
@@ -195,10 +246,92 @@ pub fn analyze_video(
         });
     }
     scenes.sort_by_key(|scene| scene.scene_index);
+    if let Some(anchors) = &exact_scene_anchors {
+        if anchors.len() != scenes.len() {
+            return Err("exact scene anchors do not cover the complete producer run".into());
+        }
+    }
     if scenes.is_empty() {
         return Err("video analysis produced no source scenes".into());
     }
     Ok(scenes)
+}
+
+/// Convert between Foundation revisions by copying the *integer PTS and timebase*,
+/// not through a floating-second or nanosecond approximation. This is an adapter
+/// between crate instances, not a new time representation or clock rescaling.
+fn original_timestamp(
+    source: media_intelligence_analysis::ExactAnchorTimingV1,
+    start: bool,
+) -> Result<Timestamp, String> {
+    let source = match source {
+        ExactAnchorTimingV1::Range { start: s, end } => {
+            if start {
+                s
+            } else {
+                end
+            }
+        }
+        _ => return Err("scene anchor is not a half-open exact range".into()),
+    };
+    source.validate().map_err(|error| error.to_string())?;
+    // The older registry Foundation instance re-exported by this application's
+    // Visual Analysis revision has only compatibility constructors. Validation
+    // happens above in the canonical producer-owned Foundation contract.
+    Ok(Timestamp::new(
+        source.pts,
+        Timebase::new(source.timebase.num, source.timebase.den),
+    ))
+}
+
+fn scene_frame_positions(
+    item: &EvidenceItem,
+    scene: &SceneEvidence,
+    anchor: Option<&ExactAnchorV1>,
+) -> Result<(FramePosition, FramePosition), String> {
+    let Some(anchor) = anchor else {
+        // Explicit seconds-only compatibility fallback (#149), never advertised
+        // as original PTS. Direct exact analysis fails closed if anchors vanish.
+        return Ok((
+            scene_frame_position(scene.start_frame, item.start_seconds)?,
+            scene_frame_position(scene.end_frame, item.end_seconds)?,
+        ));
+    };
+    if anchor.receipt != item.receipt
+        || anchor.record_id != scene.scene_id
+        || anchor.start_frame != scene.start_frame
+        || anchor.end_frame != scene.end_frame
+        || anchor.frame_index.is_some()
+    {
+        return Err(
+            "original scene PTS has inconsistent producer receipt or frame provenance".into(),
+        );
+    }
+    let ExactAnchorTimingV1::Range { start, end } = anchor.timing else {
+        return Err("scene anchor is not an exact range".into());
+    };
+    if start.seconds() != item.start_seconds || end.seconds() != item.end_seconds {
+        return Err("original scene PTS disagrees with v1 evidence projection".into());
+    }
+    if start
+        .chronological_cmp(end)
+        .map_err(|error| error.to_string())?
+        != std::cmp::Ordering::Less
+    {
+        return Err("original scene PTS is not a nonempty half-open range".into());
+    }
+    Ok((
+        FramePosition {
+            frame_index: scene.start_frame.ok_or("missing original start frame")?,
+            timestamp: original_timestamp(anchor.timing, true)?,
+        },
+        FramePosition {
+            frame_index: scene
+                .end_frame
+                .ok_or("missing original exclusive end frame")?,
+            timestamp: original_timestamp(anchor.timing, false)?,
+        },
+    ))
 }
 
 /// Project the seconds-only Media Intelligence v1 scene boundary into the
@@ -370,7 +503,115 @@ impl SpeechProducer for ExistingSpeech<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::scene_frame_position;
+    use super::{analyze_video, scene_frame_position};
+    use crate::config::Settings;
+    use std::path::Path;
+    use std::process::Command;
+
+    /// Red 0.2 s followed by green 0.8 s at 100 Hz, dropping every sixth
+    /// source frame. The 90 kHz PTS 18,000 is the cut, with 17 frames before
+    /// it (above Media Intelligence's default minimum scene length).
+    fn write_vfr_source(path: &Path, nonzero_origin: bool) -> bool {
+        for name in ["ffmpeg", "ffprobe"] {
+            if !Command::new(name)
+                .arg("-version")
+                .output()
+                .is_ok_and(|result| result.status.success())
+            {
+                eprintln!("SKIPPED original source PTS replay: {name} unavailable");
+                return false;
+            }
+        }
+        let mut command = Command::new("ffmpeg");
+        command.args([
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=red:s=64x64:r=100:d=0.2",
+            "-f",
+            "lavfi",
+            "-i",
+            "color=c=green:s=64x64:r=100:d=0.8",
+            "-filter_complex",
+            "[0:v][1:v]concat=n=2:v=1:a=0,select=not(eq(mod(n\\,6)\\,5))[v]",
+            "-map",
+            "[v]",
+            "-fps_mode",
+            "vfr",
+            "-c:v",
+            "libx264",
+            "-threads",
+            "1",
+            "-pix_fmt",
+            "yuv420p",
+            "-video_track_timescale",
+            "90000",
+        ]);
+        if nonzero_origin {
+            command.args(["-output_ts_offset", "1"]);
+        }
+        assert!(command.arg(path).status().unwrap().success());
+        true
+    }
+
+    #[test]
+    fn real_vfr_scene_cut_keeps_original_integer_90000hz_pts_through_consumer() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("source-vfr.mp4");
+        if !write_vfr_source(&path, false) {
+            return;
+        }
+        let settings = Settings {
+            ocr_enabled: false,
+            ..Settings::default()
+        };
+        let first = analyze_video(&path, "source-vfr", None, &settings).unwrap();
+        assert_eq!(first.len(), 2, "real source scene detection");
+        let scene_a = &first[0].scene;
+        let scene_b = &first[1].scene;
+        assert_eq!(scene_a.start.timestamp.pts, 0);
+        assert_eq!(scene_a.end.timestamp.pts, 18_000);
+        assert_eq!(scene_b.start.timestamp.pts, 18_000);
+        assert_eq!(scene_b.end.timestamp.pts, 90_000);
+        for boundary in [
+            scene_a.start.timestamp,
+            scene_a.end.timestamp,
+            scene_b.start.timestamp,
+            scene_b.end.timestamp,
+        ] {
+            assert_eq!((boundary.timebase.num, boundary.timebase.den), (1, 90_000));
+        }
+        assert_eq!(scene_a.end, scene_b.start, "cut is a shared exact boundary");
+        assert!(scene_b.start.frame_index > 15);
+
+        let replay = analyze_video(&path, "source-vfr", None, &settings).unwrap();
+        assert_eq!(first.len(), replay.len());
+        for (before, after) in first.iter().zip(&replay) {
+            assert_eq!(before.scene, after.scene);
+            assert_eq!(before.evidence, after.evidence);
+        }
+    }
+
+    #[test]
+    fn direct_vfr_consumer_rejects_unmapped_nonzero_source_clock() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("offset-source-vfr.mp4");
+        if !write_vfr_source(&path, true) {
+            return;
+        }
+        let settings = Settings {
+            ocr_enabled: false,
+            ..Settings::default()
+        };
+        let error = analyze_video(&path, "offset-vfr", None, &settings)
+            .err()
+            .expect("nonzero source PTS must fail closed");
+        assert!(error.contains("nonzero"), "{error}");
+    }
 
     #[test]
     fn vfr_scene_frame_positions_keep_source_frame_indices_and_cut_boundaries() {
