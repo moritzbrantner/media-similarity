@@ -88,15 +88,6 @@ pub fn analyze_video(
         let EvidenceContent::Scene(scene) = &item.content else {
             continue;
         };
-        let frame_position = |frame: Option<u64>, seconds: f64| -> Result<FramePosition, String> {
-            Ok(FramePosition {
-                frame_index: frame.ok_or("scene producer omitted frame provenance")?,
-                timestamp: Timestamp::new(
-                    (seconds * 1_000_000_000.0).round() as i64,
-                    Timebase::new(1, 1_000_000_000),
-                ),
-            })
-        };
         let related: BTreeSet<_> = report
             .analysis
             .relations
@@ -187,8 +178,8 @@ pub fn analyze_video(
         scenes.push(AnalyzedVideoScene {
             scene_index: scene.scene_index as usize,
             scene: Scene {
-                start: frame_position(scene.start_frame, item.start_seconds)?,
-                end: frame_position(scene.end_frame, item.end_seconds)?,
+                start: scene_frame_position(scene.start_frame, item.start_seconds)?,
+                end: scene_frame_position(scene.end_frame, item.end_seconds)?,
             },
             ocr,
             evidence: VideoEvidence {
@@ -208,6 +199,27 @@ pub fn analyze_video(
         return Err("video analysis produced no source scenes".into());
     }
     Ok(scenes)
+}
+
+/// Project the seconds-only Media Intelligence v1 scene boundary into the
+/// video-analysis FramePosition contract. This is nanosecond quantization,
+/// not recovery of the producer's original rational PTS. Never silently
+/// saturate the integer cast or invent a frame index on missing provenance.
+fn scene_frame_position(frame: Option<u64>, seconds: f64) -> Result<FramePosition, String> {
+    let frame_index = frame.ok_or("scene producer omitted frame provenance")?;
+    if !seconds.is_finite() || seconds < 0.0 {
+        return Err("scene producer returned an invalid source-relative time".into());
+    }
+    let nanoseconds = (seconds * 1_000_000_000.0).round();
+    // Beyond 2^53 ticks, f64 no longer distinguishes adjacent nanoseconds.
+    // An exact-PTS payload is required to support longer timelines losslessly.
+    if !nanoseconds.is_finite() || nanoseconds > 9_007_199_254_740_991.0 {
+        return Err("scene time exceeds the precise nanosecond projection range".into());
+    }
+    Ok(FramePosition {
+        frame_index,
+        timestamp: Timestamp::new(nanoseconds as i64, Timebase::new(1, 1_000_000_000)),
+    })
 }
 
 fn content_hash(path: &Path) -> Result<String, String> {
@@ -353,5 +365,46 @@ impl SpeechProducer for ExistingSpeech<'_> {
             },
             segments,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scene_frame_position;
+
+    #[test]
+    fn vfr_scene_frame_positions_keep_source_frame_indices_and_cut_boundaries() {
+        // Irregular 90 kHz PTS: there is intentionally no frame-rate shortcut.
+        let frames = [
+            (0_u64, 0_i64),
+            (1, 3_003),
+            (2, 7_100),
+            (3, 12_000),
+            (4, 18_000),
+        ];
+        for (index, pts) in frames {
+            let seconds = pts as f64 / 90_000.0;
+            let result = scene_frame_position(Some(index), seconds).unwrap();
+            assert_eq!(result.frame_index, index);
+            assert!((result.timestamp.seconds() - seconds).abs() <= 0.5e-9);
+        }
+        let before_cut = scene_frame_position(Some(4), 0.2).unwrap();
+        let after_cut = scene_frame_position(Some(4), 0.2).unwrap();
+        assert_eq!(before_cut, after_cut);
+        assert_eq!(before_cut.timestamp.pts, 200_000_000);
+    }
+
+    #[test]
+    fn seconds_projection_rejects_missing_or_unrepresentable_time() {
+        assert!(scene_frame_position(None, 0.0).is_err());
+        for seconds in [
+            -1.0,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            9_007_200.0,
+        ] {
+            assert!(scene_frame_position(Some(7), seconds).is_err());
+        }
     }
 }
