@@ -375,7 +375,13 @@ mod tests {
     #[test]
     fn vfr_scene_frame_positions_keep_source_frame_indices_and_cut_boundaries() {
         // Irregular 90 kHz PTS: there is intentionally no frame-rate shortcut.
-        let frames = [(0_u64, 0_i64), (1, 3_003), (2, 7_100), (3, 12_000), (4, 18_000)];
+        let frames = [
+            (0_u64, 0_i64),
+            (1, 3_003),
+            (2, 7_100),
+            (3, 12_000),
+            (4, 18_000),
+        ];
         for (index, pts) in frames {
             let seconds = pts as f64 / 90_000.0;
             let result = scene_frame_position(Some(index), seconds).unwrap();
@@ -391,7 +397,13 @@ mod tests {
     #[test]
     fn seconds_projection_rejects_missing_or_unrepresentable_time() {
         assert!(scene_frame_position(None, 0.0).is_err());
-        for seconds in [-1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY, 9_007_200.0] {
+        for seconds in [
+            -1.0,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            9_007_200.0,
+        ] {
             assert!(scene_frame_position(Some(7), seconds).is_err());
         }
     }
