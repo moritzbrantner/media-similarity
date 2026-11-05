@@ -42,7 +42,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
 uuid = { version = "1", features = ["v4", "v5", "serde"] }
-vector-analysis-core = { package = "moenarch-vector-analysis-core", version = "0.1.0" }
+vector-analysis-core = { package = "moenarch-vector-analysis-core", version = "0.2.0" }
 video-analysis-core = { package = "moenarch-video-analysis-core", version = "0.1.3" }
 video-analysis-detectors = { package = "moenarch-video-analysis-detectors", version = "0.1.0" }
 video-analysis-ffmpeg = { package = "moenarch-video-analysis-ffmpeg", version = "0.1.0" }
