@@ -1,4 +1,4 @@
-FROM debian:bookworm-slim@sha256:99c0b25c46d0214d5a2091092e7908907dcaecd6a962cde0ac700acee222b6f3 AS frontend-builder
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS frontend-builder
 
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 ENV PATH="/root/.bun/bin:${PATH}"
@@ -20,7 +20,7 @@ COPY frontend ./frontend
 RUN bun install --frozen-lockfile \
     && bun run build
 
-FROM rust:1-bookworm@sha256:c9155318d07341301a78b45ecdd81af2e43b8b297d64e8fd4c5e80d7735607c3 AS rust-builder
+FROM rust:1-bookworm@sha256:7085845219c18e7c5b1f34ed9ce89b84f822f2e3d54a02774cedc996ac0f304f AS rust-builder
 
 WORKDIR /workspace/image-similarity-service
 
@@ -38,7 +38,7 @@ COPY backend ./backend
 
 RUN cargo build --manifest-path backend/Cargo.toml --bins --release
 
-FROM debian:bookworm-slim@sha256:99c0b25c46d0214d5a2091092e7908907dcaecd6a962cde0ac700acee222b6f3 AS api-runtime
+FROM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS api-runtime
 
 ENV RUST_LOG=info
 
