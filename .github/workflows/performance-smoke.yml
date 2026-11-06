@@ -32,7 +32,7 @@ jobs:
           fi
 
       - name: Install system packages
-        uses: moritzbrantner/reusable-workflows/.github/actions/install-system-packages@a3004c594478c0a6c3b7b2bec40a71e5222526b0 # main
+        uses: moritzbrantner/reusable-workflows/.github/actions/install-system-packages@e1476ccda81707b84a36574eca60d3124a4c7551 # main
         with:
           environment_file: .repository-environment.toml
           packages: valgrind
