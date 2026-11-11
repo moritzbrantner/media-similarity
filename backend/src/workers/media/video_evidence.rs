@@ -558,6 +558,40 @@ mod tests {
         true
     }
 
+    /// Exclusive end of the source video stream in its own integer timebase:
+    /// the largest packet `pts + duration`. FFmpeg releases disagree on the
+    /// duration they write for the final VFR frame (6.1: 900, 8.0: 1800), so
+    /// the expected end is read from the fixture instead of being assumed.
+    fn source_end_pts(path: &Path) -> i64 {
+        let output = Command::new("ffprobe")
+            .args([
+                "-v",
+                "error",
+                "-select_streams",
+                "v:0",
+                "-show_entries",
+                "packet=pts,duration",
+                "-of",
+                "csv=p=0",
+            ])
+            .arg(path)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        String::from_utf8(output.stdout)
+            .unwrap()
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| {
+                let mut fields = line.split(',');
+                let pts: i64 = fields.next().unwrap().trim().parse().unwrap();
+                let duration: i64 = fields.next().unwrap().trim().parse().unwrap();
+                pts + duration
+            })
+            .max()
+            .unwrap()
+    }
+
     #[test]
     fn real_vfr_scene_cut_keeps_original_integer_90000hz_pts_through_consumer() {
         let temp = tempfile::tempdir().unwrap();
@@ -576,7 +610,9 @@ mod tests {
         assert_eq!(scene_a.start.timestamp.pts, 0);
         assert_eq!(scene_a.end.timestamp.pts, 18_000);
         assert_eq!(scene_b.start.timestamp.pts, 18_000);
-        assert_eq!(scene_b.end.timestamp.pts, 90_000);
+        let source_end = source_end_pts(&path);
+        assert!(source_end >= 90_000, "source end {source_end}");
+        assert_eq!(scene_b.end.timestamp.pts, source_end);
         for boundary in [
             scene_a.start.timestamp,
             scene_a.end.timestamp,
