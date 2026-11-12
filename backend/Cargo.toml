@@ -12,16 +12,16 @@ name = "image-similarity-service"
 path = "src/main.rs"
 
 [dependencies]
-audio-analysis-core = { package = "moenarch-audio-analysis-core", version = "0.1.0" }
+audio-analysis-core = { package = "moenarch-audio-analysis-core", version = "0.2.0" }
 audio-analysis-rhythm = { package = "moenarch-audio-analysis-rhythm", version = "0.1.0" }
-audio-analysis-speakers = { package = "moenarch-audio-analysis-speakers", version = "0.1.3" }
-audio-analysis-transcription = { package = "moenarch-audio-analysis-transcription", version = "0.1.15", features = ["candle", "model-bundles"] }
+audio-analysis-speakers = { package = "moenarch-audio-analysis-speakers", version = "0.2.0" }
+audio-analysis-transcription = { package = "moenarch-audio-analysis-transcription", version = "0.2.0", features = ["candle", "model-bundles"] }
 image-analysis-core = { package = "moenarch-image-analysis-core", version = "0.1.0" }
 image-analysis-io = { package = "moenarch-image-analysis-io", version = "0.1.0" }
 image-analysis-processing = { package = "moenarch-image-analysis-processing", version = "0.1.0" }
 jobs-core = { package = "moenarch-jobs-core", version = "0.1.1" }
 metastrip = "0.1"
-model-runtime = { package = "moenarch-model-runtime", version = "0.1.0" }
+model-runtime = { package = "moenarch-model-runtime", version = "0.2.0" }
 runtime-onnx = { package = "moenarch-runtime-onnx", version = "0.1.0", features = ["onnxruntime"] }
 text-analysis-core = { path = "shims/text-analysis-core" }
 text-transcripts = { package = "moenarch-text-transcripts", version = "0.1.3" }
