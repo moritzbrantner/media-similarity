@@ -1,6 +1,4 @@
-import { Button } from "@moritzbrantner/ui";
-import { Card, CardContent, CardHeader, CardTitle } from "@moritzbrantner/ui";
-import { Progress } from "@moritzbrantner/ui";
+import { Button,Card,CardContent,CardHeader,CardTitle,Progress } from "@moritzbrantner/ui";
 import { AlertCircle, Database, Loader2, X } from "lucide-react";
 import {
   formatHistoryTime,

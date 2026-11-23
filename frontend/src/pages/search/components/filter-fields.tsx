@@ -1,10 +1,6 @@
-import { Button } from "@moritzbrantner/ui";
-import { Input } from "@moritzbrantner/ui";
-import { Label } from "@moritzbrantner/ui";
-import { NativeSelect } from "@moritzbrantner/ui";
+import { Button,Input,Label,NativeSelect } from "@moritzbrantner/ui";
 import { ArrowUpDown, ChevronDown, SlidersHorizontal } from "lucide-react";
-import type { ComponentProps } from "react";
-import { useState } from "react";
+import { type ComponentProps,useState } from "react";
 import { DEFAULT_METADATA_FILTERS } from "../../../search/defaults";
 import { countActiveFilters } from "../../../search/filtering";
 import type { MetadataFilters, ResultSortMode } from "../../../search/types";

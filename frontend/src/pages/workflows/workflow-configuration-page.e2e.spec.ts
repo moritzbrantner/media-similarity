@@ -1,7 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { mockEndpointFailure } from "../../../../tests/e2e/support/api-mocks";
-import { installDefaultApiMocks } from "../../../../tests/e2e/support/api-mocks";
+import { mockEndpointFailure,installDefaultApiMocks } from "../../../../tests/e2e/support/api-mocks";
 
 test("edits, validates, saves, and resets processing workflows", async ({ page }) => {
   const mocks = await installDefaultApiMocks(page);

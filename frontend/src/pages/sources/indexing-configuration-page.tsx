@@ -1,8 +1,4 @@
-import { Button } from "@moritzbrantner/ui";
-import { Checkbox } from "@moritzbrantner/ui";
-import { Input } from "@moritzbrantner/ui";
-import { Label } from "@moritzbrantner/ui";
-import { Textarea } from "@moritzbrantner/ui";
+import { Button,Checkbox,Input,Label,Textarea } from "@moritzbrantner/ui";
 import {
   AlertCircle,
   CheckCircle2,

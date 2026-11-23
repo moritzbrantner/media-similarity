@@ -1,11 +1,7 @@
-import { Button } from "@moritzbrantner/ui";
-import { Input } from "@moritzbrantner/ui";
-import { Label } from "@moritzbrantner/ui";
-import { NativeSelect } from "@moritzbrantner/ui";
+import { Button,Input,Label,NativeSelect } from "@moritzbrantner/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, FileImage, Loader2, Plus, Save, Trash2 } from "lucide-react";
-import type { ComponentProps } from "react";
-import { useEffect, useState } from "react";
+import { type ComponentProps,useEffect,useState } from "react";
 import { ResultCard } from "../../components/results/result-card";
 import { Message } from "../../components/status-message";
 import {

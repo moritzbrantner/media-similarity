@@ -1,6 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import type { FormEvent } from "react";
-import { useState } from "react";
+import { type FormEvent,useState } from "react";
 import { indexResponse } from "../../../testing/media-fixtures";
 import type { SearchMode } from "../../../search/types";
 import { QueryMediaForm } from "./query-media-form";

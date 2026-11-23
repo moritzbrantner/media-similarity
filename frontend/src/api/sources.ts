@@ -1,12 +1,11 @@
-import type {
-  DeleteIndexResponse,
-  HealthResponse,
-  ImagePayload,
-  SourceConfigResponse,
-  SourceIndexingConfig,
-  SourcePreviewResponse,
+import {
+  type DeleteIndexResponse,
+  type HealthResponse,
+  type ImagePayload,
+  type SourceConfigResponse,
+  type SourceIndexingConfig,
+  type SourcePreviewResponse,type InverseIndexResponse
 } from "../types";
-import type { InverseIndexResponse } from "../types";
 import { parseResponse } from "./client";
 
 export async function fetchHealth(): Promise<HealthResponse> {
