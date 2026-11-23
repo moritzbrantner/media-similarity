@@ -7,9 +7,15 @@ const errors = [];
 p.on("pageerror", (e) => errors.push(String(e)));
 async function search(name, file, text = "", face = false) {
   await p.goto(baseURL + "/");
-  if (face) {await p.getByRole("button", { name: "Face", exact: true }).click();}
-  if (file) {await p.locator("#query-image").setInputFiles(file);}
-  if (text) {await p.locator("#ocr-text-query").fill(text);}
+  if (face) {
+    await p.getByRole("button", { name: "Face", exact: true }).click();
+  }
+  if (file) {
+    await p.locator("#query-image").setInputFiles(file);
+  }
+  if (text) {
+    await p.locator("#ocr-text-query").fill(text);
+  }
   let [r] = await Promise.all([
     p.waitForResponse((r) => r.url().includes(face ? "/api/search/face?" : "/api/search?"), {
       timeout: 180000,

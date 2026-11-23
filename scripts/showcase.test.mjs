@@ -122,12 +122,16 @@ beforeAll(() => {
   mkdirSync(baseBin);
   for (const name of baseUtilities) {
     const target = which(name);
-    if (target) {symlinkSync(target, join(baseBin, name));}
+    if (target) {
+      symlinkSync(target, join(baseBin, name));
+    }
   }
 });
 
 afterAll(() => {
-  if (workRoot) {rmSync(workRoot, { recursive: true, force: true });}
+  if (workRoot) {
+    rmSync(workRoot, { recursive: true, force: true });
+  }
 });
 
 const stubBodies = {
@@ -183,7 +187,9 @@ function defaultTools() {
 
 function toolsWithout(...names) {
   const tools = defaultTools();
-  for (const name of names) {delete tools[name];}
+  for (const name of names) {
+    delete tools[name];
+  }
   return tools;
 }
 
@@ -429,17 +435,27 @@ function startFakeBackend({ searchResults }) {
     async fetch(request) {
       const url = new URL(request.url);
       requests.push(`${request.method} ${url.pathname}`);
-      if (request.method === "POST") {await request.arrayBuffer();}
-      if (url.pathname === "/api/health") {return Response.json({ status: "ok" });}
-      if (url.pathname === "/api/ready") {return Response.json({ status: "ready", checks: [] });}
+      if (request.method === "POST") {
+        await request.arrayBuffer();
+      }
+      if (url.pathname === "/api/health") {
+        return Response.json({ status: "ok" });
+      }
+      if (url.pathname === "/api/ready") {
+        return Response.json({ status: "ready", checks: [] });
+      }
       if (url.pathname === "/api/index" && request.method === "POST") {
         return Response.json(indexResponse);
       }
       if (url.pathname === "/api/jobs/index" && request.method === "POST") {
         return Response.json(job("Running"));
       }
-      if (url.pathname === `/api/jobs/${jobId}`) {return Response.json(job("Succeeded"));}
-      if (url.pathname === "/api/jobs") {return Response.json([job("Succeeded")]);}
+      if (url.pathname === `/api/jobs/${jobId}`) {
+        return Response.json(job("Succeeded"));
+      }
+      if (url.pathname === "/api/jobs") {
+        return Response.json([job("Succeeded")]);
+      }
       if (url.pathname === "/api/search" && request.method === "POST") {
         const results = searchResults ? [result] : [];
         return Response.json({
@@ -544,7 +560,9 @@ describe.skipIf(!e2e)("end-to-end `bun run showcase` (SHOWCASE_E2E=1)", () => {
       const onData = (chunk) => {
         output += chunk;
         const match = output.match(/^showcase ready: (http\S+)/m);
-        if (match) {resolvePromise(match[1]);}
+        if (match) {
+          resolvePromise(match[1]);
+        }
       };
       child.stdout.on("data", onData);
       child.stderr.on("data", onData);

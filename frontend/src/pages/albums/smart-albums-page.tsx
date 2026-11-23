@@ -837,14 +837,22 @@ function textOrNull(value: string) {
 }
 
 function gpsValue(value: string) {
-  if (value === "yes") {return true;}
-  if (value === "no") {return false;}
+  if (value === "yes") {
+    return true;
+  }
+  if (value === "no") {
+    return false;
+  }
   return null;
 }
 
 function gpsLabel(value: boolean | null) {
-  if (value === true) {return "yes";}
-  if (value === false) {return "no";}
+  if (value === true) {
+    return "yes";
+  }
+  if (value === false) {
+    return "no";
+  }
   return "all";
 }
 
@@ -858,9 +866,13 @@ function bytesToMegabytes(value: number | null) {
 }
 
 function dateSeconds(value: string, endOfDay: boolean) {
-  if (!value) {return null;}
+  if (!value) {
+    return null;
+  }
   const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) {return null;}
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
   if (endOfDay) {
     date.setDate(date.getDate() + 1);
     date.setMilliseconds(date.getMilliseconds() - 1);
@@ -869,7 +881,9 @@ function dateSeconds(value: string, endOfDay: boolean) {
 }
 
 function dateInputValue(value: number | null) {
-  if (value === null) {return "";}
+  if (value === null) {
+    return "";
+  }
   return new Date(value * 1000).toISOString().slice(0, 10);
 }
 

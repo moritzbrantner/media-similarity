@@ -15,7 +15,9 @@ function statusLabel(status: EvidenceStatus): string {
 
 export function VideoEvidenceDetails({ image }: { image: ImagePayload }) {
   const evidence = image.video_evidence;
-  if (!evidence) {return null;}
+  if (!evidence) {
+    return null;
+  }
 
   return (
     <div className="space-y-2 text-xs text-neutral-600">

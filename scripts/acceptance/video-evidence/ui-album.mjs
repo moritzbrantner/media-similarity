@@ -3,8 +3,9 @@ import { root, repo, baseURL, qdrantURL, chromium } from "./environment.mjs";
 const b = await chromium.launch();
 const p = await b.newPage();
 p.on("response", async (r) => {
-  if (r.url().includes("smart-albums"))
-    {console.log(r.request().method(), r.url(), r.status(), await r.text());}
+  if (r.url().includes("smart-albums")) {
+    console.log(r.request().method(), r.url(), r.status(), await r.text());
+  }
 });
 await p.goto(baseURL + "/albums");
 await p.getByRole("button", { name: "New", exact: true }).click();
