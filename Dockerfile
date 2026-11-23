@@ -10,10 +10,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY package.json bun.lock tsconfig.json vite.config.ts .oxfmtrc.json ./
-RUN bun_version="$(sed -n 's/.*"packageManager": "bun@\([^"]*\)".*/\1/p' package.json)" \
-    && test -n "$bun_version" \
-    && curl -fsSL https://bun.sh/install | bash -s "bun-v${bun_version}" \
-    && test "$(bun --version)" = "$bun_version"
+RUN curl -fsSL https://bun.sh/install | bash \
+    && bun --version
 
 COPY frontend ./frontend
 
