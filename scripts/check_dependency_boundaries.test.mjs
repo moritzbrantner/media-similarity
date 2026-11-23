@@ -54,7 +54,7 @@ function expectPasses(root) {
 function expectFails(root, ...fragments) {
   const { status, output } = runGuard(root);
   expect(output).toContain("dependency boundary violations");
-  for (const fragment of fragments) expect(output).toContain(fragment);
+  for (const fragment of fragments) {expect(output).toContain(fragment);}
   expect(status).toBe(1);
 }
 

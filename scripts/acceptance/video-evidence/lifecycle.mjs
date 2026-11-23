@@ -32,7 +32,7 @@ async function index(name) {
   let j;
   for (let n = 0; n < 360; n++) {
     j = await api("/api/jobs/" + queued.spec.id);
-    if (["Succeeded", "Failed", "Cancelled"].includes(j.status)) break;
+    if (["Succeeded", "Failed", "Cancelled"].includes(j.status)) {break;}
     await new Promise((r) => setTimeout(r, 1000));
   }
   await write(name, j);
@@ -95,10 +95,10 @@ if (mode === "face-refresh") {
   const a = Object.fromEntries(after.map((p) => [p.id, p.vector]));
   assert.deepEqual(Object.keys(a).sort(), before.map((p) => p.id).sort());
   for (const p of before)
-    for (const [role, vector] of Object.entries(p.vector)) {
+    {for (const [role, vector] of Object.entries(p.vector)) {
       assert.equal(a[p.id][role].length, vector.length);
       assert(vector.every((v, i) => Math.abs(v - a[p.id][role][i]) < 1e-6));
-    }
+    }}
   console.log(
     "PASS collection rebuild: all media payloads/evidence/IDs and physical face IDs identical; named vectors equal within1e-6",
   );
@@ -118,4 +118,4 @@ if (mode === "face-refresh") {
   console.log(
     "PASS real missing OCR executable: explicit failed/unavailable coverage; actual speech retained",
   );
-} else throw Error("Unknown mode " + mode);
+} else {throw Error("Unknown mode " + mode);}

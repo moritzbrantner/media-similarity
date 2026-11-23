@@ -43,14 +43,14 @@ function uniqueBy(values, key, location) {
   const seen = new Set();
   for (const value of values) {
     const id = value[key];
-    if (seen.has(id)) throw new Error(`${location} contains duplicate ${key} '${id}'`);
+    if (seen.has(id)) {throw new Error(`${location} contains duplicate ${key} '${id}'`);}
     seen.add(id);
   }
   return seen;
 }
 
 function validateFixtureDocuments(contract, catalogDocument, recipesDocument, relationshipsDocument, baseManifest) {
-  if (contract.version !== 1) throw new Error("asset-tooling contract version must be 1");
+  if (contract.version !== 1) {throw new Error("asset-tooling contract version must be 1");}
   requireString(contract.repository, "asset-tooling contract repository");
   assertGitRevision(contract.revision, "asset-tooling contract revision");
   requireString(contract.defaultSibling, "asset-tooling contract defaultSibling");
@@ -160,19 +160,19 @@ async function importAssetToolingExport(assetToolingRoot, packageJson, subpath, 
 
 function sourceByAssetId(recipesDocument, assetId) {
   const source = recipesDocument.sources.find((entry) => entry.assetId === assetId);
-  if (!source) throw new Error(`unknown source asset '${assetId}'`);
+  if (!source) {throw new Error(`unknown source asset '${assetId}'`);}
   return source;
 }
 
 function relationshipBySearchId(relationships, searchId) {
   const relationship = relationships.searches.find((entry) => entry.searchId === searchId);
-  if (!relationship) throw new Error(`missing relationship for generated search '${searchId}'`);
+  if (!relationship) {throw new Error(`missing relationship for generated search '${searchId}'`);}
   return relationship;
 }
 
 function catalogSourceById(catalogDocument, sourceId) {
   const source = catalogDocument.sources.find((entry) => entry.id === sourceId);
-  if (!source) throw new Error(`missing catalog source '${sourceId}'`);
+  if (!source) {throw new Error(`missing catalog source '${sourceId}'`);}
   return source;
 }
 
@@ -302,9 +302,9 @@ async function materialize({ outputDir, assetToolingRoot, contract, catalogDocum
   const provenanceQueries = [];
   for (const query of recipesDocument.queries) {
     const runtimeSource = sourceRuntime.get(query.sourceAssetId);
-    if (!runtimeSource) throw new Error(`query '${query.assetId}' source was not materialized`);
+    if (!runtimeSource) {throw new Error(`query '${query.assetId}' source was not materialized`);}
     const recipe = recipes.get(query.recipeId);
-    if (!recipe) throw new Error(`query '${query.assetId}' recipe '${query.recipeId}' was not materialized`);
+    if (!recipe) {throw new Error(`query '${query.assetId}' recipe '${query.recipeId}' was not materialized`);}
     const execution = await perturbationModule.executeImagePerturbationRecipe(toolRoot, {
       source: runtimeSource.canonical,
       recipe: recipe.recipe,

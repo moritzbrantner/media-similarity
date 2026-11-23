@@ -26,7 +26,7 @@ export function validateQualityRelationships(value) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("quality relationships must be an object");
   }
-  if (value.version !== 1) throw new Error("quality relationships version must be 1");
+  if (value.version !== 1) {throw new Error("quality relationships version must be 1");}
   if (!Array.isArray(value.searches) || value.searches.length === 0) {
     throw new Error("quality relationships searches must be a non-empty array");
   }
@@ -36,7 +36,7 @@ export function validateQualityRelationships(value) {
   }
   const ndcgK = value.metrics?.ndcgK;
   const hardNegativeK = value.metrics?.hardNegativeK;
-  if (!Number.isSafeInteger(ndcgK) || ndcgK < 1) throw new Error("metrics.ndcgK must be a positive integer");
+  if (!Number.isSafeInteger(ndcgK) || ndcgK < 1) {throw new Error("metrics.ndcgK must be a positive integer");}
   if (!Number.isSafeInteger(hardNegativeK) || hardNegativeK < 1) {
     throw new Error("metrics.hardNegativeK must be a positive integer");
   }
@@ -51,7 +51,7 @@ export function validateQualityRelationships(value) {
         throw new Error(`relationships searches[${index}].${field} must be a non-empty string`);
       }
     }
-    if (ids.has(search.searchId)) throw new Error(`duplicate relationship search '${search.searchId}'`);
+    if (ids.has(search.searchId)) {throw new Error(`duplicate relationship search '${search.searchId}'`);}
     ids.add(search.searchId);
     if (!Array.isArray(search.relevance) || search.relevance.length === 0) {
       throw new Error(`relationships search '${search.searchId}' needs relevance labels`);
@@ -106,7 +106,7 @@ export function evaluateQualityMetrics(report, relationshipsValue) {
   const reportsById = new Map(report.searches.map((search) => [search.id, search]));
   const cases = relationships.searches.map((relationship) => {
     const searchReport = reportsById.get(relationship.searchId);
-    if (!searchReport) throw new Error(`quality report is missing search '${relationship.searchId}'`);
+    if (!searchReport) {throw new Error(`quality report is missing search '${relationship.searchId}'`);}
     const ranking = rankedAssetIds(searchReport);
     const gradeByAsset = new Map(relationship.relevance.map((entry) => [entry.assetId, entry.grade]));
     const relevantAssets = relationship.relevance.map((entry) => entry.assetId);

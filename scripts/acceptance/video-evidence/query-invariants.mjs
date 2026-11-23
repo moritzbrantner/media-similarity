@@ -5,10 +5,10 @@ import assert from "node:assert/strict";
 async function query(name, params, file) {
   const form = new FormData();
   if (file)
-    form.append(
+    {form.append(
       "file",
       new File([await fs.readFile(file)], file.split("/").at(-1), { type: "image/png" }),
-    );
+    );}
   const r = await fetch(baseURL + "/api/search?" + new URLSearchParams(params), {
     method: "POST",
     body: form,

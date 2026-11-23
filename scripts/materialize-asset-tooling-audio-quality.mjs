@@ -23,7 +23,7 @@ function git(root, args) {
 
 async function verifyAssetToolingCheckout(root, contract) {
   const packageJson = await readJson(path.join(root, "package.json"));
-  if (packageJson.name !== "asset-tooling") throw new Error(`${root} is not an asset-tooling checkout`);
+  if (packageJson.name !== "asset-tooling") {throw new Error(`${root} is not an asset-tooling checkout`);}
   const revision = git(root, ["rev-parse", "HEAD"]);
   if (revision !== contract.revision) {
     throw new Error(`asset-tooling revision mismatch: expected ${contract.revision}, got ${revision}`);
@@ -56,24 +56,24 @@ function validateAudioDefinitions(recipes, relationshipsValue) {
   }
   const sourceIds = new Set(recipes.audioSources.map((entry) => entry.assetId));
   const recipeIds = new Set(recipes.audioRecipes.map((entry) => entry.id));
-  if (sourceIds.size !== recipes.audioSources.length) throw new Error("audioSources contain duplicate asset ids");
-  if (recipeIds.size !== recipes.audioRecipes.length) throw new Error("audioRecipes contain duplicate ids");
+  if (sourceIds.size !== recipes.audioSources.length) {throw new Error("audioSources contain duplicate asset ids");}
+  if (recipeIds.size !== recipes.audioRecipes.length) {throw new Error("audioRecipes contain duplicate ids");}
   for (const query of recipes.audioQueries) {
-    if (!sourceIds.has(query.sourceAssetId)) throw new Error(`audio query '${query.assetId}' references unknown source`);
-    if (!recipeIds.has(query.recipeId)) throw new Error(`audio query '${query.assetId}' references unknown recipe`);
-    if (!query.filename.endsWith(".wav")) throw new Error(`audio query '${query.assetId}' must materialize as WAV`);
+    if (!sourceIds.has(query.sourceAssetId)) {throw new Error(`audio query '${query.assetId}' references unknown source`);}
+    if (!recipeIds.has(query.recipeId)) {throw new Error(`audio query '${query.assetId}' references unknown recipe`);}
+    if (!query.filename.endsWith(".wav")) {throw new Error(`audio query '${query.assetId}' must materialize as WAV`);}
   }
   const relationships = validateQualityRelationships(relationshipsValue);
   const queryIds = new Set(recipes.audioQueries.map((entry) => entry.assetId));
   const searchIds = new Set(recipes.audioQueries.map((entry) => `${entry.assetId}-search`));
   for (const relationship of relationships.searches) {
-    if (!searchIds.has(relationship.searchId)) throw new Error(`unknown audio relationship search '${relationship.searchId}'`);
-    if (!queryIds.has(relationship.queryAssetId)) throw new Error(`unknown audio relationship query '${relationship.queryAssetId}'`);
+    if (!searchIds.has(relationship.searchId)) {throw new Error(`unknown audio relationship search '${relationship.searchId}'`);}
+    if (!queryIds.has(relationship.queryAssetId)) {throw new Error(`unknown audio relationship query '${relationship.queryAssetId}'`);}
     for (const relevant of relationship.relevance) {
-      if (!sourceIds.has(relevant.assetId)) throw new Error(`unknown audio relevant asset '${relevant.assetId}'`);
+      if (!sourceIds.has(relevant.assetId)) {throw new Error(`unknown audio relevant asset '${relevant.assetId}'`);}
     }
     for (const negative of relationship.hardNegatives) {
-      if (!sourceIds.has(negative)) throw new Error(`unknown audio hard negative '${negative}'`);
+      if (!sourceIds.has(negative)) {throw new Error(`unknown audio hard negative '${negative}'`);}
     }
   }
   return relationships;
@@ -95,7 +95,7 @@ async function executeLinearRecipe(audio, root, source, recipe) {
   const steps = [];
   for (const step of recipe.steps) {
     const handler = handlers[step.operation];
-    if (!handler) throw new Error(`unsupported audio quality operation '${step.operation}'`);
+    if (!handler) {throw new Error(`unsupported audio quality operation '${step.operation}'`);}
     const invocation = { parameters: step.parameters, inputs: { source: current } };
     const build = await handler[0](invocation);
     const result = await handler[1](root, invocation);
@@ -106,8 +106,8 @@ async function executeLinearRecipe(audio, root, source, recipe) {
 }
 
 async function executeAudioRecipe(audio, root, source, recipe) {
-  if (Array.isArray(recipe.steps)) return executeLinearRecipe(audio, root, source, recipe);
-  if (!recipe.noise || !recipe.mix) throw new Error(`audio recipe '${recipe.id}' has no executable definition`);
+  if (Array.isArray(recipe.steps)) {return executeLinearRecipe(audio, root, source, recipe);}
+  if (!recipe.noise || !recipe.mix) {throw new Error(`audio recipe '${recipe.id}' has no executable definition`);}
   const noiseInvocation = { parameters: recipe.noise, inputs: {} };
   const noiseBuild = await audio.createAudioSynthesizeOperationBuildIdentity(noiseInvocation);
   const noise = await audio.executeAudioSynthesizeOperation(root, noiseInvocation);

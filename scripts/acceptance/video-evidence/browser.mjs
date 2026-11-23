@@ -6,7 +6,7 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
 const errors = [];
 page.on("pageerror", (e) => errors.push(String(e)));
 page.on("response", (r) => {
-  if (r.status() >= 400) console.log("HTTP", r.status(), r.url());
+  if (r.status() >= 400) {console.log("HTTP", r.status(), r.url());}
 });
 await page.goto(baseURL + "/sources");
 await page.waitForTimeout(1500);
