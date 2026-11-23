@@ -1,5 +1,6 @@
-import { Button,Input,Label,NativeSelect } from "@moritzbrantner/ui";
+import { Button, Input, Label, NativeSelect } from "@moritzbrantner/ui";
 import { Trash2 } from "lucide-react";
+
 import type { SupportedSourceType } from "../../../../types";
 import type { SourceDraft } from "./source-draft";
 

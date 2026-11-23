@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+
 import { inverseIndexResponse } from "../../testing/media-fixtures";
 import { InverseIndexPage } from "./inverse-index-page";
 

@@ -1,5 +1,6 @@
 import { Badge } from "@moritzbrantner/ui";
 import type { ReactNode } from "react";
+
 import type { SearchResult } from "../../types";
 import { personDisplayName } from "./result-formatting";
 

@@ -1,5 +1,6 @@
 import { Button } from "@moritzbrantner/ui";
 import { FileAudio, FileText, FileVideo } from "lucide-react";
+
 import { ResultsGrid } from "../../../components/results-grid";
 import { formatSeconds } from "../../../components/results/result-formatting";
 import { filterResults } from "../../../search/filtering";

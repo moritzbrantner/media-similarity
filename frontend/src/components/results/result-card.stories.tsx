@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+
 import { makeResult, searchResponse } from "../../testing/media-fixtures";
 import { ResultCard } from "./result-card";
 

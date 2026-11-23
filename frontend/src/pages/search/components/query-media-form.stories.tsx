@@ -1,7 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { type FormEvent,useState } from "react";
-import { indexResponse } from "../../../testing/media-fixtures";
+import { type FormEvent, useState } from "react";
+
 import type { SearchMode } from "../../../search/types";
+import { indexResponse } from "../../../testing/media-fixtures";
 import { QueryMediaForm } from "./query-media-form";
 
 function StatefulForm({ pending = false }: { pending?: boolean }) {

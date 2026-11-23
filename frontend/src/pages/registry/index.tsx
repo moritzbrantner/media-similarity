@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchInverseIndex, mergeIdentities, renameIdentity,type IdentityKind } from "../../api";
+
+import { fetchInverseIndex, mergeIdentities, renameIdentity, type IdentityKind } from "../../api";
 import { SEARCH_HISTORY_QUERY_KEY } from "../../search/defaults";
 import { applyIdentityMutationToHistory } from "../../search/history";
 import type { SearchHistoryItem } from "../../search/types";

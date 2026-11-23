@@ -1,13 +1,21 @@
-import { type FormEvent,useEffect,useRef,useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type {
-  SearchHistoryItem,
-  SearchVariables,
-  MetadataFilters,
-  ResultSortMode,
-  SearchMode,
-} from "../../search/types";
-import { createQueryPreview } from "../../search/preview";
+import { type FormEvent, useEffect, useRef, useState } from "react";
+
+import {
+  searchMedia,
+  searchFaceMedia,
+  deleteIndexedMedia,
+  updateIndexedMediaTags,
+} from "../../api";
+import { isAudioFile, isPdfFile } from "../../lib/media";
+import {
+  DEFAULT_LIMIT,
+  DEFAULT_METADATA_FILTERS,
+  DEFAULT_RESULT_SORT,
+  MAX_SEARCH_HISTORY,
+  SEARCH_HISTORY_QUERY_KEY,
+} from "../../search/defaults";
+import { filterResults, sourceTypesFor } from "../../search/filtering";
 import {
   applyIdentityMutationToHistory,
   removeResultFromFaceResponse,
@@ -17,22 +25,15 @@ import {
   loadSearchHistory,
   saveSearchHistory,
 } from "../../search/history";
-import { filterResults, sourceTypesFor } from "../../search/filtering";
-import {
-  DEFAULT_LIMIT,
-  DEFAULT_METADATA_FILTERS,
-  DEFAULT_RESULT_SORT,
-  MAX_SEARCH_HISTORY,
-  SEARCH_HISTORY_QUERY_KEY,
-} from "../../search/defaults";
+import { createQueryPreview } from "../../search/preview";
 import { sortResults } from "../../search/sorting";
-import {
-  searchMedia,
-  searchFaceMedia,
-  deleteIndexedMedia,
-  updateIndexedMediaTags,
-} from "../../api";
-import { isAudioFile, isPdfFile } from "../../lib/media";
+import type {
+  SearchHistoryItem,
+  SearchVariables,
+  MetadataFilters,
+  ResultSortMode,
+  SearchMode,
+} from "../../search/types";
 import type { FaceSearchResponse, IdentityMutationResponse, SearchResult } from "../../types";
 
 type FaceSearchVariables = {

@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+
 import { indexResponse, workflowConfigResponse } from "../../testing/media-fixtures";
 import { WorkflowConfigurationPage } from "./workflow-configuration-page";
 

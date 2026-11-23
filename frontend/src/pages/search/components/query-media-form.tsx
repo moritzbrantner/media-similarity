@@ -1,4 +1,4 @@
-import { Button,Input,Label } from "@moritzbrantner/ui";
+import { Button, Input, Label } from "@moritzbrantner/ui";
 import { FileText, Loader2, Search, Upload, X } from "lucide-react";
 import type { FormEvent } from "react";
 

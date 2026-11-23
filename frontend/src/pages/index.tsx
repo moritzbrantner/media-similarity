@@ -1,7 +1,8 @@
 import { useNavigate } from "react-router";
-import { SearchPage } from "./search/search-page";
+
 import { useSearchController } from "../features/search/useSearchController";
 import { useAppShellContext } from "./_layout";
+import { SearchPage } from "./search/search-page";
 
 export function SearchRoute() {
   const navigate = useNavigate();

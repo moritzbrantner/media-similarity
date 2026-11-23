@@ -1,6 +1,7 @@
 import type { Preview } from "@storybook/react-vite";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router";
+
 import "../frontend/src/styles.css";
 
 type StorybookApiMock = {

@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router";
-import { AppShell } from "./pages/_layout";
+
 import { SearchRoute } from "./pages";
+import { AppShell } from "./pages/_layout";
 import { AlbumsRoute } from "./pages/albums";
 import { RegistryRoute } from "./pages/registry";
 import { SourcesRoute } from "./pages/sources";

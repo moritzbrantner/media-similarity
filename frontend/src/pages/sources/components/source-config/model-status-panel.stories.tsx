@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+
 import { modelsResponse } from "../../../../testing/media-fixtures";
 import { ModelStatusPanel } from "./model-status-panel";
 

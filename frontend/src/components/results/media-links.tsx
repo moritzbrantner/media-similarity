@@ -1,4 +1,5 @@
 import { FileAudio, FileText, FileVideo } from "lucide-react";
+
 import type { SearchResult } from "../../types";
 import { formatSeconds } from "./result-formatting";
 

@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+
 import { cancelJob, fetchJobEvents, fetchJobs, startIndexJob } from "../../api";
 import { jobIsActive, jobIsTerminal, numberFromMetadata, sortJobs } from "../../jobs/job-utils";
 import type { HealthResponse, IndexResponse } from "../../types";

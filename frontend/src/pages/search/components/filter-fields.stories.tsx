@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
+
 import { DEFAULT_METADATA_FILTERS } from "../../../search/defaults";
 import type { MetadataFilters } from "../../../search/types";
 import { MetadataFiltersPanel, ResultSortSelect } from "./filter-fields";

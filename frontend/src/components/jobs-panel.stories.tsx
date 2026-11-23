@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+
 import { completedIndexEvents, completedIndexJob, makeJob } from "../testing/media-fixtures";
 import { JobsPanel } from "./jobs-panel";
 

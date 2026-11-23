@@ -4,7 +4,8 @@ import {
   type ImagePayload,
   type SourceConfigResponse,
   type SourceIndexingConfig,
-  type SourcePreviewResponse,type InverseIndexResponse
+  type SourcePreviewResponse,
+  type InverseIndexResponse,
 } from "../types";
 import { parseResponse } from "./client";
 

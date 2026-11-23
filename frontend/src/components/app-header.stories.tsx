@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { AppHeader } from "./app-header";
+
 import type { HealthResponse } from "../types";
+import { AppHeader } from "./app-header";
 
 const health: HealthResponse = {
   collection: "media",

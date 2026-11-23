@@ -1,11 +1,12 @@
+import { Button } from "@moritzbrantner/ui";
 import {
   WorkflowWorkbench,
   type WorkflowEditorDocument,
   type WorkflowEditorNode,
 } from "@moritzbrantner/workflow-editor";
-import { Button } from "@moritzbrantner/ui";
 import { AlertCircle, CheckCircle2, Database, Loader2, RotateCcw, Save } from "lucide-react";
 import { useEffect, useState } from "react";
+
 import { Message } from "../../components/status-message";
 import { formatIndexSummary } from "../../indexing/summary";
 import type {

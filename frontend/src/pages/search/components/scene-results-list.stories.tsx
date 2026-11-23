@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+
 import { DEFAULT_METADATA_FILTERS } from "../../../search/defaults";
 import { makeScene, searchResponse } from "../../../testing/media-fixtures";
 import { SceneResultsList } from "./scene-results-list";

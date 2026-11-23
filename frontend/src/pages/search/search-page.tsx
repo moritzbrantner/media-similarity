@@ -1,11 +1,6 @@
 import type { FormEvent } from "react";
 
 import { ResultsGrid } from "../../components/results-grid";
-import { MetadataFiltersPanel, ResultSortSelect } from "./components/filter-fields";
-import { QueryMediaForm } from "./components/query-media-form";
-import { QueryPreviewPanel } from "./components/query-preview-panel";
-import { SceneResultsList } from "./components/scene-results-list";
-import { SearchHistoryList } from "./components/search-history-list";
 import type {
   MetadataFilters,
   ResultSortMode,
@@ -19,6 +14,11 @@ import type {
   SearchResponse,
   SearchResult,
 } from "../../types";
+import { MetadataFiltersPanel, ResultSortSelect } from "./components/filter-fields";
+import { QueryMediaForm } from "./components/query-media-form";
+import { QueryPreviewPanel } from "./components/query-preview-panel";
+import { SceneResultsList } from "./components/scene-results-list";
+import { SearchHistoryList } from "./components/search-history-list";
 
 type SearchPageProps = {
   activeResponse: SearchResponse | null;

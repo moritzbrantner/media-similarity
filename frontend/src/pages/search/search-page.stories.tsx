@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+
 import { DEFAULT_METADATA_FILTERS } from "../../search/defaults";
 import type { SearchHistoryItem } from "../../search/types";
 import { faceSearchResponse, healthResponse, searchResponse } from "../../testing/media-fixtures";

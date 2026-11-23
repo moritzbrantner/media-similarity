@@ -1,4 +1,5 @@
 import { FileImage, Loader2 } from "lucide-react";
+
 import type { SearchResult } from "../types";
 import { ResultCard } from "./results/result-card";
 

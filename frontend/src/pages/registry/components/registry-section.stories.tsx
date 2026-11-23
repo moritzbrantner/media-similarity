@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { Users } from "lucide-react";
 import { useState } from "react";
+
 import { inverseIndexResponse } from "../../../testing/media-fixtures";
 import type { RegistryIdentity } from "../inverse-index-page";
 import { RegistrySection } from "./registry-section";

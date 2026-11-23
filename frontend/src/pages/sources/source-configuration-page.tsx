@@ -11,6 +11,7 @@ import {
   Save,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+
 import { Message } from "../../components/status-message";
 import { formatIndexSummary } from "../../indexing/summary";
 import type {
@@ -19,13 +20,13 @@ import type {
   SourceConfigResponse,
   SourcePreviewResponse,
 } from "../../types";
-import { completeIndexingConfig } from "./indexing-configuration-page";
 import { Metric } from "./components/source-config/metric";
 import { ModelStatusPanel } from "./components/source-config/model-status-panel";
 import type { SourceDraft } from "./components/source-config/source-draft";
 import { SourceDraftRow } from "./components/source-config/source-draft-row";
 import { SourceStatusCard } from "./components/source-config/source-status-card";
 import { SupportedSourceTypeRow } from "./components/source-config/supported-source-type-row";
+import { completeIndexingConfig } from "./indexing-configuration-page";
 
 function createHistoryId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {

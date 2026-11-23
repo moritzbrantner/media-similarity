@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import type { SourceInventory } from "../../../../types";
+
 import { sourceConfigResponse } from "../../../../testing/media-fixtures";
+import type { SourceInventory } from "../../../../types";
 import { SourceStatusCard } from "./source-status-card";
 
 const inventory = {

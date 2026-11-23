@@ -1,6 +1,7 @@
 import { Alert, AlertDescription } from "@moritzbrantner/ui";
 import { AlertCircle, CheckCircle2, Loader2, RotateCw } from "lucide-react";
 import type { ReactNode } from "react";
+
 import { formatIndexSummary } from "../indexing/summary";
 import type { IndexResponse } from "../types";
 

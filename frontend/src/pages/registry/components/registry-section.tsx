@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+
 import type { IdentityKind } from "../../../types";
 import { RegistryIdentity, RegistryEntry, RegistryEntryCard } from "../inverse-index-page";
 

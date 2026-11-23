@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+
 import { sourceConfigResponse } from "../../../../testing/media-fixtures";
 import { SourceDraftRow } from "./source-draft-row";
 

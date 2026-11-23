@@ -1,6 +1,7 @@
-import { Badge,Button,Input,Label } from "@moritzbrantner/ui";
+import { Badge, Button, Input, Label } from "@moritzbrantner/ui";
 import { Loader2, Save, X } from "lucide-react";
 import { useEffect, useState } from "react";
+
 import type { SearchResult } from "../../types";
 
 export function MediaTagEditor({

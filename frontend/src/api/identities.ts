@@ -1,5 +1,4 @@
 import type { IdentityKind, IdentityMutationResponse } from "../types";
-
 import { parseResponse } from "./client";
 
 export { type IdentityKind, type IdentityMutationResponse };

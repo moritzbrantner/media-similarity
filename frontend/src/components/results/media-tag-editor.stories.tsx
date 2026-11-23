@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { useState } from "react";
+
 import { searchResponse } from "../../testing/media-fixtures";
 import type { SearchResult } from "../../types";
 import { MediaTagEditor } from "./media-tag-editor";

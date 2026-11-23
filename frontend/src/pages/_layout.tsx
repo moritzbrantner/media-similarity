@@ -1,13 +1,14 @@
+import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { Outlet, useOutletContext } from "react-router";
-import { useQuery } from "@tanstack/react-query";
+
+import { fetchHealth } from "../api";
 import { AppHeader } from "../components/app-header";
 import { JobsPanel } from "../components/jobs-panel";
 import { useAlbumController } from "../features/albums/useAlbumController";
 import { useJobsController } from "../features/jobs/useJobsController";
-import { fetchHealth } from "../api";
-import type { EditableSmartAlbum, HealthResponse, IndexResponse } from "../types";
 import type { MetadataFilters, ResultSortMode } from "../search/types";
+import type { EditableSmartAlbum, HealthResponse, IndexResponse } from "../types";
 
 export type AppShellContext = {
   albumDraft: EditableSmartAlbum | null;

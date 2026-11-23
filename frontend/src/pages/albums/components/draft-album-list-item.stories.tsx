@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+
 import { smartAlbum } from "../../../testing/media-fixtures";
 import { DraftAlbumListItem } from "./draft-album-list-item";
 

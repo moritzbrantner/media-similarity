@@ -13,8 +13,10 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Message } from "../../components/status-message";
+
 import type { IdentityKind } from "../../api";
+import { formatSeconds } from "../../components/results/result-formatting";
+import { Message } from "../../components/status-message";
 import { mediaKindLabel } from "../../lib/format";
 import type {
   InverseIndexLocation,
@@ -22,7 +24,6 @@ import type {
   InversePersonEntry,
   InverseSpeakerEntry,
 } from "../../types";
-import { formatSeconds } from "../../components/results/result-formatting";
 import { RegistryMetric } from "./components/registry-metric";
 import { RegistrySection } from "./components/registry-section";
 

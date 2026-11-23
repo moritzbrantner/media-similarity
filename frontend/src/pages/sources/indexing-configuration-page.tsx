@@ -1,4 +1,4 @@
-import { Button,Checkbox,Input,Label,Textarea } from "@moritzbrantner/ui";
+import { Button, Checkbox, Input, Label, Textarea } from "@moritzbrantner/ui";
 import {
   AlertCircle,
   CheckCircle2,
@@ -12,6 +12,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+
 import { Message } from "../../components/status-message";
 import { formatIndexSummary } from "../../indexing/summary";
 import type { IndexResponse, SourceConfigResponse, SourceIndexingConfig } from "../../types";

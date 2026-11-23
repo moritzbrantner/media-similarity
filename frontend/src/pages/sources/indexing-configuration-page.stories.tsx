@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+
 import { indexResponse, sourceConfigResponse } from "../../testing/media-fixtures";
 import { IndexingConfigurationPage } from "./indexing-configuration-page";
 
