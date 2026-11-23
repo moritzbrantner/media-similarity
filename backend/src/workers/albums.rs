@@ -195,14 +195,9 @@ pub fn matches_album_criteria(
         }
     }
 
-    if criteria
+    !criteria
         .orientation
         .is_some_and(|orientation| image_orientation(image.width, image.height) != orientation)
-    {
-        return false;
-    }
-
-    true
 }
 
 fn sort_album_results(results: &mut [SmartAlbumResult], sort: AlbumSortMode) {
